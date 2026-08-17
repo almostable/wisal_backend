@@ -6,18 +6,6 @@ import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
 import { accounts } from './accounts'
 import { identities, identityFormatSchema, type Identity } from './identities'
 
-/**
- * Profiles table definition
- * Bound 1:1 to Accounts. Cannot exist without an account.
- * - id: 64-bit Snowflake ID (bigint)
- * - account_id: foreign key to accounts.id (CASCADE on delete, unique 1:1)
- * - name: user display name (required after onboarding)
- * - is_male: gender boolean (can only be set once during onboarding)
- * - avatar_key: storage key for avatar image
- * - description: bio / description text
- * - identity_id: foreign key to identities.id (unique 1:1 user handle)
- * - created_at, updated_at: standard timestamps
- */
 export const profiles = pgTable('profiles', {
   id: snowflakePrimaryKey(),
   accountId: snowflakeId('account_id')
@@ -45,7 +33,6 @@ export const profilesRelations = relations(profiles, ({ one }) => ({
   }),
 }))
 
-// Reusable field validators
 export const nameSchema = z
   .string()
   .min(1, 'Name cannot be empty')
@@ -57,18 +44,16 @@ export const descriptionSchema = z
   .max(500, 'Description must be at most 500 characters')
   .trim()
 
-// Schema for completing initial onboarding
 export const onboardingInputSchema = z.object({
   name: nameSchema,
   isMale: z.boolean({
-    error: 'is_male (gender) is required and must be a boolean',
+    message: 'is_male (gender) is required and must be a boolean',
   }),
   identity: identityFormatSchema,
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
 })
 
-// Schema for updating profile after onboarding (isMale is checked at service level)
 export const updateProfileInputSchema = z.object({
   name: nameSchema.optional(),
   avatarKey: z.string().nullable().optional(),
@@ -76,11 +61,9 @@ export const updateProfileInputSchema = z.object({
   isMale: z.boolean().optional(),
 })
 
-// Base Zod schemas for table
 export const insertProfileSchema = createInsertSchema(profiles)
 export const selectProfileSchema = createSelectSchema(profiles)
 
-// Inferred TypeScript types
 export type Profile = typeof profiles.$inferSelect
 export type NewProfile = typeof profiles.$inferInsert
 export type OnboardingInput = z.infer<typeof onboardingInputSchema>

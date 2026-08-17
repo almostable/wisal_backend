@@ -1,6 +1,5 @@
-import type { SafeAdmin } from '../../db/schema/admins'
+import type { SafeAdmin, AdminRole } from '../../db/schema/admins'
 import type { AdminSession } from '../../db/schema/admin-sessions'
-import type { Invite } from '../../db/schema/invites'
 import type { SafeAccount } from '../../db/schema/accounts'
 import type { ProfileWithIdentity } from '../../db/schema/profiles'
 
@@ -15,9 +14,51 @@ export interface AdminLoginResult {
   token: string
 }
 
+export interface CreateAdminInput {
+  email: string
+  password: string
+  role?: AdminRole
+}
+
+export interface ListAdminsOptions {
+  limit?: number
+  offset?: number
+}
+
+export interface ListAdminsResult {
+  admins: SafeAdmin[]
+  total: number
+  limit: number
+  offset: number
+}
+
 export interface CreateInviteInput {
   code?: string
   expiresAt: Date
+}
+
+export interface InviteCreator {
+  id: bigint
+  email: string
+  role: AdminRole
+}
+
+export interface InviteUsedBy {
+  id: bigint
+  email: string
+}
+
+export interface InviteItem {
+  id: bigint
+  code: string
+  expiresAt: Date
+  createdBy: InviteCreator
+  created_by: InviteCreator
+  usedById: bigint | null
+  usedBy: InviteUsedBy | null
+  usedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
 }
 
 export interface ListInvitesOptions {
@@ -26,7 +67,7 @@ export interface ListInvitesOptions {
 }
 
 export interface ListInvitesResult {
-  invites: Invite[]
+  invites: InviteItem[]
   total: number
   limit: number
   offset: number

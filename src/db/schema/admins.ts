@@ -11,14 +11,6 @@ export type AdminRole = (typeof ADMIN_ROLES)[number]
 
 export const adminRoleEnum = pgEnum('admin_role', ADMIN_ROLES)
 
-/**
- * Admins table definition
- * - id: 64-bit Snowflake ID (bigint)
- * - email: case-insensitive unique email (enforced via functional index on lower(email))
- * - password: encrypted hash (Argon2id)
- * - role: role level ('admin' | 'moderator')
- * - created_at, updated_at: standard timestamps with timezone
- */
 export const admins = pgTable(
   'admins',
   {
@@ -38,13 +30,12 @@ export const adminsRelations = relations(admins, ({ many }) => ({
   invitesCreated: many(invites),
 }))
 
-// Base Zod validators with email trimming, lowercasing, and RFC 5322 validation
 export const adminEmailSchema = z
   .string()
   .min(1, 'Email is required')
   .max(255, 'Email is too long')
   .transform((val) => val.trim().toLowerCase())
-  .pipe(z.email('Invalid email address'))
+  .pipe(z.string().email('Invalid email address'))
 
 export const adminRawPasswordSchema = z
   .string()
@@ -53,7 +44,6 @@ export const adminRawPasswordSchema = z
 
 export const adminRoleSchema = z.enum(ADMIN_ROLES)
 
-// Zod schemas for runtime validation
 export const insertAdminSchema = createInsertSchema(admins, {
   email: () => adminEmailSchema,
   password: () => adminRawPasswordSchema,
@@ -64,7 +54,6 @@ export const selectAdminSchema = createSelectSchema(admins)
 
 export const safeAdminSchema = selectAdminSchema.omit({ password: true })
 
-// Inferred TypeScript types
 export type Admin = typeof admins.$inferSelect
 export type NewAdmin = typeof admins.$inferInsert
 export type SafeAdmin = z.infer<typeof safeAdminSchema>

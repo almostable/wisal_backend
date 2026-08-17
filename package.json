@@ -11,8 +11,8 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@hono/zod-validator": "^0.9.0",
     "@sapphire/snowflake": "^3.5.5",
-    "argon2": "^0.45.1",
     "drizzle-orm": "^0.45.2",
     "drizzle-seed": "^0.3.1",
     "drizzle-zod": "^0.8.3",

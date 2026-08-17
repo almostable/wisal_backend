@@ -4,14 +4,6 @@ import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
 import { admins } from './admins'
 
-/**
- * Admin Sessions table definition
- * - id: 64-bit Snowflake ID (bigint)
- * - admin_id: foreign key referencing admins.id (CASCADE on delete)
- * - token_hash: SHA-256 hash (64 hex characters) of the raw session token
- * - expires_at: timestamp when the session expires (default: 30 days)
- * - created_at, updated_at: standard timestamps
- */
 export const adminSessions = pgTable(
   'admin_sessions',
   {
@@ -36,10 +28,8 @@ export const adminSessionsRelations = relations(adminSessions, ({ one }) => ({
   }),
 }))
 
-// Zod schemas for runtime validation
 export const insertAdminSessionSchema = createInsertSchema(adminSessions)
 export const selectAdminSessionSchema = createSelectSchema(adminSessions)
 
-// Inferred TypeScript types
 export type AdminSession = typeof adminSessions.$inferSelect
 export type NewAdminSession = typeof adminSessions.$inferInsert

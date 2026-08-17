@@ -4,11 +4,8 @@ import { env } from '../config/env'
 import { hashPassword } from '../lib/password'
 
 async function seedAdmin() {
-  console.log('🛡️  Running Admin Seed script...')
-
   if (!env.ADMIN_EMAIL || !env.ADMIN_PASSWORD) {
-    console.error('❌ Missing ADMIN_EMAIL or ADMIN_PASSWORD in environment variables.')
-    console.error('Please set ADMIN_EMAIL and ADMIN_PASSWORD in your .env file.')
+    console.error('Missing ADMIN_EMAIL or ADMIN_PASSWORD in environment variables.')
     process.exit(1)
   }
 
@@ -17,20 +14,17 @@ async function seedAdmin() {
   const role = env.ADMIN_ROLE as AdminRole
 
   try {
-    // 1. Check if admin with lower(email) already exists
     const existing = await db.query.admins.findFirst({
       where: eq(sql`lower(${admins.email})`, email),
     })
 
     if (existing) {
-      console.log(`⚠️  Admin with email "${email}" already exists (ID: ${existing.id.toString()}, Role: ${existing.role})`)
+      console.log(`Admin with email "${email}" already exists (ID: ${existing.id.toString()}, Role: ${existing.role})`)
       return
     }
 
-    // 2. Hash password using Argon2id
     const passwordHash = await hashPassword(password)
 
-    // 3. Insert new admin
     const [newAdmin] = await db
       .insert(admins)
       .values({
@@ -44,12 +38,9 @@ async function seedAdmin() {
       throw new Error('Failed to insert admin record into database')
     }
 
-    console.log(`✅ Admin created successfully:`)
-    console.log(`   - ID: ${newAdmin.id.toString()}`)
-    console.log(`   - Email: ${newAdmin.email}`)
-    console.log(`   - Role: ${newAdmin.role}`)
+    console.log(`Admin created: ${newAdmin.email} (${newAdmin.role})`)
   } catch (error) {
-    console.error('❌ Admin seed failed:', error)
+    console.error('Admin seed failed:', error)
     process.exit(1)
   } finally {
     await client.end()

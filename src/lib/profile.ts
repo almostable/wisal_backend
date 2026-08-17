@@ -1,23 +1,9 @@
 import { eq, sql } from 'drizzle-orm'
+import { HTTPException } from 'hono/http-exception'
 import { db } from '../db'
 import { profiles, type Profile, type ProfileWithIdentity, type OnboardingInput, type UpdateProfileInput } from '../db/schema/profiles'
 import { identities, type Identity } from '../db/schema/identities'
 
-export class ProfileError extends Error {
-  constructor(
-    message: string,
-    public readonly code: 'NOT_FOUND' | 'ALREADY_COMPLETED' | 'IDENTITY_TAKEN' | 'GENDER_IMMUTABLE' | 'VALIDATION_ERROR',
-    public readonly status: number = 400
-  ) {
-    super(message)
-    this.name = 'ProfileError'
-  }
-}
-
-/**
- * Checks if a profile has completed all required onboarding fields
- * (name, is_male, and identity_id are all set)
- */
 export function isOnboardingCompleted(
   profile: (Profile & { identity?: Identity | null }) | null | undefined
 ): boolean {
@@ -31,33 +17,34 @@ export function isOnboardingCompleted(
   )
 }
 
-/**
- * Retrieves profile with associated identity by account Snowflake ID
- */
 export async function getProfileByAccountId(
   accountId: bigint
 ): Promise<ProfileWithIdentity | null> {
   try {
-    const profile = await db.query.profiles.findFirst({
-      where: eq(profiles.accountId, accountId),
-      with: {
-        identity: true,
-      },
-    })
+    const [result] = await db
+      .select({
+        profile: profiles,
+        identity: identities,
+      })
+      .from(profiles)
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(eq(profiles.accountId, accountId))
+      .limit(1)
 
-    return (profile as ProfileWithIdentity) ?? null
+    if (!result || !result.profile) {
+      return null
+    }
+
+    return {
+      ...result.profile,
+      identity: result.identity ?? null,
+    }
   } catch (error) {
     console.error('Error fetching profile for account:', error)
     return null
   }
 }
 
-/**
- * Completes user onboarding in an atomic transaction:
- * 1. Verifies identity uniqueness across users & communities (case-insensitive)
- * 2. Creates the identity record
- * 3. Creates or updates the user profile record
- */
 export async function completeOnboarding(
   accountId: bigint,
   input: OnboardingInput
@@ -65,33 +52,22 @@ export async function completeOnboarding(
   const normalizedIdentity = input.identity.trim().toLowerCase()
 
   return await db.transaction(async (tx) => {
-    // 1. Check if identity is already taken
     const existingIdentity = await tx.query.identities.findFirst({
       where: eq(sql`lower(${identities.identity})`, normalizedIdentity),
     })
 
     if (existingIdentity) {
-      throw new ProfileError(
-        `Identity '${input.identity}' is already taken`,
-        'IDENTITY_TAKEN',
-        409
-      )
+      throw new HTTPException(409, { message: `Identity '${input.identity}' is already taken` })
     }
 
-    // 2. Check if profile already exists for this account
     const existingProfile = await tx.query.profiles.findFirst({
       where: eq(profiles.accountId, accountId),
     })
 
     if (existingProfile && existingProfile.identityId) {
-      throw new ProfileError(
-        'Onboarding has already been completed for this account',
-        'ALREADY_COMPLETED',
-        400
-      )
+      throw new HTTPException(400, { message: 'Onboarding has already been completed for this account' })
     }
 
-    // 3. Create the identity
     const [createdIdentity] = await tx
       .insert(identities)
       .values({
@@ -101,10 +77,9 @@ export async function completeOnboarding(
       .returning()
 
     if (!createdIdentity) {
-      throw new ProfileError('Failed to create identity', 'VALIDATION_ERROR', 500)
+      throw new HTTPException(500, { message: 'Failed to create identity' })
     }
 
-    // 4. Create or update the profile
     let finalProfile: Profile
 
     if (existingProfile) {
@@ -144,10 +119,6 @@ export async function completeOnboarding(
   })
 }
 
-/**
- * Updates an existing profile.
- * ENFORCES IMMUTABLE GENDER: If `is_male` is already set, it cannot be changed.
- */
 export async function updateProfile(
   accountId: bigint,
   input: UpdateProfileInput
@@ -155,24 +126,16 @@ export async function updateProfile(
   const existingProfile = await getProfileByAccountId(accountId)
 
   if (!existingProfile) {
-    throw new ProfileError(
-      'Profile not found. Please complete onboarding first.',
-      'NOT_FOUND',
-      404
-    )
+    throw new HTTPException(404, { message: 'Profile not found' })
   }
 
-  // Enforce the rule: is_male can only be set once and cannot be changed afterwards
+  // Gender (is_male) is immutable once set during onboarding
   if (
     existingProfile.isMale !== null &&
     input.isMale !== undefined &&
     input.isMale !== existingProfile.isMale
   ) {
-    throw new ProfileError(
-      'Gender (is_male) cannot be modified once set',
-      'GENDER_IMMUTABLE',
-      400
-    )
+    throw new HTTPException(400, { message: 'Gender (is_male) cannot be modified once set' })
   }
 
   const updateData: Partial<typeof profiles.$inferInsert> = {}
@@ -186,7 +149,6 @@ export async function updateProfile(
   if (input.description !== undefined) {
     updateData.description = input.description?.trim() ?? null
   }
-  // Only update isMale if it wasn't previously set
   if (existingProfile.isMale === null && input.isMale !== undefined) {
     updateData.isMale = input.isMale
   }

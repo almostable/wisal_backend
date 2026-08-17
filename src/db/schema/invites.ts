@@ -6,16 +6,6 @@ import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
 import { admins } from './admins'
 import { accounts } from './accounts'
 
-/**
- * Invites table definition
- * - id: 64-bit Snowflake ID (bigint)
- * - code: unique invite code string (min 8 characters)
- * - expires_at: timestamp when the invite expires (NOT NULL)
- * - created_by_id: foreign key referencing admins.id (NOT NULL)
- * - used_by_id: foreign key referencing accounts.id (NULL until consumed)
- * - used_at: timestamp when the invite was used (NULL until consumed)
- * - created_at, updated_at: standard timestamps with timezone
- */
 export const invites = pgTable(
   'invites',
   {
@@ -24,7 +14,7 @@ export const invites = pgTable(
     expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
     createdById: snowflakeId('created_by_id')
       .notNull()
-      .references(() => admins.id, { onDelete: 'restrict' }),
+      .references(() => admins.id, { onDelete: 'cascade' }),
     usedById: snowflakeId('used_by_id')
       .references(() => accounts.id, { onDelete: 'set null' }),
     usedAt: timestamp('used_at', { withTimezone: true, mode: 'date' }),
@@ -48,7 +38,6 @@ export const invitesRelations = relations(invites, ({ one }) => ({
   }),
 }))
 
-// Zod schemas for runtime validation
 export const inviteCodeSchema = z
   .string()
   .min(8, 'Invite code must be at least 8 characters long')
@@ -61,6 +50,5 @@ export const insertInviteSchema = createInsertSchema(invites, {
 
 export const selectInviteSchema = createSelectSchema(invites)
 
-// Inferred TypeScript types
 export type Invite = typeof invites.$inferSelect
 export type NewInvite = typeof invites.$inferInsert
