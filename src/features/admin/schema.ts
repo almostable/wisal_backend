@@ -15,8 +15,7 @@ export const createInviteInputSchema = z.object({
     .min(8, 'Invite code must be at least 8 characters long')
     .max(64, 'Invite code is too long')
     .optional(),
-  expiresAt: z.coerce.date().optional(),
-  expiresInDays: z.coerce.number().positive().optional(),
+  expiresAt: z.coerce.date({ message: 'expiresAt is required and must be a valid date' }),
 })
 
 export const paginationQuerySchema = z.object({

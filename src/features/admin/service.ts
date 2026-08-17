@@ -90,7 +90,7 @@ export async function logoutAdminByToken(token: string): Promise<void> {
  */
 export async function createInvite(
   adminId: bigint,
-  input: CreateInviteInput = {}
+  input: CreateInviteInput
 ): Promise<Invite> {
   let inviteCode = input.code?.trim().toUpperCase()
 
@@ -98,6 +98,10 @@ export async function createInvite(
     inviteCode = generateRandomInviteCode()
   } else if (inviteCode.length < 8) {
     throw new AdminServiceError('Invite code must be at least 8 characters long', 400, 'INVALID_CODE_LENGTH')
+  }
+
+  if (!input.expiresAt || !(input.expiresAt instanceof Date) || isNaN(input.expiresAt.getTime())) {
+    throw new AdminServiceError('A valid expiration date (expiresAt) is required', 400, 'EXPIRES_AT_REQUIRED')
   }
 
   // Check if code is already taken
@@ -109,20 +113,12 @@ export async function createInvite(
     throw new AdminServiceError(`Invite code '${inviteCode}' already exists`, 409, 'INVITE_CODE_EXISTS')
   }
 
-  // Compute expiration date
-  let calculatedExpiresAt: Date | null = null
-  if (input.expiresAt) {
-    calculatedExpiresAt = input.expiresAt
-  } else if (input.expiresInDays && input.expiresInDays > 0) {
-    calculatedExpiresAt = new Date(Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000)
-  }
-
   const [newInvite] = await db
     .insert(invites)
     .values({
       code: inviteCode,
       createdById: adminId,
-      expiresAt: calculatedExpiresAt,
+      expiresAt: input.expiresAt,
     })
     .returning()
 

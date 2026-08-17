@@ -7,7 +7,6 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:reset": "bun run src/db/reset.ts",
-    "seed:admin": "bun run src/db/seed-admin.ts",
     "db:seed:admin": "bun run src/db/seed-admin.ts",
     "test": "bun test"
   },

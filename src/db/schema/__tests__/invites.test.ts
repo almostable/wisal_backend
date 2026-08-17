@@ -27,6 +27,16 @@ describe('Invites Schema Tests', () => {
     expect(() =>
       insertInviteSchema.parse({
         code: 'VALID-CODE-123',
+        expiresAt: new Date(),
+      })
+    ).toThrow()
+  })
+
+  it('rejects missing expiresAt in insertInviteSchema', () => {
+    expect(() =>
+      insertInviteSchema.parse({
+        code: 'VALID-CODE-123',
+        createdById: 123456789012345n,
       })
     ).toThrow()
   })

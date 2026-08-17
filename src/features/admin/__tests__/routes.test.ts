@@ -151,6 +151,7 @@ describe('Admin Feature Route Tests', () => {
       },
       body: JSON.stringify({
         code: 'CUSTOM-INVITE-2026',
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       }),
     })
 
@@ -158,6 +159,31 @@ describe('Admin Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; invite: Invite }
     expect(body.success).toBe(true)
     expect(body.invite.code).toBe('CUSTOM-INVITE-2026')
+  })
+
+  it('POST /admin/invites rejects when expiration is missing with 400', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    const res = await app.request('/admin/invites', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        code: 'CUSTOM-INVITE-2026',
+      }),
+    })
+
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('VALIDATION_ERROR')
   })
 
   it('GET /admin/invites returns list of invites', async () => {

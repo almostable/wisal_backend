@@ -17,8 +17,7 @@ export interface AdminLoginResult {
 
 export interface CreateInviteInput {
   code?: string
-  expiresAt?: Date | null
-  expiresInDays?: number | null
+  expiresAt: Date
 }
 
 export interface ListInvitesOptions {

@@ -10,7 +10,7 @@ import { accounts } from './accounts'
  * Invites table definition
  * - id: 64-bit Snowflake ID (bigint)
  * - code: unique invite code string (min 8 characters)
- * - expires_at: timestamp when the invite expires
+ * - expires_at: timestamp when the invite expires (NOT NULL)
  * - created_by_id: foreign key referencing admins.id (NOT NULL)
  * - used_by_id: foreign key referencing accounts.id (NULL until consumed)
  * - used_at: timestamp when the invite was used (NULL until consumed)
@@ -21,7 +21,7 @@ export const invites = pgTable(
   {
     id: snowflakePrimaryKey(),
     code: varchar('code', { length: 64 }).notNull(),
-    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
     createdById: snowflakeId('created_by_id')
       .notNull()
       .references(() => admins.id, { onDelete: 'restrict' }),
