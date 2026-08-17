@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { snowflakePrimaryKey, timestamps } from './common'
 import { sessions } from './sessions'
 import { profiles } from './profiles'
+import { invites } from './invites'
 
 /**
  * Account table definition
@@ -29,6 +30,7 @@ export const accounts = pgTable(
 export const accountsRelations = relations(accounts, ({ one, many }) => ({
   sessions: many(sessions),
   profile: one(profiles),
+  usedInvites: many(invites),
 }))
 
 // Base Zod validators with email trimming, lowercasing, and RFC 5322 validation
@@ -41,7 +43,7 @@ export const emailSchema = z
 
 export const rawPasswordSchema = z
   .string()
-  .min(8, 'Password must be at least 8 characters long')
+  .min(12, 'Password must be at least 12 characters long')
   .max(128, 'Password must be at most 128 characters long')
 
 // Zod schemas for runtime validation

@@ -1,5 +1,16 @@
 import { Snowflake } from '@sapphire/snowflake'
 
+// Enable BigInt serialization to JSON strings globally
+declare global {
+  interface BigInt {
+    toJSON(): string
+  }
+}
+
+;(BigInt.prototype as any).toJSON = function (): string {
+  return this.toString()
+}
+
 /**
  * Wisal Epoch: 2024-01-01T00:00:00.000Z (timestamp in ms)
  */

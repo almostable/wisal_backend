@@ -1,3 +1,4 @@
+import './lib/snowflake'
 import { Hono } from 'hono'
 import { secureHeaders } from 'hono/secure-headers'
 import { cors } from 'hono/cors'
@@ -8,6 +9,7 @@ import { timeout } from 'hono/timeout'
 import { sql } from 'drizzle-orm'
 import { db } from './db'
 import { env } from './config/env'
+import { adminRouter } from './features/admin'
 
 const app = new Hono()
 
@@ -38,6 +40,9 @@ app.get('/db-health', async (c) => {
     )
   }
 })
+
+// Feature routes
+app.route('/admin', adminRouter)
 
 export { app }
 
