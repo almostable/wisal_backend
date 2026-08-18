@@ -40,6 +40,23 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
   }
   ```
 
+### `GET /admin/me`
+- **Доступ:** `admin`, `moderator`
+- **Тело запроса:** Нет
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "admin": {
+      "id": "111111111111111",
+      "email": "admin@wisal.dev",
+      "role": "admin",
+      "createdAt": "2026-08-18T00:00:00.000Z",
+      "updatedAt": "2026-08-18T00:00:00.000Z"
+    }
+  }
+  ```
+
 ---
 
 ## Управление администраторами

@@ -15,7 +15,7 @@ import { adminRouter } from './features/admin'
 const app = new Hono()
 
 app.use('*', secureHeaders())
-app.use('*', cors({ origin: 'http://localhost:5173', credentials: true }))
+app.use('*', cors({ origin: env.CORS_ORIGIN, credentials: true }))
 app.use('*', logger())
 app.use('*', compress())
 app.use('*', bodyLimit({ maxSize: 1024 * 1024 }))

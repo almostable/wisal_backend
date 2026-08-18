@@ -1,4 +1,5 @@
 import { bigint, timestamp } from 'drizzle-orm/pg-core'
+import { z } from 'zod'
 import { generateSnowflakeId } from '../../lib/snowflake'
 
 export const snowflakePrimaryKey = (name = 'id') =>
@@ -17,3 +18,11 @@ export const timestamps = {
     .notNull()
     .$onUpdate(() => new Date()),
 }
+
+export const emailSchema = z
+  .string()
+  .min(1, 'Email is required')
+  .max(255, 'Email is too long')
+  .transform((val) => val.trim().toLowerCase())
+  .pipe(z.string().email('Invalid email address'))
+

@@ -1,18 +1,13 @@
-import { createHash, randomBytes } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import { sessions, type Session } from '../db/schema/sessions'
 import { accounts, safeAccountSchema, type SafeAccount } from '../db/schema/accounts'
+import { generateToken, hashToken } from './token'
 
 export const SESSION_TTL_DAYS = 360
 
-export function generateSessionToken(): string {
-  return randomBytes(32).toString('base64url')
-}
-
-export function hashSessionToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex')
-}
+export const generateSessionToken = () => generateToken(32)
+export const hashSessionToken = (token: string) => hashToken(token)
 
 export interface SessionValidationResult {
   session: Session
@@ -50,35 +45,30 @@ export async function validateSessionToken(
     return null
   }
 
-  try {
-    const tokenHash = hashSessionToken(token.trim())
+  const tokenHash = hashSessionToken(token.trim())
 
-    const [result] = await db
-      .select({
-        session: sessions,
-        account: accounts,
-      })
-      .from(sessions)
-      .innerJoin(accounts, eq(sessions.accountId, accounts.id))
-      .where(eq(sessions.tokenHash, tokenHash))
-      .limit(1)
+  const [result] = await db
+    .select({
+      session: sessions,
+      account: accounts,
+    })
+    .from(sessions)
+    .innerJoin(accounts, eq(sessions.accountId, accounts.id))
+    .where(eq(sessions.tokenHash, tokenHash))
+    .limit(1)
 
-    if (!result || !result.account) {
-      return null
-    }
-
-    if (Date.now() >= result.session.expiresAt.getTime()) {
-      db.delete(sessions).where(eq(sessions.id, result.session.id)).catch(() => {})
-      return null
-    }
-
-    return {
-      session: result.session,
-      account: safeAccountSchema.parse(result.account),
-    }
-  } catch (error) {
-    console.error('Error validating session token:', error)
+  if (!result || !result.account) {
     return null
+  }
+
+  if (Date.now() >= result.session.expiresAt.getTime()) {
+    db.delete(sessions).where(eq(sessions.id, result.session.id)).catch(() => {})
+    return null
+  }
+
+  return {
+    session: result.session,
+    account: safeAccountSchema.parse(result.account),
   }
 }
 

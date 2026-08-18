@@ -14,7 +14,7 @@ export const invites = pgTable(
     expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
     createdById: snowflakeId('created_by_id')
       .notNull()
-      .references(() => admins.id, { onDelete: 'cascade' }),
+      .references(() => admins.id, { onDelete: 'restrict' }),
     usedById: snowflakeId('used_by_id')
       .references(() => accounts.id, { onDelete: 'set null' }),
     usedAt: timestamp('used_at', { withTimezone: true, mode: 'date' }),
@@ -24,6 +24,7 @@ export const invites = pgTable(
     uniqueIndex('invites_code_unique_idx').on(table.code),
     index('invites_created_by_id_idx').on(table.createdById),
     index('invites_used_by_id_idx').on(table.usedById),
+    index('invites_used_at_idx').on(table.usedAt),
     index('invites_created_at_idx').on(table.createdAt),
     index('invites_expires_at_idx').on(table.expiresAt),
   ]

@@ -13,7 +13,7 @@ export function isOnboardingCompleted(
     profile.name.trim().length > 0 &&
     typeof profile.isMale === 'boolean' &&
     profile.identityId !== null &&
-    Boolean(profile.identity)
+    Boolean(profile.identity && profile.identity.id)
   )
 }
 
@@ -37,7 +37,7 @@ export async function getProfileByAccountId(
 
     return {
       ...result.profile,
-      identity: result.identity ?? null,
+      identity: result.identity && result.identity.id ? result.identity : null,
     }
   } catch (error) {
     console.error('Error fetching profile for account:', error)
@@ -151,6 +151,10 @@ export async function updateProfile(
   }
   if (existingProfile.isMale === null && input.isMale !== undefined) {
     updateData.isMale = input.isMale
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return existingProfile
   }
 
   const [updatedProfile] = await db

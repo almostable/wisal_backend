@@ -140,20 +140,26 @@ export async function deleteAdmin(targetAdminId: bigint, currentAdminId?: bigint
     throw new HTTPException(400, { message: 'Cannot delete your own admin account' })
   }
 
-  const existing = await db.query.admins.findFirst({
-    where: eq(admins.id, targetAdminId),
+  const existingInvite = await db.query.invites.findFirst({
+    where: eq(invites.createdById, targetAdminId),
   })
 
-  if (!existing) {
-    throw new HTTPException(404, { message: 'Admin not found' })
+  if (existingInvite) {
+    throw new HTTPException(400, { message: 'Cannot delete admin who has created invites' })
   }
 
-  await db.delete(adminSessions).where(eq(adminSessions.adminId, targetAdminId))
-  await db.delete(admins).where(eq(admins.id, targetAdminId))
+  const [deletedAdmin] = await db
+    .delete(admins)
+    .where(eq(admins.id, targetAdminId))
+    .returning()
+
+  if (!deletedAdmin) {
+    throw new HTTPException(404, { message: 'Admin not found' })
+  }
 }
 
 export async function createInvite(
-  adminId: bigint,
+  creator: { id: bigint; email: string; role: AdminRole },
   input: CreateInviteInput
 ): Promise<InviteItem> {
   let inviteCode = input.code?.trim().toUpperCase()
@@ -176,15 +182,11 @@ export async function createInvite(
     throw new HTTPException(409, { message: `Invite code '${inviteCode}' already exists` })
   }
 
-  const creatorAdmin = await db.query.admins.findFirst({
-    where: eq(admins.id, adminId),
-  })
-
   const [newInvite] = await db
     .insert(invites)
     .values({
       code: inviteCode,
-      createdById: adminId,
+      createdById: creator.id,
       expiresAt: input.expiresAt,
     })
     .returning()
@@ -193,10 +195,10 @@ export async function createInvite(
     throw new HTTPException(500, { message: 'Failed to create invite record' })
   }
 
-  const creatorInfo = {
-    id: adminId,
-    email: creatorAdmin?.email ?? '',
-    role: (creatorAdmin?.role ?? 'admin') as AdminRole,
+  const creatorInfo: InviteCreator = {
+    id: creator.id,
+    email: creator.email,
+    role: creator.role,
   }
 
   return {
@@ -212,15 +214,14 @@ export async function createInvite(
 }
 
 export async function deleteInvite(inviteId: bigint): Promise<void> {
-  const existing = await db.query.invites.findFirst({
-    where: eq(invites.id, inviteId),
-  })
+  const [deleted] = await db
+    .delete(invites)
+    .where(eq(invites.id, inviteId))
+    .returning()
 
-  if (!existing) {
+  if (!deleted) {
     throw new HTTPException(404, { message: 'Invite not found' })
   }
-
-  await db.delete(invites).where(eq(invites.id, inviteId))
 }
 
 export async function listInvites(options: ListInvitesOptions = {}): Promise<ListInvitesResult> {
@@ -232,12 +233,12 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
   const conditions: SQL[] = []
 
   if (status === 'active') {
-    conditions.push(isNull(invites.usedById))
+    conditions.push(isNull(invites.usedAt))
     conditions.push(gt(invites.expiresAt, sql`now()`))
   } else if (status === 'used') {
-    conditions.push(isNotNull(invites.usedById))
+    conditions.push(isNotNull(invites.usedAt))
   } else if (status === 'expired') {
-    conditions.push(isNull(invites.usedById))
+    conditions.push(isNull(invites.usedAt))
     conditions.push(lte(invites.expiresAt, sql`now()`))
   }
 
@@ -254,6 +255,18 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+  const totalCountQuery = searchQuery
+    ? db
+        .select({ count: count() })
+        .from(invites)
+        .leftJoin(admins, eq(invites.createdById, admins.id))
+        .leftJoin(accounts, eq(invites.usedById, accounts.id))
+        .where(whereClause)
+    : db
+        .select({ count: count() })
+        .from(invites)
+        .where(whereClause)
 
   const [items, totalResult, statsResult] = await Promise.all([
     db
@@ -276,17 +289,12 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
       .orderBy(desc(invites.createdAt))
       .limit(limit)
       .offset(offset),
-    db
-      .select({ count: count() })
-      .from(invites)
-      .leftJoin(admins, eq(invites.createdById, admins.id))
-      .leftJoin(accounts, eq(invites.usedById, accounts.id))
-      .where(whereClause),
+    totalCountQuery,
     db
       .select({
-        active: sql<number>`count(*) filter (where ${invites.usedById} is null and ${invites.expiresAt} > now())::int`,
-        used: sql<number>`count(*) filter (where ${invites.usedById} is not null)::int`,
-        expired: sql<number>`count(*) filter (where ${invites.usedById} is null and ${invites.expiresAt} <= now())::int`,
+        active: sql<number>`count(*) filter (where ${invites.usedAt} is null and ${invites.expiresAt} > now())::int`,
+        used: sql<number>`count(*) filter (where ${invites.usedAt} is not null)::int`,
+        expired: sql<number>`count(*) filter (where ${invites.usedAt} is null and ${invites.expiresAt} <= now())::int`,
       })
       .from(invites),
   ])

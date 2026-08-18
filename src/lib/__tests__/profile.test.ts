@@ -93,4 +93,17 @@ describe('Profile Utility Tests', () => {
 
     expect(isOnboardingCompleted(incomplete)).toBe(false)
   })
+
+  it('returns false when identity has no id or is invalid object', () => {
+    const incomplete: any = {
+      id: 1n,
+      accountId: 10n,
+      name: 'Alice',
+      isMale: true,
+      identityId: 100n,
+      identity: { id: null, identity: null },
+    }
+
+    expect(isOnboardingCompleted(incomplete)).toBe(false)
+  })
 })

@@ -1,19 +1,14 @@
-import { createHash, randomBytes } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import { adminSessions, type AdminSession } from '../db/schema/admin-sessions'
 import { admins, safeAdminSchema, type SafeAdmin } from '../db/schema/admins'
+import { generateToken, hashToken } from './token'
 
 export const ADMIN_SESSION_TTL_DAYS = 30
 export const ADMIN_COOKIE_NAME = 'admin_session'
 
-export function generateAdminSessionToken(): string {
-  return randomBytes(32).toString('base64url')
-}
-
-export function hashAdminSessionToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex')
-}
+export const generateAdminSessionToken = () => generateToken(32)
+export const hashAdminSessionToken = (token: string) => hashToken(token)
 
 export interface AdminSessionValidationResult {
   session: AdminSession
@@ -51,35 +46,30 @@ export async function validateAdminSessionToken(
     return null
   }
 
-  try {
-    const tokenHash = hashAdminSessionToken(token.trim())
+  const tokenHash = hashAdminSessionToken(token.trim())
 
-    const [result] = await db
-      .select({
-        session: adminSessions,
-        admin: admins,
-      })
-      .from(adminSessions)
-      .innerJoin(admins, eq(adminSessions.adminId, admins.id))
-      .where(eq(adminSessions.tokenHash, tokenHash))
-      .limit(1)
+  const [result] = await db
+    .select({
+      session: adminSessions,
+      admin: admins,
+    })
+    .from(adminSessions)
+    .innerJoin(admins, eq(adminSessions.adminId, admins.id))
+    .where(eq(adminSessions.tokenHash, tokenHash))
+    .limit(1)
 
-    if (!result || !result.admin) {
-      return null
-    }
-
-    if (Date.now() >= result.session.expiresAt.getTime()) {
-      db.delete(adminSessions).where(eq(adminSessions.id, result.session.id)).catch(() => {})
-      return null
-    }
-
-    return {
-      session: result.session,
-      admin: safeAdminSchema.parse(result.admin),
-    }
-  } catch (error) {
-    console.error('Error validating admin session token:', error)
+  if (!result || !result.admin) {
     return null
+  }
+
+  if (Date.now() >= result.session.expiresAt.getTime()) {
+    db.delete(adminSessions).where(eq(adminSessions.id, result.session.id)).catch(() => {})
+    return null
+  }
+
+  return {
+    session: result.session,
+    admin: safeAdminSchema.parse(result.admin),
   }
 }
 

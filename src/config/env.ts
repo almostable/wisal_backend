@@ -1,9 +1,10 @@
 import { z } from 'zod'
 
 const envSchema = z.object({
-  DATABASE_URL: z.string().url().default('postgres://postgres:postgres@localhost:5432/wisal_db'),
+  DATABASE_URL: z.string().url().default('postgres://wisal:wisal@localhost:5432/wisal_db'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3000),
+  CORS_ORIGIN: z.string().default('http://localhost:5173'),
   ADMIN_EMAIL: z
     .string()
     .transform((val) => val.trim().toLowerCase())

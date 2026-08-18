@@ -63,6 +63,14 @@ adminRouter.post('/logout', adminAuthMiddleware, async (c) => {
   })
 })
 
+adminRouter.get('/me', adminAuthMiddleware, async (c) => {
+  const admin = c.get('admin')
+  return c.json({
+    success: true,
+    admin,
+  })
+})
+
 adminRouter.get(
   '/admins',
   adminAuthMiddleware,
@@ -124,7 +132,7 @@ adminRouter.post(
   async (c) => {
     const admin = c.get('admin')
     const data = c.req.valid('json')
-    const invite = await createInvite(admin.id, data)
+    const invite = await createInvite(admin, data)
 
     return c.json(
       {

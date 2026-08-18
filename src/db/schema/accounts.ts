@@ -1,8 +1,8 @@
-import { pgTable, varchar, uniqueIndex } from 'drizzle-orm/pg-core'
+import { pgTable, varchar, uniqueIndex, index } from 'drizzle-orm/pg-core'
 import { sql, relations } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
-import { snowflakePrimaryKey, timestamps } from './common'
+import { snowflakePrimaryKey, timestamps, emailSchema } from './common'
 import { sessions } from './sessions'
 import { profiles } from './profiles'
 import { invites } from './invites'
@@ -17,6 +17,7 @@ export const accounts = pgTable(
   },
   (table) => [
     uniqueIndex('accounts_email_unique_idx').on(sql`lower(${table.email})`),
+    index('accounts_created_at_idx').on(table.createdAt),
   ]
 )
 
@@ -26,12 +27,7 @@ export const accountsRelations = relations(accounts, ({ one, many }) => ({
   usedInvites: many(invites),
 }))
 
-export const emailSchema = z
-  .string()
-  .min(1, 'Email is required')
-  .max(255, 'Email is too long')
-  .transform((val) => val.trim().toLowerCase())
-  .pipe(z.string().email('Invalid email address'))
+export { emailSchema }
 
 export const rawPasswordSchema = z
   .string()

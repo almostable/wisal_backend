@@ -136,6 +136,39 @@ describe('Admin Feature Route Tests', () => {
     expect(setCookie).toContain('admin_session=')
   })
 
+  it('GET /admin/me returns current authenticated admin', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    const res = await app.request('/admin/me', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; admin: SafeAdmin }
+    expect(body.success).toBe(true)
+    expect(body.admin.email).toBe(mockAdmin.email)
+    expect(body.admin.id.toString()).toBe(mockAdmin.id.toString())
+  })
+
+  it('GET /admin/me returns 401 when token is missing', async () => {
+    const res = await app.request('/admin/me', {
+      method: 'GET',
+    })
+
+    expect(res.status).toBe(401)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Missing admin session token')
+  })
+
   it('GET /admin/admins returns paginated list of admins for admin role', async () => {
     mock.module('../../../lib/admin-session', () => ({
       validateAdminSessionToken: async () => ({
@@ -292,6 +325,33 @@ describe('Admin Feature Route Tests', () => {
     expect(deletedAdminId as bigint | null).toBe(555555555555555n)
   })
 
+  it('DELETE /admin/admins/:id returns 400 when admin has created invites', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    mock.module('../service', () => ({
+      deleteAdmin: async () => {
+        throw new HTTPException(400, { message: 'Cannot delete admin who has created invites' })
+      },
+    }))
+
+    const res = await app.request('/admin/admins/555555555555555', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer valid_token',
+      },
+    })
+
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Cannot delete admin who has created invites')
+  })
+
   it('DELETE /admin/admins/:id rejects moderator with 403', async () => {
     mock.module('../../../lib/admin-session', () => ({
       validateAdminSessionToken: async () => ({
@@ -366,6 +426,34 @@ describe('Admin Feature Route Tests', () => {
       },
       body: JSON.stringify({
         code: 'CUSTOM-INVITE-2026',
+      }),
+    })
+
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { success: boolean }
+    expect(body.success).toBe(false)
+  })
+
+  it('POST /admin/invites rejects when expiration date is in the past with 400', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    const pastDate = new Date(Date.now() - 3600000).toISOString()
+
+    const res = await app.request('/admin/invites', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        code: 'CUSTOM-INVITE-2026',
+        expiresAt: pastDate,
       }),
     })
 
