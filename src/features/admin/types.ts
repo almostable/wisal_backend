@@ -53,22 +53,32 @@ export interface InviteItem {
   code: string
   expiresAt: Date
   createdBy: InviteCreator
-  created_by: InviteCreator
-  usedById: bigint | null
   usedBy: InviteUsedBy | null
   usedAt: Date | null
   createdAt: Date
   updatedAt: Date
 }
 
+export type InviteStatus = 'all' | 'active' | 'used' | 'expired'
+
+export interface InviteStats {
+  active: number
+  used: number
+  expired: number
+}
+
 export interface ListInvitesOptions {
   limit?: number
   offset?: number
+  status?: InviteStatus
+  q?: string
+  search?: string
 }
 
 export interface ListInvitesResult {
   invites: InviteItem[]
   total: number
+  stats: InviteStats
   limit: number
   offset: number
 }

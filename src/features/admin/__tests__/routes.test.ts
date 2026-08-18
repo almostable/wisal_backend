@@ -16,6 +16,14 @@ describe('Admin Feature Route Tests', () => {
     updatedAt: new Date(),
   }
 
+  const mockModerator: SafeAdmin = {
+    id: 999999999999999n,
+    email: 'mod@wisal.dev',
+    role: 'moderator',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
   const mockSession: AdminSession = {
     id: 222222222222222n,
     adminId: mockAdmin.id,
@@ -34,12 +42,6 @@ describe('Admin Feature Route Tests', () => {
       email: mockAdmin.email,
       role: mockAdmin.role,
     },
-    created_by: {
-      id: mockAdmin.id,
-      email: mockAdmin.email,
-      role: mockAdmin.role,
-    },
-    usedById: null,
     usedBy: null,
     usedAt: null,
     createdAt: new Date(),
@@ -134,7 +136,7 @@ describe('Admin Feature Route Tests', () => {
     expect(setCookie).toContain('admin_session=')
   })
 
-  it('GET /admin/admins returns paginated list of admins', async () => {
+  it('GET /admin/admins returns paginated list of admins for admin role', async () => {
     mock.module('../../../lib/admin-session', () => ({
       validateAdminSessionToken: async () => ({
         admin: mockAdmin,
@@ -167,7 +169,28 @@ describe('Admin Feature Route Tests', () => {
     expect(body.total).toBe(1)
   })
 
-  it('POST /admin/admins creates a new admin account', async () => {
+  it('GET /admin/admins rejects moderator with 403', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockModerator,
+        session: { ...mockSession, adminId: mockModerator.id },
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    const res = await app.request('/admin/admins', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer mod_token',
+      },
+    })
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Insufficient permissions')
+  })
+
+  it('POST /admin/admins creates a new admin account when called by admin', async () => {
     const createdAdmin: SafeAdmin = {
       id: 444444444444444n,
       email: 'newmod@wisal.dev',
@@ -212,7 +235,34 @@ describe('Admin Feature Route Tests', () => {
     expect(body.admin.role).toBe('moderator')
   })
 
-  it('DELETE /admin/admins/:id deletes an admin account', async () => {
+  it('POST /admin/admins rejects moderator with 403', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockModerator,
+        session: { ...mockSession, adminId: mockModerator.id },
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    const res = await app.request('/admin/admins', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer mod_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'newmod@wisal.dev',
+        password: 'ValidPassword16Chars!',
+        role: 'moderator',
+      }),
+    })
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Insufficient permissions')
+  })
+
+  it('DELETE /admin/admins/:id deletes an admin account when called by admin', async () => {
     let deletedAdminId: bigint | null = null
 
     mock.module('../../../lib/admin-session', () => ({
@@ -242,7 +292,28 @@ describe('Admin Feature Route Tests', () => {
     expect(deletedAdminId as bigint | null).toBe(555555555555555n)
   })
 
-  it('POST /admin/invites creates an invite with auth and returns created_by with email and id', async () => {
+  it('DELETE /admin/admins/:id rejects moderator with 403', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockModerator,
+        session: { ...mockSession, adminId: mockModerator.id },
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    const res = await app.request('/admin/admins/555555555555555', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer mod_token',
+      },
+    })
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Insufficient permissions')
+  })
+
+  it('POST /admin/invites creates an invite with auth and returns createdBy with email and id', async () => {
     mock.module('../../../lib/admin-session', () => ({
       validateAdminSessionToken: async () => ({
         admin: mockAdmin,
@@ -275,8 +346,7 @@ describe('Admin Feature Route Tests', () => {
     expect(body.success).toBe(true)
     expect(body.invite.code).toBe('CUSTOM-INVITE-2026')
     expect(body.invite.createdBy.email).toBe(mockAdmin.email)
-    expect(body.invite.created_by.email).toBe(mockAdmin.email)
-    expect(body.invite.created_by.id.toString()).toBe(mockAdmin.id.toString())
+    expect(body.invite.createdBy.id.toString()).toBe(mockAdmin.id.toString())
   })
 
   it('POST /admin/invites rejects when expiration is missing with 400', async () => {
@@ -304,7 +374,7 @@ describe('Admin Feature Route Tests', () => {
     expect(body.success).toBe(false)
   })
 
-  it('GET /admin/invites returns list of invites with creator info', async () => {
+  it('GET /admin/invites returns list of invites with creator info, total, and stats', async () => {
     mock.module('../../../lib/admin-session', () => ({
       validateAdminSessionToken: async () => ({
         admin: mockAdmin,
@@ -317,6 +387,11 @@ describe('Admin Feature Route Tests', () => {
       listInvites: async () => ({
         invites: [mockInvite],
         total: 1,
+        stats: {
+          active: 7,
+          used: 2,
+          expired: 1,
+        },
         limit: 50,
         offset: 0,
       }),
@@ -330,12 +405,86 @@ describe('Admin Feature Route Tests', () => {
     })
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { success: boolean; invites: InviteItem[]; total: number }
+    const body = (await res.json()) as {
+      success: boolean
+      invites: InviteItem[]
+      total: number
+      stats: { active: number; used: number; expired: number }
+    }
     expect(body.success).toBe(true)
     expect(body.invites.length).toBe(1)
-    expect(body.invites[0].created_by.email).toBe(mockAdmin.email)
-    expect(body.invites[0].created_by.id.toString()).toBe(mockAdmin.id.toString())
+    expect(body.invites[0].createdBy.email).toBe(mockAdmin.email)
+    expect(body.invites[0].createdBy.id.toString()).toBe(mockAdmin.id.toString())
     expect(body.total).toBe(1)
+    expect(body.stats).toEqual({
+      active: 7,
+      used: 2,
+      expired: 1,
+    })
+  })
+
+  it('GET /admin/invites parses status and search/q query parameters correctly', async () => {
+    let capturedOptions: any = null
+
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    mock.module('../service', () => ({
+      listInvites: async (options: any) => {
+        capturedOptions = options
+        return {
+          invites: [],
+          total: 0,
+          stats: { active: 0, used: 0, expired: 0 },
+          limit: options.limit ?? 50,
+          offset: options.offset ?? 0,
+        }
+      },
+    }))
+
+    const res1 = await app.request('/admin/invites?status=active&q=WISAL&limit=10&offset=20', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_token' },
+    })
+
+    expect(res1.status).toBe(200)
+    expect(capturedOptions.status).toBe('active')
+    expect(capturedOptions.q).toBe('WISAL')
+    expect(capturedOptions.limit).toBe(10)
+    expect(capturedOptions.offset).toBe(20)
+
+    const res2 = await app.request('/admin/invites?status=used&search=user@wisal.dev', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_token' },
+    })
+
+    expect(res2.status).toBe(200)
+    expect(capturedOptions.status).toBe('used')
+    expect(capturedOptions.search).toBe('user@wisal.dev')
+  })
+
+  it('GET /admin/invites rejects invalid status with 400', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    const res = await app.request('/admin/invites?status=invalid_status', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_token' },
+    })
+
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { success: boolean }
+    expect(body.success).toBe(false)
   })
 
   it('DELETE /admin/invites/:id deletes an invite', async () => {

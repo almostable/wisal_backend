@@ -42,8 +42,18 @@ export const paginationQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 })
 
+export const inviteStatusEnum = z.enum(['all', 'active', 'used', 'expired'])
+export type InviteStatus = z.infer<typeof inviteStatusEnum>
+
+export const listInvitesQuerySchema = paginationQuerySchema.extend({
+  status: inviteStatusEnum.default('all'),
+  q: z.string().trim().optional(),
+  search: z.string().trim().optional(),
+})
+
 export type SnowflakeParam = z.infer<typeof snowflakeParamSchema>
 export type LoginInput = z.infer<typeof loginInputSchema>
 export type CreateAdminRouteInput = z.infer<typeof createAdminInputSchema>
 export type CreateInviteRouteInput = z.infer<typeof createInviteInputSchema>
 export type PaginationQueryInput = z.infer<typeof paginationQuerySchema>
+export type ListInvitesQueryInput = z.infer<typeof listInvitesQuerySchema>

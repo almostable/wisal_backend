@@ -4,12 +4,13 @@ import { zValidator } from '@hono/zod-validator'
 import { env } from '../../config/env'
 import { ADMIN_COOKIE_NAME, ADMIN_SESSION_TTL_DAYS } from '../../lib/admin-session'
 import { stringToSnowflake } from '../../lib/snowflake'
-import { adminAuthMiddleware } from '../../middleware/admin'
+import { adminAuthMiddleware, requireAdminRole } from '../../middleware/admin'
 import {
   loginInputSchema,
   createAdminInputSchema,
   createInviteInputSchema,
   paginationQuerySchema,
+  listInvitesQuerySchema,
   snowflakeParamSchema,
 } from './schema'
 import {
@@ -65,6 +66,7 @@ adminRouter.post('/logout', adminAuthMiddleware, async (c) => {
 adminRouter.get(
   '/admins',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('query', paginationQuerySchema),
   async (c) => {
     const query = c.req.valid('query')
@@ -80,6 +82,7 @@ adminRouter.get(
 adminRouter.post(
   '/admins',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('json', createAdminInputSchema),
   async (c) => {
     const data = c.req.valid('json')
@@ -98,6 +101,7 @@ adminRouter.post(
 adminRouter.delete(
   '/admins/:id',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const currentAdmin = c.get('admin')
@@ -135,7 +139,7 @@ adminRouter.post(
 adminRouter.get(
   '/invites',
   adminAuthMiddleware,
-  zValidator('query', paginationQuerySchema),
+  zValidator('query', listInvitesQuerySchema),
   async (c) => {
     const query = c.req.valid('query')
     const result = await listInvites(query)

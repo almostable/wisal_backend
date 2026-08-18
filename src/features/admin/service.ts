@@ -1,5 +1,18 @@
 import { randomBytes } from 'node:crypto'
-import { eq, sql, desc, count } from 'drizzle-orm'
+import {
+  eq,
+  sql,
+  desc,
+  count,
+  and,
+  or,
+  isNull,
+  isNotNull,
+  gt,
+  lte,
+  ilike,
+  type SQL,
+} from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../../db'
 import { admins, safeAdminSchema, type SafeAdmin, type AdminRole } from '../../db/schema/admins'
@@ -191,8 +204,6 @@ export async function createInvite(
     code: newInvite.code,
     expiresAt: newInvite.expiresAt,
     createdBy: creatorInfo,
-    created_by: creatorInfo,
-    usedById: newInvite.usedById,
     usedBy: null,
     usedAt: newInvite.usedAt,
     createdAt: newInvite.createdAt,
@@ -215,8 +226,36 @@ export async function deleteInvite(inviteId: bigint): Promise<void> {
 export async function listInvites(options: ListInvitesOptions = {}): Promise<ListInvitesResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
+  const status = options.status ?? 'all'
+  const searchQuery = (options.q ?? options.search)?.trim()
 
-  const [items, totalResult] = await Promise.all([
+  const conditions: SQL[] = []
+
+  if (status === 'active') {
+    conditions.push(isNull(invites.usedById))
+    conditions.push(gt(invites.expiresAt, sql`now()`))
+  } else if (status === 'used') {
+    conditions.push(isNotNull(invites.usedById))
+  } else if (status === 'expired') {
+    conditions.push(isNull(invites.usedById))
+    conditions.push(lte(invites.expiresAt, sql`now()`))
+  }
+
+  if (searchQuery) {
+    const searchPattern = `%${searchQuery}%`
+    const searchCondition = or(
+      ilike(invites.code, searchPattern),
+      ilike(admins.email, searchPattern),
+      ilike(accounts.email, searchPattern)
+    )
+    if (searchCondition) {
+      conditions.push(searchCondition)
+    }
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+  const [items, totalResult, statsResult] = await Promise.all([
     db
       .select({
         invite: invites,
@@ -233,10 +272,23 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
       .from(invites)
       .leftJoin(admins, eq(invites.createdById, admins.id))
       .leftJoin(accounts, eq(invites.usedById, accounts.id))
+      .where(whereClause)
       .orderBy(desc(invites.createdAt))
       .limit(limit)
       .offset(offset),
-    db.select({ count: count() }).from(invites),
+    db
+      .select({ count: count() })
+      .from(invites)
+      .leftJoin(admins, eq(invites.createdById, admins.id))
+      .leftJoin(accounts, eq(invites.usedById, accounts.id))
+      .where(whereClause),
+    db
+      .select({
+        active: sql<number>`count(*) filter (where ${invites.usedById} is null and ${invites.expiresAt} > now())::int`,
+        used: sql<number>`count(*) filter (where ${invites.usedById} is not null)::int`,
+        expired: sql<number>`count(*) filter (where ${invites.usedById} is null and ${invites.expiresAt} <= now())::int`,
+      })
+      .from(invites),
   ])
 
   const mappedInvites: InviteItem[] = items.map((item) => {
@@ -250,8 +302,6 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
       code: item.invite.code,
       expiresAt: item.invite.expiresAt,
       createdBy: creatorInfo,
-      created_by: creatorInfo,
-      usedById: item.invite.usedById,
       usedBy: item.usedBy && item.usedBy.id ? { id: item.usedBy.id, email: item.usedBy.email } : null,
       usedAt: item.invite.usedAt,
       createdAt: item.invite.createdAt,
@@ -259,9 +309,16 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
     }
   })
 
+  const stats = {
+    active: Number(statsResult[0]?.active ?? 0),
+    used: Number(statsResult[0]?.used ?? 0),
+    expired: Number(statsResult[0]?.expired ?? 0),
+  }
+
   return {
     invites: mappedInvites,
     total: totalResult[0]?.count ?? 0,
+    stats,
     limit,
     offset,
   }
