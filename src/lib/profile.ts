@@ -90,6 +90,7 @@ export async function completeOnboarding(
           isMale: input.isMale,
           avatarKey: input.avatarKey ?? null,
           description: input.description?.trim() ?? null,
+          contacts: input.contacts ?? null,
           identityId: createdIdentity.id,
         })
         .where(eq(profiles.id, existingProfile.id))
@@ -105,6 +106,7 @@ export async function completeOnboarding(
           isMale: input.isMale,
           avatarKey: input.avatarKey ?? null,
           description: input.description?.trim() ?? null,
+          contacts: input.contacts ?? null,
           identityId: createdIdentity.id,
         })
         .returning()
@@ -148,6 +150,9 @@ export async function updateProfile(
   }
   if (input.description !== undefined) {
     updateData.description = input.description?.trim() ?? null
+  }
+  if (input.contacts !== undefined) {
+    updateData.contacts = input.contacts ?? null
   }
   if (existingProfile.isMale === null && input.isMale !== undefined) {
     updateData.isMale = input.isMale

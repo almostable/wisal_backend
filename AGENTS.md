@@ -39,10 +39,11 @@ Backend project built with **Hono**, **TypeScript**, **Bun**, and **Drizzle ORM 
 
 ---
 
-## 4. Testing
+## 4. Verification & Testing
+* **Mandatory Type Check:** Run `bun x tsc --noEmit` after **any** additions or modifications. Ensure there are zero TypeScript compiler errors and warnings before proceeding.
 * **Test new code:** Write unit or integration tests (`bun test`) for every new endpoint, route, or business logic change.
 * **Test via `app.request()`:** Test endpoints directly using `app.request()` rather than spinning up live network ports.
-* **Verify before completion:** Ensure all existing and new tests pass before submitting changes.
+* **Verify before completion:** Ensure both type check (`bun x tsc --noEmit`) and all existing and new tests (`bun test`) pass completely before submitting changes.
 
 ---
 

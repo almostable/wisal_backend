@@ -630,6 +630,7 @@ describe('Admin Feature Route Tests', () => {
               isMale: true,
               avatarKey: null,
               description: 'Hello world',
+              contacts: null,
               identityId: 777777n,
               createdAt: new Date(),
               updatedAt: new Date(),

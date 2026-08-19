@@ -32,6 +32,7 @@ describe('Onboarding Middleware Unit Tests', () => {
     isMale: true,
     avatarKey: null,
     description: 'Hello',
+    contacts: null,
     identityId: 444444444444444n,
     createdAt: new Date(),
     updatedAt: new Date(),

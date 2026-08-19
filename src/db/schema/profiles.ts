@@ -1,10 +1,26 @@
-import { pgTable, varchar, boolean, text } from 'drizzle-orm/pg-core'
+import { pgTable, varchar, boolean, text, jsonb } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
-import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
+import { snowflakePrimaryKey, snowflakeId, timestamps, emailSchema } from './common'
 import { accounts } from './accounts'
 import { identities, identityFormatSchema, type Identity } from './identities'
+
+export const urlSchema = z
+  .string()
+  .max(2048, 'URL is too long')
+  .transform((val) => val.trim())
+  .pipe(z.string().url('Invalid URL format'))
+
+export const contactsSchema = z.object({
+  telegram: urlSchema.nullable().optional(),
+  youtube: urlSchema.nullable().optional(),
+  instagram: urlSchema.nullable().optional(),
+  website: urlSchema.nullable().optional(),
+  email: emailSchema.nullable().optional(),
+})
+
+export type Contacts = z.infer<typeof contactsSchema>
 
 export const profiles = pgTable('profiles', {
   id: snowflakePrimaryKey(),
@@ -16,6 +32,7 @@ export const profiles = pgTable('profiles', {
   isMale: boolean('is_male'),
   avatarKey: text('avatar_key'),
   description: text('description'),
+  contacts: jsonb('contacts').$type<Contacts>(),
   identityId: snowflakeId('identity_id')
     .unique()
     .references(() => identities.id, { onDelete: 'restrict' }),
@@ -52,6 +69,7 @@ export const onboardingInputSchema = z.object({
   identity: identityFormatSchema,
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
+  contacts: contactsSchema.nullable().optional(),
 })
 
 export const updateProfileInputSchema = z.object({
@@ -59,6 +77,7 @@ export const updateProfileInputSchema = z.object({
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
   isMale: z.boolean().optional(),
+  contacts: contactsSchema.nullable().optional(),
 })
 
 export const insertProfileSchema = createInsertSchema(profiles)
