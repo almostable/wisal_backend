@@ -24,3 +24,5 @@ describe('Token Utility Tests', () => {
     expect(/^[0-9a-f]{64}$/.test(h1)).toBe(true)
   })
 })
+
+

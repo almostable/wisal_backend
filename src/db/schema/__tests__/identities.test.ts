@@ -39,7 +39,6 @@ describe('Identities Schema Tests', () => {
     const selectPayload = selectIdentitySchema.parse({
       id: 123456789n,
       identity: 'my_unique_nick',
-      type: 'user',
       createdAt: now,
       updatedAt: now,
     })

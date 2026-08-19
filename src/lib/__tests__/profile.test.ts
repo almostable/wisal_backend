@@ -18,7 +18,6 @@ describe('Profile Utility Tests', () => {
       identity: {
         id: 100n,
         identity: 'alice',
-        type: 'user',
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -47,7 +46,6 @@ describe('Profile Utility Tests', () => {
       identity: {
         id: 100n,
         identity: 'alice',
-        type: 'user',
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -71,7 +69,6 @@ describe('Profile Utility Tests', () => {
       identity: {
         id: 100n,
         identity: 'alice',
-        type: 'user',
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -110,4 +107,46 @@ describe('Profile Utility Tests', () => {
 
     expect(isOnboardingCompleted(incomplete)).toBe(false)
   })
+
+  it('formatProfileResponse strips identityId and formats identity string', async () => {
+    const { formatProfileResponse } = await import('../profile')
+    const fullProfile: ProfileWithIdentity = {
+      id: 1n,
+      accountId: 10n,
+      name: 'Alice',
+      isMale: true,
+      avatarKey: 'avatar.png',
+      description: 'bio',
+      contacts: null,
+      identityId: 100n,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      identity: {
+        id: 100n,
+        identity: 'alice',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    }
+
+    const formatted = formatProfileResponse(fullProfile)
+    expect(formatted).not.toBeNull()
+    expect(formatted!.id).toBe(1n)
+    expect((formatted as any).identityId).toBeUndefined()
+    expect((formatted as any).accountId).toBeUndefined()
+    expect(formatted!.identity).toBe('alice')
+  })
+
+  it('checkIdentityAvailable returns false for invalid format or reserved names', async () => {
+    const { checkIdentityAvailable } = await import('../profile')
+    const invalidShort = await checkIdentityAvailable('ab')
+    expect(invalidShort.available).toBe(false)
+
+    const invalidReserved = await checkIdentityAvailable('admin')
+    expect(invalidReserved.available).toBe(false)
+
+    const invalidChars = await checkIdentityAvailable('hello-world!')
+    expect(invalidChars.available).toBe(false)
+  })
 })
+

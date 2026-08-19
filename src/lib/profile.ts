@@ -2,18 +2,57 @@ import { eq, sql } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../db'
 import { profiles, type Profile, type ProfileWithIdentity, type OnboardingInput, type UpdateProfileInput } from '../db/schema/profiles'
-import { identities, type Identity } from '../db/schema/identities'
+import { identities, identityFormatSchema, type Identity } from '../db/schema/identities'
+
+export interface SafeProfile {
+  id: bigint
+  name: string | null
+  isMale: boolean | null
+  avatarKey: string | null
+  description: string | null
+  contacts: any
+  createdAt: Date
+  updatedAt: Date
+  identity: string | null
+}
+
+export function formatProfileResponse(
+  profile: (Profile & { identity?: Identity | null | string }) | null
+): SafeProfile | null {
+  if (!profile) return null
+
+  const identityStr =
+    typeof profile.identity === 'string'
+      ? profile.identity
+      : profile.identity?.identity ?? null
+
+  return {
+    id: profile.id,
+    name: profile.name,
+    isMale: profile.isMale,
+    avatarKey: profile.avatarKey,
+    description: profile.description,
+    contacts: profile.contacts ?? null,
+    createdAt: profile.createdAt,
+    updatedAt: profile.updatedAt,
+    identity: identityStr,
+  }
+}
 
 export function isOnboardingCompleted(
-  profile: (Profile & { identity?: Identity | null }) | null | undefined
+  profile: (Profile & { identity?: Identity | null | string }) | null | undefined
 ): boolean {
   if (!profile) return false
+  const hasIdentity =
+    typeof profile.identity === 'string'
+      ? profile.identity.trim().length > 0
+      : Boolean(profile.identity && profile.identity.id)
+
   return (
     typeof profile.name === 'string' &&
     profile.name.trim().length > 0 &&
     typeof profile.isMale === 'boolean' &&
-    profile.identityId !== null &&
-    Boolean(profile.identity && profile.identity.id)
+    hasIdentity
   )
 }
 
@@ -72,7 +111,6 @@ export async function completeOnboarding(
       .insert(identities)
       .values({
         identity: normalizedIdentity,
-        type: 'user',
       })
       .returning()
 
@@ -125,51 +163,154 @@ export async function updateProfile(
   accountId: bigint,
   input: UpdateProfileInput
 ): Promise<ProfileWithIdentity> {
-  const existingProfile = await getProfileByAccountId(accountId)
+  return await db.transaction(async (tx) => {
+    const [existingResult] = await tx
+      .select({
+        profile: profiles,
+        identity: identities,
+      })
+      .from(profiles)
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(eq(profiles.accountId, accountId))
+      .limit(1)
 
-  if (!existingProfile) {
-    throw new HTTPException(404, { message: 'Profile not found' })
-  }
+    if (!existingResult || !existingResult.profile) {
+      throw new HTTPException(404, { message: 'Profile not found' })
+    }
 
-  // Gender (is_male) is immutable once set during onboarding
-  if (
-    existingProfile.isMale !== null &&
-    input.isMale !== undefined &&
-    input.isMale !== existingProfile.isMale
-  ) {
-    throw new HTTPException(400, { message: 'Gender (is_male) cannot be modified once set' })
-  }
+    const existingProfile: ProfileWithIdentity = {
+      ...existingResult.profile,
+      identity: existingResult.identity && existingResult.identity.id ? existingResult.identity : null,
+    }
 
-  const updateData: Partial<typeof profiles.$inferInsert> = {}
+    // Gender (is_male) is immutable once set during onboarding
+    if (
+      existingProfile.isMale !== null &&
+      input.isMale !== undefined &&
+      input.isMale !== existingProfile.isMale
+    ) {
+      throw new HTTPException(400, { message: 'Gender (is_male) cannot be modified once set' })
+    }
 
-  if (input.name !== undefined) {
-    updateData.name = input.name.trim()
-  }
-  if (input.avatarKey !== undefined) {
-    updateData.avatarKey = input.avatarKey
-  }
-  if (input.description !== undefined) {
-    updateData.description = input.description?.trim() ?? null
-  }
-  if (input.contacts !== undefined) {
-    updateData.contacts = input.contacts ?? null
-  }
-  if (existingProfile.isMale === null && input.isMale !== undefined) {
-    updateData.isMale = input.isMale
-  }
+    let updatedIdentity: Identity | null = existingProfile.identity
+    const updateData: Partial<typeof profiles.$inferInsert> = {}
 
-  if (Object.keys(updateData).length === 0) {
-    return existingProfile
-  }
+    if (input.identity !== undefined) {
+      const normalizedIdentity = input.identity.trim().toLowerCase()
 
-  const [updatedProfile] = await db
-    .update(profiles)
-    .set(updateData)
-    .where(eq(profiles.id, existingProfile.id))
-    .returning()
+      if (!existingProfile.identity || existingProfile.identity.identity.toLowerCase() !== normalizedIdentity) {
+        const existingIdentityRecord = await tx.query.identities.findFirst({
+          where: eq(sql`lower(${identities.identity})`, normalizedIdentity),
+        })
 
-  return {
-    ...updatedProfile,
-    identity: existingProfile.identity,
+        if (existingIdentityRecord && existingIdentityRecord.id !== existingProfile.identityId) {
+          throw new HTTPException(409, { message: `Identity '${input.identity}' is already taken` })
+        }
+
+        if (existingProfile.identityId) {
+          const [updated] = await tx
+            .update(identities)
+            .set({ identity: normalizedIdentity })
+            .where(eq(identities.id, existingProfile.identityId))
+            .returning()
+          updatedIdentity = updated
+        } else {
+          const [created] = await tx
+            .insert(identities)
+            .values({ identity: normalizedIdentity })
+            .returning()
+          updatedIdentity = created
+          updateData.identityId = created.id
+        }
+      }
+    }
+
+    if (input.name !== undefined) {
+      updateData.name = input.name.trim()
+    }
+    if (input.avatarKey !== undefined) {
+      updateData.avatarKey = input.avatarKey
+    }
+    if (input.description !== undefined) {
+      updateData.description = input.description?.trim() ?? null
+    }
+    if (input.contacts !== undefined) {
+      updateData.contacts = input.contacts ?? null
+    }
+    if (existingProfile.isMale === null && input.isMale !== undefined) {
+      updateData.isMale = input.isMale
+    }
+
+    let finalProfile: Profile = existingProfile
+
+    if (Object.keys(updateData).length > 0) {
+      const [updated] = await tx
+        .update(profiles)
+        .set(updateData)
+        .where(eq(profiles.id, existingProfile.id))
+        .returning()
+      finalProfile = updated
+    }
+
+    return {
+      ...finalProfile,
+      identity: updatedIdentity,
+    }
+  })
+}
+
+export async function getProfileByIdentity(
+  identityHandle: string
+): Promise<ProfileWithIdentity | null> {
+  const normalized = identityHandle.trim().toLowerCase()
+
+  try {
+    const [result] = await db
+      .select({
+        profile: profiles,
+        identity: identities,
+      })
+      .from(identities)
+      .innerJoin(profiles, eq(identities.id, profiles.identityId))
+      .where(eq(sql`lower(${identities.identity})`, normalized))
+      .limit(1)
+
+    if (!result || !result.profile) {
+      return null
+    }
+
+    return {
+      ...result.profile,
+      identity: result.identity,
+    }
+  } catch (error) {
+    console.error('Error fetching profile by identity:', error)
+    return null
   }
 }
+
+export async function checkIdentityAvailable(
+  identityHandle: string
+): Promise<{ available: boolean; reason?: string }> {
+  const parsed = identityFormatSchema.safeParse(identityHandle)
+  if (!parsed.success) {
+    return {
+      available: false,
+      reason: parsed.error.issues[0]?.message ?? 'Invalid identity format',
+    }
+  }
+
+  const normalized = parsed.data
+
+  const existing = await db.query.identities.findFirst({
+    where: eq(sql`lower(${identities.identity})`, normalized),
+  })
+
+  if (existing) {
+    return { available: false, reason: `Identity '${normalized}' is already taken` }
+  }
+
+  return { available: true }
+}
+
+

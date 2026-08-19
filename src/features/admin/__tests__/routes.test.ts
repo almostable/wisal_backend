@@ -2,7 +2,6 @@ import { describe, it, expect, mock } from 'bun:test'
 import '../../../lib/snowflake'
 import { app } from '../../../index'
 import { HTTPException } from 'hono/http-exception'
-import * as adminService from '../service'
 import type { SafeAdmin } from '../../../db/schema/admins'
 import type { AdminSession } from '../../../db/schema/admin-sessions'
 import type { InviteItem } from '../types'
@@ -56,7 +55,6 @@ describe('Admin Feature Route Tests', () => {
         session: mockSession,
         token: 'secret_token_123',
       }),
-      generateRandomInviteCode: adminService.generateRandomInviteCode,
     }))
 
     const res = await app.request('/admin/login', {
@@ -631,16 +629,9 @@ describe('Admin Feature Route Tests', () => {
               avatarKey: null,
               description: 'Hello world',
               contacts: null,
-              identityId: 777777n,
               createdAt: new Date(),
               updatedAt: new Date(),
-              identity: {
-                id: 777777n,
-                identity: 'johndoe',
-                type: 'user',
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              },
+              identity: 'johndoe',
             },
           },
         ],
@@ -662,6 +653,7 @@ describe('Admin Feature Route Tests', () => {
     expect(body.success).toBe(true)
     expect(body.users.length).toBe(1)
     expect(body.users[0].email).toBe('user@wisal.dev')
-    expect(body.users[0].profile.identity.identity).toBe('johndoe')
+    expect(body.users[0].profile.identity).toBe('johndoe')
+    expect(body.users[0].profile.identityId).toBeUndefined()
   })
 })

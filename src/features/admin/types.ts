@@ -89,13 +89,15 @@ export interface ListInvitesResult {
   offset: number
 }
 
+import type { SafeProfile } from '../../lib/profile'
+
 export interface ListUsersOptions {
   limit?: number
   offset?: number
 }
 
 export interface UserListItem extends SafeAccount {
-  profile: ProfileWithIdentity | null
+  profile: SafeProfile | null
 }
 
 export interface ListUsersResult {

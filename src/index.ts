@@ -11,6 +11,8 @@ import { sql } from 'drizzle-orm'
 import { db } from './db'
 import { env } from './config/env'
 import { adminRouter } from './features/admin'
+import { authRouter } from './features/auth'
+import { profileRouter } from './features/profile'
 
 const app = new Hono()
 
@@ -56,6 +58,8 @@ app.get('/db-health', async (c) => {
 })
 
 app.route('/admin', adminRouter)
+app.route('/auth', authRouter)
+app.route('/profile', profileRouter)
 
 export { app }
 

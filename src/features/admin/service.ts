@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto'
 import {
   eq,
   sql,
@@ -28,6 +27,8 @@ import {
   invalidateAdminSession,
   invalidateAdminSessionByToken,
 } from '../../lib/admin-session'
+import { generateRandomInviteCode } from '../../lib/invite'
+import { formatProfileResponse } from '../../lib/profile'
 import type {
   AdminLoginInput,
   AdminLoginResult,
@@ -44,11 +45,6 @@ import type {
   ListUsersResult,
   UserListItem,
 } from './types'
-
-export function generateRandomInviteCode(): string {
-  const bytes = randomBytes(8).toString('hex').toUpperCase()
-  return `WISAL-${bytes.slice(0, 4)}-${bytes.slice(4, 8)}-${bytes.slice(8, 12)}-${bytes.slice(12, 16)}`
-}
 
 export async function loginAdmin(input: AdminLoginInput): Promise<AdminLoginResult> {
   const normalizedEmail = input.email.trim().toLowerCase()
@@ -382,7 +378,7 @@ export async function listUsers(options: ListUsersOptions = {}): Promise<ListUse
 
     return {
       ...safeAccountSchema.parse(safeAcc),
-      profile: fullProfile,
+      profile: formatProfileResponse(fullProfile),
     }
   })
 

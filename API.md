@@ -1,3 +1,291 @@
+# Wisal API Documentation
+
+---
+
+# User API
+
+### Авторизация
+Header `Authorization: Bearer <token>`.
+
+---
+
+## Аутентификация и аккаунты (`/auth`)
+
+### `POST /auth/register`
+- **Доступ:** Публичный
+- **Тело запроса (JSON):**
+  - `email` *(string, обязательное)* — email пользователя
+  - `password` *(string, обязательное, мин. 12, макс. 128 симв.)* — пароль
+  - `inviteCode` *(string, обязательное, мин. 8, макс. 64 симв.)* — код инвайта
+- **Ответ `201 Created`:**
+  ```json
+  {
+    "success": true,
+    "account": {
+      "id": "111111111111111",
+      "email": "user@wisal.dev",
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z"
+    },
+    "token": "string",
+    "profile": null,
+    "isOnboardingCompleted": false
+  }
+  ```
+
+### `POST /auth/login`
+- **Доступ:** Публичный
+- **Тело запроса (JSON):**
+  - `email` *(string, обязательное)* — email пользователя
+  - `password` *(string, обязательное)* — пароль
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "account": {
+      "id": "111111111111111",
+      "email": "user@wisal.dev",
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z"
+    },
+    "token": "string",
+    "profile": {
+      "id": "222222222222222",
+      "name": "John Doe",
+      "isMale": true,
+      "avatarKey": null,
+      "description": "Bio text",
+      "contacts": {
+        "telegram": "https://t.me/johndoe",
+        "youtube": null,
+        "instagram": null,
+        "website": null,
+        "email": null
+      },
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "identity": "johndoe"
+    },
+    "isOnboardingCompleted": true
+  }
+  ```
+
+### `POST /auth/logout`
+- **Доступ:** Авторизованный пользователь
+- **Тело запроса:** Нет
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "message": "Logged out successfully"
+  }
+  ```
+
+### `POST /auth/logout-all`
+- **Доступ:** Авторизованный пользователь
+- **Тело запроса:** Нет
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "message": "All sessions logged out successfully"
+  }
+  ```
+
+### `GET /auth/me`
+- **Доступ:** Авторизованный пользователь
+- **Тело запроса:** Нет
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "account": {
+      "id": "111111111111111",
+      "email": "user@wisal.dev",
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z"
+    },
+    "profile": {
+      "id": "222222222222222",
+      "name": "John Doe",
+      "isMale": true,
+      "avatarKey": null,
+      "description": "Bio text",
+      "contacts": null,
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "identity": "johndoe"
+    },
+    "isOnboardingCompleted": true
+  }
+  ```
+
+---
+
+## Управление профилем (`/profile`)
+
+### `GET /profile/me`
+- **Доступ:** Авторизованный пользователь
+- **Тело запроса:** Нет
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "profile": {
+      "id": "222222222222222",
+      "name": "John Doe",
+      "isMale": true,
+      "avatarKey": null,
+      "description": "Bio text",
+      "contacts": null,
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "identity": "johndoe"
+    },
+    "isOnboardingCompleted": true
+  }
+  ```
+
+### `POST /profile/onboarding`
+- **Доступ:** Авторизованный пользователь
+- **Тело запроса (JSON):**
+  - `name` *(string, обязательное, мин. 1, макс. 100 симв.)* — отображаемое имя
+  - `isMale` *(boolean, обязательное)* — пол (после онбординга неизменяем)
+  - `identity` *(string, обязательное, мин. 3, макс. 32 симв., `^[a-z0-9_]+$`)* — уникальный юзернейм/хэндл
+  - `avatarKey` *(string, опционально)* — ключ аватара в хранилище
+  - `description` *(string, опционально, макс. 500 симв.)* — описание/биография
+  - `contacts` *(object, опционально)* — контакты (`telegram`, `youtube`, `instagram`, `website`, `email`)
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "profile": {
+      "id": "222222222222222",
+      "name": "John Doe",
+      "isMale": true,
+      "avatarKey": null,
+      "description": "Bio text",
+      "contacts": null,
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "identity": "johndoe"
+    }
+  }
+  ```
+
+### `PATCH /profile/me`
+- **Доступ:** Авторизованный пользователь
+- **Тело запроса (JSON):**
+  - `name` *(string, опционально, мин. 1, макс. 100 симв.)*
+  - `identity` *(string, опционально, мин. 3, макс. 32 симв., `^[a-z0-9_]+$`)* — новый уникальный юзернейм/хэндл
+  - `avatarKey` *(string | null, опционально)*
+  - `description` *(string | null, опционально, макс. 500 симв.)*
+  - `contacts` *(object | null, опционально)*
+  - `isMale` *(boolean, опционально, допустимо только если пол ранее не был задан)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "profile": {
+      "id": "222222222222222",
+      "name": "Updated Name",
+      "isMale": true,
+      "avatarKey": "avatars/user.png",
+      "description": "New bio",
+      "contacts": {
+        "telegram": "https://t.me/updated",
+        "youtube": null,
+        "instagram": null,
+        "website": null,
+        "email": null
+      },
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "identity": "johndoe"
+    }
+  }
+  ```
+
+### `GET /profile/invites` (или `GET /profile/me/invites`)
+- **Доступ:** Авторизованный пользователь
+- **Query-параметры:**
+  - `status` *(string, опционально, `"all" | "active" | "used" | "expired"`, по умолчанию: `"all"`)* — фильтр по статусу
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "invites": [
+      {
+        "id": "444444444444444",
+        "code": "WISAL-A1B2-C3D4-E5F6",
+        "expiresAt": "2026-09-19T00:00:00.000Z",
+        "usedBy": {
+          "id": "555555555555555",
+          "email": "friend@wisal.dev",
+          "name": "Friend Name",
+          "avatarKey": null,
+          "identity": "friendhandle"
+        },
+        "usedAt": "2026-08-21T00:00:00.000Z",
+        "createdAt": "2026-08-20T00:00:00.000Z",
+        "updatedAt": "2026-08-21T00:00:00.000Z"
+      }
+    ],
+    "total": 5,
+    "stats": {
+      "active": 4,
+      "used": 1,
+      "expired": 0
+    },
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `GET /profile/check/:identity`
+- **Доступ:** Публичный
+- **URL-параметры:**
+  - `identity` *(string, обязательное)* — проверяемый юзернейм/хэндл
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "available": true,
+    "identity": "johndoe"
+  }
+  ```
+
+### `GET /profile/:identity`
+- **Доступ:** Публичный
+- **URL-параметры:**
+  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "profile": {
+      "id": "222222222222222",
+      "name": "John Doe",
+      "isMale": true,
+      "avatarKey": null,
+      "description": "Bio text",
+      "contacts": {
+        "telegram": "https://t.me/johndoe",
+        "youtube": null,
+        "instagram": null,
+        "website": null,
+        "email": null
+      },
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "identity": "johndoe"
+    }
+  }
+  ```
+
+---
+
 # Admin API
 
 ### Авторизация
@@ -5,7 +293,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
 
 ---
 
-## Аутентификация
+## Аутентификация администратора
 
 ### `POST /admin/login`
 - **Доступ:** Публичный
@@ -220,9 +508,11 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         "updatedAt": "2026-08-18T00:00:00.000Z",
         "profile": {
           "id": "200000000000000",
-          "accountId": "100000000000000",
           "name": "User Name",
-          "identityId": "300000000000000",
+          "isMale": true,
+          "avatarKey": null,
+          "description": null,
+          "contacts": null,
           "createdAt": "2026-08-18T00:00:00.000Z",
           "updatedAt": "2026-08-18T00:00:00.000Z",
           "identity": null

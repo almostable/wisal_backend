@@ -85,14 +85,16 @@ describe('Profiles Schema Tests', () => {
     expect(onboardingInputSchema.parse(inputWithoutContacts).contacts).toBeUndefined()
   })
 
-  it('validates updateProfileInputSchema with contacts', () => {
+  it('validates updateProfileInputSchema with contacts and identity', () => {
     const updateInput = {
+      identity: 'New_Handle',
       contacts: {
         website: 'https://wisal.dev',
       },
     }
 
     const parsed = updateProfileInputSchema.parse(updateInput)
+    expect(parsed.identity).toBe('new_handle')
     expect(parsed.contacts?.website).toBe('https://wisal.dev')
   })
 

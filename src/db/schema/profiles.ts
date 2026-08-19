@@ -74,6 +74,7 @@ export const onboardingInputSchema = z.object({
 
 export const updateProfileInputSchema = z.object({
   name: nameSchema.optional(),
+  identity: identityFormatSchema.optional(),
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
   isMale: z.boolean().optional(),

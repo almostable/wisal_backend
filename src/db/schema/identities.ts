@@ -9,7 +9,6 @@ export const identities = pgTable(
   {
     id: snowflakePrimaryKey(),
     identity: varchar('identity', { length: 32 }).notNull(),
-    type: varchar('type', { length: 20 }).notNull().default('user'),
     ...timestamps,
   },
   (table) => [
