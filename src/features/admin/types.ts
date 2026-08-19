@@ -2,6 +2,7 @@ import type { SafeAdmin, AdminRole } from '../../db/schema/admins'
 import type { AdminSession } from '../../db/schema/admin-sessions'
 import type { SafeAccount } from '../../db/schema/accounts'
 import type { ProfileWithIdentity } from '../../db/schema/profiles'
+import type { InviteStatus } from './schema'
 
 export interface AdminLoginInput {
   email: string
@@ -43,6 +44,11 @@ export interface InviteCreator {
   role: AdminRole
 }
 
+export interface InviteInviter {
+  id: bigint
+  email: string
+}
+
 export interface InviteUsedBy {
   id: bigint
   email: string
@@ -52,14 +58,14 @@ export interface InviteItem {
   id: bigint
   code: string
   expiresAt: Date
-  createdBy: InviteCreator
+  createdBy: InviteCreator | null
+  inviter: InviteInviter | null
   usedBy: InviteUsedBy | null
   usedAt: Date | null
   createdAt: Date
   updatedAt: Date
 }
 
-export type InviteStatus = 'all' | 'active' | 'used' | 'expired'
 
 export interface InviteStats {
   active: number

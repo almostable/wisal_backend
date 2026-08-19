@@ -24,7 +24,8 @@ export const accounts = pgTable(
 export const accountsRelations = relations(accounts, ({ one, many }) => ({
   sessions: many(sessions),
   profile: one(profiles),
-  usedInvites: many(invites),
+  usedInvites: many(invites, { relationName: 'usedBy' }),
+  invites: many(invites, { relationName: 'inviter' }),
 }))
 
 export { emailSchema }

@@ -11,6 +11,7 @@ import {
   gt,
   lte,
   ilike,
+  aliasedTable,
   type SQL,
 } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
@@ -34,6 +35,8 @@ import type {
   ListAdminsOptions,
   ListAdminsResult,
   CreateInviteInput,
+  InviteCreator,
+  InviteInviter,
   InviteItem,
   ListInvitesOptions,
   ListInvitesResult,
@@ -206,6 +209,7 @@ export async function createInvite(
     code: newInvite.code,
     expiresAt: newInvite.expiresAt,
     createdBy: creatorInfo,
+    inviter: null,
     usedBy: null,
     usedAt: newInvite.usedAt,
     createdAt: newInvite.createdAt,
@@ -229,6 +233,7 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
   const offset = Math.max(options.offset ?? 0, 0)
   const status = options.status ?? 'all'
   const searchQuery = (options.q ?? options.search)?.trim()
+  const inviterAccounts = aliasedTable(accounts, 'inviter_accounts')
 
   const conditions: SQL[] = []
 
@@ -247,7 +252,8 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
     const searchCondition = or(
       ilike(invites.code, searchPattern),
       ilike(admins.email, searchPattern),
-      ilike(accounts.email, searchPattern)
+      ilike(accounts.email, searchPattern),
+      ilike(inviterAccounts.email, searchPattern)
     )
     if (searchCondition) {
       conditions.push(searchCondition)
@@ -261,6 +267,7 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
         .select({ count: count() })
         .from(invites)
         .leftJoin(admins, eq(invites.createdById, admins.id))
+        .leftJoin(inviterAccounts, eq(invites.inviterId, inviterAccounts.id))
         .leftJoin(accounts, eq(invites.usedById, accounts.id))
         .where(whereClause)
     : db
@@ -277,6 +284,10 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
           email: admins.email,
           role: admins.role,
         },
+        inviter: {
+          id: inviterAccounts.id,
+          email: inviterAccounts.email,
+        },
         usedBy: {
           id: accounts.id,
           email: accounts.email,
@@ -284,6 +295,7 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
       })
       .from(invites)
       .leftJoin(admins, eq(invites.createdById, admins.id))
+      .leftJoin(inviterAccounts, eq(invites.inviterId, inviterAccounts.id))
       .leftJoin(accounts, eq(invites.usedById, accounts.id))
       .where(whereClause)
       .orderBy(desc(invites.createdAt))
@@ -303,13 +315,19 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
     const creatorInfo =
       item.creator && item.creator.id
         ? { id: item.creator.id, email: item.creator.email, role: item.creator.role as AdminRole }
-        : { id: item.invite.createdById, email: '', role: 'admin' as AdminRole }
+        : null
+
+    const inviterInfo =
+      item.inviter && item.inviter.id
+        ? { id: item.inviter.id, email: item.inviter.email }
+        : null
 
     return {
       id: item.invite.id,
       code: item.invite.code,
       expiresAt: item.invite.expiresAt,
       createdBy: creatorInfo,
+      inviter: inviterInfo,
       usedBy: item.usedBy && item.usedBy.id ? { id: item.usedBy.id, email: item.usedBy.email } : null,
       usedAt: item.invite.usedAt,
       createdAt: item.invite.createdAt,

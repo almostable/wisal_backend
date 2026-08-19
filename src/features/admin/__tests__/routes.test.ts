@@ -42,6 +42,7 @@ describe('Admin Feature Route Tests', () => {
       email: mockAdmin.email,
       role: mockAdmin.role,
     },
+    inviter: null,
     usedBy: null,
     usedAt: null,
     createdAt: new Date(),
@@ -405,8 +406,8 @@ describe('Admin Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; invite: InviteItem }
     expect(body.success).toBe(true)
     expect(body.invite.code).toBe('CUSTOM-INVITE-2026')
-    expect(body.invite.createdBy.email).toBe(mockAdmin.email)
-    expect(body.invite.createdBy.id.toString()).toBe(mockAdmin.id.toString())
+    expect(body.invite.createdBy?.email).toBe(mockAdmin.email)
+    expect(body.invite.createdBy?.id.toString()).toBe(mockAdmin.id.toString())
   })
 
   it('POST /admin/invites rejects when expiration is missing with 400', async () => {
@@ -501,8 +502,8 @@ describe('Admin Feature Route Tests', () => {
     }
     expect(body.success).toBe(true)
     expect(body.invites.length).toBe(1)
-    expect(body.invites[0].createdBy.email).toBe(mockAdmin.email)
-    expect(body.invites[0].createdBy.id.toString()).toBe(mockAdmin.id.toString())
+    expect(body.invites[0]?.createdBy?.email).toBe(mockAdmin.email)
+    expect(body.invites[0]?.createdBy?.id.toString()).toBe(mockAdmin.id.toString())
     expect(body.total).toBe(1)
     expect(body.stats).toEqual({
       active: 7,

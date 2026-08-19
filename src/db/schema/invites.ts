@@ -13,8 +13,9 @@ export const invites = pgTable(
     code: varchar('code', { length: 64 }).notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
     createdById: snowflakeId('created_by_id')
-      .notNull()
-      .references(() => admins.id, { onDelete: 'restrict' }),
+      .references(() => admins.id, { onDelete: 'set null' }),
+    inviterId: snowflakeId('inviter_id')
+      .references(() => accounts.id, { onDelete: 'set null' }),
     usedById: snowflakeId('used_by_id')
       .references(() => accounts.id, { onDelete: 'set null' }),
     usedAt: timestamp('used_at', { withTimezone: true, mode: 'date' }),
@@ -23,6 +24,7 @@ export const invites = pgTable(
   (table) => [
     uniqueIndex('invites_code_unique_idx').on(table.code),
     index('invites_created_by_id_idx').on(table.createdById),
+    index('invites_inviter_id_idx').on(table.inviterId),
     index('invites_used_by_id_idx').on(table.usedById),
     index('invites_used_at_idx').on(table.usedAt),
     index('invites_created_at_idx').on(table.createdAt),
@@ -35,9 +37,15 @@ export const invitesRelations = relations(invites, ({ one }) => ({
     fields: [invites.createdById],
     references: [admins.id],
   }),
+  inviter: one(accounts, {
+    fields: [invites.inviterId],
+    references: [accounts.id],
+    relationName: 'inviter',
+  }),
   usedBy: one(accounts, {
     fields: [invites.usedById],
     references: [accounts.id],
+    relationName: 'usedBy',
   }),
 }))
 

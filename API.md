@@ -142,6 +142,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
           "email": "admin@wisal.dev",
           "role": "admin"
         },
+        "inviter": null,
         "usedBy": null,
         "usedAt": null,
         "createdAt": "2026-08-18T00:00:00.000Z",
@@ -177,6 +178,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         "email": "admin@wisal.dev",
         "role": "admin"
       },
+      "inviter": null,
       "usedBy": null,
       "usedAt": null,
       "createdAt": "2026-08-18T00:00:00.000Z",
