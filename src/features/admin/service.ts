@@ -46,8 +46,8 @@ import type {
 } from './types'
 
 export function generateRandomInviteCode(): string {
-  const bytes = randomBytes(6).toString('hex').toUpperCase()
-  return `WISAL-${bytes.slice(0, 4)}-${bytes.slice(4, 8)}-${bytes.slice(8, 12)}`
+  const bytes = randomBytes(8).toString('hex').toUpperCase()
+  return `WISAL-${bytes.slice(0, 4)}-${bytes.slice(4, 8)}-${bytes.slice(8, 12)}-${bytes.slice(12, 16)}`
 }
 
 export async function loginAdmin(input: AdminLoginInput): Promise<AdminLoginResult> {
