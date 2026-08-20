@@ -16,6 +16,7 @@ import { invites } from '../../db/schema/invites'
 import { accounts } from '../../db/schema/accounts'
 import { profiles } from '../../db/schema/profiles'
 import { identities } from '../../db/schema/identities'
+import { follows } from '../../db/schema/follows'
 import {
   getProfileByAccountId,
   getProfileByIdentity,
@@ -31,7 +32,7 @@ import type {
   OnboardingInput,
   UpdateProfileInput,
 } from '../../db/schema/profiles'
-import type { ListMyInvitesQuery } from './schema'
+import type { ListMyInvitesQuery, ListFollowsQuery } from './schema'
 import type {
   PublicProfile,
   MyProfileResult,
@@ -39,6 +40,9 @@ import type {
   MyInviteItem,
   MyInviteUsedBy,
   ListMyInvitesResult,
+  FollowUserItem,
+  ListFollowsResult,
+  FollowActionResult,
 } from './types'
 
 export async function getMyProfile(accountId: bigint): Promise<MyProfileResult> {
@@ -185,6 +189,187 @@ export async function getMyInvites(
     stats,
     limit,
     offset,
+  }
+}
+
+export async function getAccountIdByIdentity(identityHandle: string): Promise<bigint | null> {
+  const normalized = identityHandle.trim().toLowerCase()
+  const [result] = await db
+    .select({ accountId: profiles.accountId })
+    .from(identities)
+    .innerJoin(profiles, eq(identities.id, profiles.identityId))
+    .where(eq(sql`lower(${identities.identity})`, normalized))
+    .limit(1)
+
+  return result?.accountId ?? null
+}
+
+export async function getFollowers(
+  targetAccountId: bigint,
+  options: ListFollowsQuery = { limit: 50, offset: 0 }
+): Promise<ListFollowsResult> {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
+  const offset = Math.max(options.offset ?? 0, 0)
+
+  const [items, totalResult] = await Promise.all([
+    db
+      .select({
+        accountId: accounts.id,
+        name: profiles.name,
+        avatarKey: profiles.avatarKey,
+        description: profiles.description,
+        identity: identities.identity,
+        followedAt: follows.createdAt,
+      })
+      .from(follows)
+      .innerJoin(accounts, eq(follows.followerId, accounts.id))
+      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(eq(follows.followingId, targetAccountId))
+      .orderBy(desc(follows.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(follows)
+      .where(eq(follows.followingId, targetAccountId)),
+  ])
+
+  return {
+    users: items.map((item) => ({
+      id: item.accountId,
+      name: item.name,
+      avatarKey: item.avatarKey,
+      description: item.description,
+      identity: item.identity,
+      followedAt: item.followedAt,
+    })),
+    total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
+  }
+}
+
+export async function getFollowing(
+  targetAccountId: bigint,
+  options: ListFollowsQuery = { limit: 50, offset: 0 }
+): Promise<ListFollowsResult> {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
+  const offset = Math.max(options.offset ?? 0, 0)
+
+  const [items, totalResult] = await Promise.all([
+    db
+      .select({
+        accountId: accounts.id,
+        name: profiles.name,
+        avatarKey: profiles.avatarKey,
+        description: profiles.description,
+        identity: identities.identity,
+        followedAt: follows.createdAt,
+      })
+      .from(follows)
+      .innerJoin(accounts, eq(follows.followingId, accounts.id))
+      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(eq(follows.followerId, targetAccountId))
+      .orderBy(desc(follows.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(follows)
+      .where(eq(follows.followerId, targetAccountId)),
+  ])
+
+  return {
+    users: items.map((item) => ({
+      id: item.accountId,
+      name: item.name,
+      avatarKey: item.avatarKey,
+      description: item.description,
+      identity: item.identity,
+      followedAt: item.followedAt,
+    })),
+    total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
+  }
+}
+
+export async function getUserFollowersByIdentity(
+  identityHandle: string,
+  options: ListFollowsQuery = { limit: 50, offset: 0 }
+): Promise<ListFollowsResult> {
+  const targetAccountId = await getAccountIdByIdentity(identityHandle)
+  if (!targetAccountId) {
+    throw new HTTPException(404, { message: 'Profile not found' })
+  }
+  return getFollowers(targetAccountId, options)
+}
+
+export async function getUserFollowingByIdentity(
+  identityHandle: string,
+  options: ListFollowsQuery = { limit: 50, offset: 0 }
+): Promise<ListFollowsResult> {
+  const targetAccountId = await getAccountIdByIdentity(identityHandle)
+  if (!targetAccountId) {
+    throw new HTTPException(404, { message: 'Profile not found' })
+  }
+  return getFollowing(targetAccountId, options)
+}
+
+export async function followUser(
+  followerAccountId: bigint,
+  targetIdentity: string
+): Promise<FollowActionResult> {
+  const targetAccountId = await getAccountIdByIdentity(targetIdentity)
+  if (!targetAccountId) {
+    throw new HTTPException(404, { message: 'Profile not found' })
+  }
+
+  if (followerAccountId === targetAccountId) {
+    throw new HTTPException(400, { message: 'Users cannot follow themselves' })
+  }
+
+  await db
+    .insert(follows)
+    .values({
+      followerId: followerAccountId,
+      followingId: targetAccountId,
+    })
+    .onConflictDoNothing()
+
+  return {
+    following: true,
+    message: 'Successfully followed user',
+  }
+}
+
+export async function unfollowUser(
+  followerAccountId: bigint,
+  targetIdentity: string
+): Promise<FollowActionResult> {
+  const targetAccountId = await getAccountIdByIdentity(targetIdentity)
+  if (!targetAccountId) {
+    throw new HTTPException(404, { message: 'Profile not found' })
+  }
+
+  if (followerAccountId === targetAccountId) {
+    throw new HTTPException(400, { message: 'Users cannot unfollow themselves' })
+  }
+
+  await db
+    .delete(follows)
+    .where(
+      and(
+        eq(follows.followerId, followerAccountId),
+        eq(follows.followingId, targetAccountId)
+      )
+    )
+
+  return {
+    following: false,
+    message: 'Successfully unfollowed user',
   }
 }
 

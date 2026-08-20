@@ -45,3 +45,24 @@ export interface ListMyInvitesResult {
   offset: number
 }
 
+export interface FollowUserItem {
+  id: bigint
+  name: string | null
+  avatarKey: string | null
+  description: string | null
+  identity: string | null
+  followedAt: Date
+}
+
+export interface ListFollowsResult {
+  users: FollowUserItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface FollowActionResult {
+  following: boolean
+  message: string
+}
+

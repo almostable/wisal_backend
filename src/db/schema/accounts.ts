@@ -6,6 +6,7 @@ import { snowflakePrimaryKey, timestamps, emailSchema } from './common'
 import { sessions } from './sessions'
 import { profiles } from './profiles'
 import { invites } from './invites'
+import { follows } from './follows'
 
 export const accounts = pgTable(
   'accounts',
@@ -26,6 +27,8 @@ export const accountsRelations = relations(accounts, ({ one, many }) => ({
   profile: one(profiles),
   usedInvites: many(invites, { relationName: 'usedBy' }),
   invites: many(invites, { relationName: 'inviter' }),
+  followers: many(follows, { relationName: 'following' }),
+  following: many(follows, { relationName: 'follower' }),
 }))
 
 export { emailSchema }

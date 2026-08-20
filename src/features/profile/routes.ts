@@ -6,6 +6,7 @@ import {
   onboardingInputSchema,
   updateProfileInputSchema,
   listMyInvitesQuerySchema,
+  listFollowsQuerySchema,
 } from './schema'
 import {
   getMyProfile,
@@ -14,6 +15,12 @@ import {
   getPublicProfile,
   checkHandleAvailability,
   getMyInvites,
+  getFollowers,
+  getFollowing,
+  getUserFollowersByIdentity,
+  getUserFollowingByIdentity,
+  followUser,
+  unfollowUser,
 } from './service'
 
 export const profileRouter = new Hono()
@@ -77,13 +84,29 @@ profileRouter.get(
 )
 
 profileRouter.get(
-  '/me/invites',
+  '/followers',
   authMiddleware,
-  zValidator('query', listMyInvitesQuerySchema),
+  zValidator('query', listFollowsQuerySchema),
   async (c) => {
     const account = c.get('account')
     const query = c.req.valid('query')
-    const result = await getMyInvites(account.id, query)
+    const result = await getFollowers(account.id, query)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+profileRouter.get(
+  '/following',
+  authMiddleware,
+  zValidator('query', listFollowsQuerySchema),
+  async (c) => {
+    const account = c.get('account')
+    const query = c.req.valid('query')
+    const result = await getFollowing(account.id, query)
 
     return c.json({
       success: true,
@@ -101,6 +124,72 @@ profileRouter.get('/check/:identity', zValidator('param', identityParamSchema), 
     ...result,
   })
 })
+
+profileRouter.post(
+  '/:identity/follow',
+  authMiddleware,
+  zValidator('param', identityParamSchema),
+  async (c) => {
+    const account = c.get('account')
+    const { identity } = c.req.valid('param')
+    const result = await followUser(account.id, identity)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+profileRouter.delete(
+  '/:identity/follow',
+  authMiddleware,
+  zValidator('param', identityParamSchema),
+  async (c) => {
+    const account = c.get('account')
+    const { identity } = c.req.valid('param')
+    const result = await unfollowUser(account.id, identity)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+profileRouter.get(
+  '/:identity/followers',
+  optionalAuthMiddleware,
+  zValidator('param', identityParamSchema),
+  zValidator('query', listFollowsQuerySchema),
+  async (c) => {
+    const { identity } = c.req.valid('param')
+    const query = c.req.valid('query')
+    const result = await getUserFollowersByIdentity(identity, query)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+profileRouter.get(
+  '/:identity/following',
+  optionalAuthMiddleware,
+  zValidator('param', identityParamSchema),
+  zValidator('query', listFollowsQuerySchema),
+  async (c) => {
+    const { identity } = c.req.valid('param')
+    const query = c.req.valid('query')
+    const result = await getUserFollowingByIdentity(identity, query)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
 
 profileRouter.get(
   '/:identity',

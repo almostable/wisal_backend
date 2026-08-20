@@ -392,15 +392,6 @@ describe('Profile Feature Route Tests', () => {
     expect(body.invites.length).toBe(1)
     expect(body.invites[0].code).toBe('WISAL-1111-2222-3333-4444')
     expect(body.stats.active).toBe(1)
-
-    // Test alias /profile/me/invites as well
-    const resAlias = await app.request('/profile/me/invites', {
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer valid_user_token',
-      },
-    })
-    expect(resAlias.status).toBe(200)
   })
 
   it('GET /profile/invites returns 401 when token is missing', async () => {
@@ -412,5 +403,248 @@ describe('Profile Feature Route Tests', () => {
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe('Missing or malformed Authorization header')
   })
+
+  it('GET /profile/followers returns list of user followers', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      getFollowers: async () => ({
+        users: [
+          {
+            id: 999999999999999n,
+            name: 'Follower One',
+            avatarKey: null,
+            description: 'Fan of Wisal',
+            identity: 'follower1',
+            followedAt: new Date(),
+          },
+        ],
+        total: 1,
+        limit: 50,
+        offset: 0,
+      }),
+    }))
+
+    const res = await app.request('/profile/followers', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      users: any[]
+      total: number
+      limit: number
+      offset: number
+    }
+    expect(body.success).toBe(true)
+    expect(body.total).toBe(1)
+    expect(body.users[0].identity).toBe('follower1')
+  })
+
+  it('GET /profile/following returns list of accounts user follows', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      getFollowing: async () => ({
+        users: [
+          {
+            id: 888888888888888n,
+            name: 'Following One',
+            avatarKey: 'avatar.png',
+            description: 'Leader',
+            identity: 'following1',
+            followedAt: new Date(),
+          },
+        ],
+        total: 1,
+        limit: 50,
+        offset: 0,
+      }),
+    }))
+
+    const res = await app.request('/profile/following', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      users: any[]
+      total: number
+      limit: number
+      offset: number
+    }
+    expect(body.success).toBe(true)
+    expect(body.total).toBe(1)
+    expect(body.users[0].identity).toBe('following1')
+  })
+
+  it('GET /profile/:identity/followers and GET /profile/:identity/following return public lists', async () => {
+    mock.module('../service', () => ({
+      getUserFollowersByIdentity: async (handle: string) => {
+        if (handle === 'targetuser') {
+          return {
+            users: [
+              {
+                id: 11111n,
+                name: 'Public Fan',
+                avatarKey: null,
+                description: null,
+                identity: 'publicfan',
+                followedAt: new Date(),
+              },
+            ],
+            total: 1,
+            limit: 50,
+            offset: 0,
+          }
+        }
+        throw new HTTPException(404, { message: 'Profile not found' })
+      },
+      getUserFollowingByIdentity: async (handle: string) => {
+        if (handle === 'targetuser') {
+          return {
+            users: [],
+            total: 0,
+            limit: 50,
+            offset: 0,
+          }
+        }
+        throw new HTTPException(404, { message: 'Profile not found' })
+      },
+    }))
+
+    const resFollowers = await app.request('/profile/targetuser/followers', { method: 'GET' })
+    expect(resFollowers.status).toBe(200)
+    const bodyFollowers = (await resFollowers.json()) as { success: boolean; users: any[]; total: number }
+    expect(bodyFollowers.success).toBe(true)
+    expect(bodyFollowers.users.length).toBe(1)
+    expect(bodyFollowers.users[0].identity).toBe('publicfan')
+
+    const resFollowing = await app.request('/profile/targetuser/following', { method: 'GET' })
+    expect(resFollowing.status).toBe(200)
+    const bodyFollowing = (await resFollowing.json()) as { success: boolean; total: number }
+    expect(bodyFollowing.success).toBe(true)
+    expect(bodyFollowing.total).toBe(0)
+
+    const res404 = await app.request('/profile/nonexistent/followers', { method: 'GET' })
+    expect(res404.status).toBe(404)
+  })
+
+  it('POST /profile/:identity/follow follows user and handles self-follow error', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      followUser: async (_followerId: bigint, handle: string) => {
+        if (handle === 'myself') {
+          throw new HTTPException(400, { message: 'Users cannot follow themselves' })
+        }
+        if (handle === 'nonexistent') {
+          throw new HTTPException(404, { message: 'Profile not found' })
+        }
+        return {
+          following: true,
+          message: 'Successfully followed user',
+        }
+      },
+    }))
+
+    const resValid = await app.request('/profile/otheruser/follow', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+    expect(resValid.status).toBe(200)
+    const bodyValid = (await resValid.json()) as { success: boolean; following: boolean }
+    expect(bodyValid.success).toBe(true)
+    expect(bodyValid.following).toBe(true)
+
+    const resSelf = await app.request('/profile/myself/follow', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+    expect(resSelf.status).toBe(400)
+    const bodySelf = (await resSelf.json()) as { error: string }
+    expect(bodySelf.error).toBe('Users cannot follow themselves')
+
+    const resNotFound = await app.request('/profile/nonexistent/follow', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+    expect(resNotFound.status).toBe(404)
+  })
+
+  it('DELETE /profile/:identity/follow unfollows user successfully', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      unfollowUser: async (_followerId: bigint, handle: string) => {
+        if (handle === 'myself') {
+          throw new HTTPException(400, { message: 'Users cannot unfollow themselves' })
+        }
+        if (handle === 'nonexistent') {
+          throw new HTTPException(404, { message: 'Profile not found' })
+        }
+        return {
+          following: false,
+          message: 'Successfully unfollowed user',
+        }
+      },
+    }))
+
+    const resValid = await app.request('/profile/otheruser/follow', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+    expect(resValid.status).toBe(200)
+    const bodyValid = (await resValid.json()) as { success: boolean; following: boolean }
+    expect(bodyValid.success).toBe(true)
+    expect(bodyValid.following).toBe(false)
+
+    const resSelf = await app.request('/profile/myself/follow', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+    expect(resSelf.status).toBe(400)
+    const bodySelf = (await resSelf.json()) as { error: string }
+    expect(bodySelf.error).toBe('Users cannot unfollow themselves')
+  })
 })
+
 

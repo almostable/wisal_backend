@@ -206,7 +206,7 @@ Header `Authorization: Bearer <token>`.
   }
   ```
 
-### `GET /profile/invites` (или `GET /profile/me/invites`)
+### `GET /profile/invites`
 - **Доступ:** Авторизованный пользователь
 - **Query-параметры:**
   - `status` *(string, опционально, `"all" | "active" | "used" | "expired"`, по умолчанию: `"all"`)* — фильтр по статусу
@@ -241,6 +241,136 @@ Header `Authorization: Bearer <token>`.
     },
     "limit": 50,
     "offset": 0
+  }
+  ```
+
+### `GET /profile/followers`
+- **Доступ:** Авторизованный пользователь
+- **Query-параметры:**
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "users": [
+      {
+        "id": "111111111111111",
+        "name": "Follower Name",
+        "avatarKey": null,
+        "description": "User bio",
+        "identity": "follower_handle",
+        "followedAt": "2026-08-20T00:00:00.000Z"
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `GET /profile/following`
+- **Доступ:** Авторизованный пользователь
+- **Query-параметры:**
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "users": [
+      {
+        "id": "222222222222222",
+        "name": "Following Name",
+        "avatarKey": "avatars/user.png",
+        "description": "User bio",
+        "identity": "following_handle",
+        "followedAt": "2026-08-20T00:00:00.000Z"
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `GET /profile/:identity/followers`
+- **Доступ:** Публичный / Опциональная авторизация
+- **URL-параметры:**
+  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
+- **Query-параметры:**
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "users": [
+      {
+        "id": "111111111111111",
+        "name": "Follower Name",
+        "avatarKey": null,
+        "description": "User bio",
+        "identity": "follower_handle",
+        "followedAt": "2026-08-20T00:00:00.000Z"
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `GET /profile/:identity/following`
+- **Доступ:** Публичный / Опциональная авторизация
+- **URL-параметры:**
+  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
+- **Query-параметры:**
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "users": [
+      {
+        "id": "222222222222222",
+        "name": "Following Name",
+        "avatarKey": "avatars/user.png",
+        "description": "User bio",
+        "identity": "following_handle",
+        "followedAt": "2026-08-20T00:00:00.000Z"
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `POST /profile/:identity/follow`
+- **Доступ:** Авторизованный пользователь
+- **URL-параметры:**
+  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя, на которого нужно подписаться
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "following": true,
+    "message": "Successfully followed user"
+  }
+  ```
+
+### `DELETE /profile/:identity/follow`
+- **Доступ:** Авторизованный пользователь
+- **URL-параметры:**
+  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя, от которого нужно отписаться
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "following": false,
+    "message": "Successfully unfollowed user"
   }
   ```
 
