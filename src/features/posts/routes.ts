@@ -4,12 +4,16 @@ import { authMiddleware } from '../../middleware/auth'
 import { onboardingMiddleware } from '../../middleware/onboarding'
 import {
   postIdParamSchema,
+  commentIdParamSchema,
   userPostsParamSchema,
   createPostSchema,
   updatePostSchema,
   pinPostSchema,
   feedQuerySchema,
   userPostsQuerySchema,
+  createCommentSchema,
+  replyCommentSchema,
+  listCommentsQuerySchema,
 } from './schema'
 import {
   createPost,
@@ -21,6 +25,10 @@ import {
   getUserPosts,
   likePost,
   unlikePost,
+  getPostComments,
+  createComment,
+  replyToComment,
+  deleteComment,
 } from './service'
 
 export const postsRouter = new Hono()
@@ -79,6 +87,101 @@ postsRouter.get(
       success: true,
       ...result,
     })
+  }
+)
+
+postsRouter.post(
+  '/comments/:id/reply',
+  zValidator('param', commentIdParamSchema),
+  zValidator('json', replyCommentSchema),
+  async (c) => {
+    const account = c.get('account')
+    const profile = c.get('profile')
+    const { id } = c.req.valid('param')
+    const data = c.req.valid('json')
+
+    const comment = await replyToComment(
+      BigInt(id),
+      account.id,
+      { accountId: account.id, isMale: profile.isMale! },
+      data
+    )
+
+    return c.json(
+      {
+        success: true,
+        comment,
+      },
+      201
+    )
+  }
+)
+
+postsRouter.delete(
+  '/comments/:id',
+  zValidator('param', commentIdParamSchema),
+  async (c) => {
+    const account = c.get('account')
+    const { id } = c.req.valid('param')
+
+    const result = await deleteComment(account.id, BigInt(id))
+
+    return c.json(result)
+  }
+)
+
+postsRouter.get(
+  '/:id/comments',
+  zValidator('param', postIdParamSchema),
+  zValidator('query', listCommentsQuerySchema),
+  async (c) => {
+    const account = c.get('account')
+    const profile = c.get('profile')
+    const { id } = c.req.valid('param')
+    const query = c.req.valid('query')
+
+    const result = await getPostComments(
+      BigInt(id),
+      { accountId: account.id, isMale: profile.isMale! },
+      query
+    )
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+postsRouter.post(
+  '/:id/comments',
+  zValidator('param', postIdParamSchema),
+  zValidator('json', createCommentSchema),
+  async (c) => {
+    const account = c.get('account')
+    const profile = c.get('profile')
+    const { id } = c.req.valid('param')
+    const data = c.req.valid('json')
+
+    const comment = await createComment(
+      BigInt(id),
+      account.id,
+      { accountId: account.id, isMale: profile.isMale! },
+      {
+        content: data.content,
+        parentId: data.parentId ? BigInt(data.parentId) : null,
+        type: data.type,
+        payload: data.payload,
+      }
+    )
+
+    return c.json(
+      {
+        success: true,
+        comment,
+      },
+      201
+    )
   }
 )
 
@@ -172,9 +275,5 @@ postsRouter.delete('/:id', zValidator('param', postIdParamSchema), async (c) => 
 
   const result = await deletePost(account.id, BigInt(id))
 
-  return c.json({
-    success: true,
-    ...result,
-  })
+  return c.json(result)
 })
-

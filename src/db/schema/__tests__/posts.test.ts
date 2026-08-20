@@ -75,6 +75,7 @@ describe('Posts Schema Tests', () => {
       accessLevel: 'public',
       isPinned: false,
       likesCount: 5,
+      commentsCount: 2,
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -84,6 +85,7 @@ describe('Posts Schema Tests', () => {
     expect(parsed.id).toBe(900000000000001n)
     expect(parsed.authorGender).toBe(true)
     expect(parsed.likesCount).toBe(5)
+    expect(parsed.commentsCount).toBe(2)
     expect(parsed.deletedAt).toBeNull()
   })
 
@@ -97,6 +99,7 @@ describe('Posts Schema Tests', () => {
     expect(indexNames).toContain('posts_access_level_idx')
     expect(indexNames).toContain('posts_is_pinned_idx')
     expect(indexNames).toContain('posts_likes_count_idx')
+    expect(indexNames).toContain('posts_comments_count_idx')
   })
 
   it('has expected enum constants defined', () => {

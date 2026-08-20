@@ -687,6 +687,126 @@ Header `Authorization: Bearer <token>`.
 
 ---
 
+## Комментарии к публикациям (`/posts`)
+
+### `GET /posts/:id/comments`
+- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID поста
+- **Query-параметры:**
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "comments": [
+      {
+        "id": "888888888888881",
+        "postId": "999999999999991",
+        "authorId": "111111111111111",
+        "parentId": null,
+        "type": "text",
+        "payload": {},
+        "content": "First comment on post",
+        "createdAt": "2026-08-20T00:00:00.000Z",
+        "updatedAt": "2026-08-20T00:00:00.000Z",
+        "author": {
+          "id": "111111111111111",
+          "name": "John Doe",
+          "identity": "johndoe",
+          "avatarKey": null,
+          "isMale": true
+        }
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `POST /posts/:id/comments`
+- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID поста
+- **Тело запроса (JSON):**
+  - `content` *(string, обязательное, мин. 1, макс. 5000 симв.)* — текст комментария
+  - `parentId` *(string | null, опционально)* — Snowflake ID родительского комментария (если ответ)
+  - `type` *(string, опционально, `"text"`, по умолчанию: `"text"`)*
+  - `payload` *(object, опционально, по умолчанию: `{}`)*
+- **Ответ `201 Created`:**
+  ```json
+  {
+    "success": true,
+    "comment": {
+      "id": "888888888888881",
+      "postId": "999999999999991",
+      "authorId": "111111111111111",
+      "parentId": null,
+      "type": "text",
+      "payload": {},
+      "content": "First comment on post",
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "author": {
+        "id": "111111111111111",
+        "name": "John Doe",
+        "identity": "johndoe",
+        "avatarKey": null,
+        "isMale": true
+      }
+    }
+  }
+  ```
+
+### `POST /posts/comments/:id/reply`
+- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID родительского комментария
+- **Тело запроса (JSON):**
+  - `content` *(string, обязательное, мин. 1, макс. 5000 симв.)* — текст ответа
+  - `type` *(string, опционально, `"text"`, по умолчанию: `"text"`)*
+  - `payload` *(object, опционально, по умолчанию: `{}`)*
+- **Ответ `201 Created`:**
+  ```json
+  {
+    "success": true,
+    "comment": {
+      "id": "888888888888882",
+      "postId": "999999999999991",
+      "authorId": "111111111111111",
+      "parentId": "888888888888881",
+      "type": "text",
+      "payload": {},
+      "content": "Reply to first comment",
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "author": {
+        "id": "111111111111111",
+        "name": "John Doe",
+        "identity": "johndoe",
+        "avatarKey": null,
+        "isMale": true
+      }
+    }
+  }
+  ```
+
+### `DELETE /posts/comments/:id`
+- **Доступ:** Автор комментария (с онбордингом)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID комментария
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "message": "Comment deleted successfully"
+  }
+  ```
+
+---
+
 # Admin API
 
 ### Авторизация

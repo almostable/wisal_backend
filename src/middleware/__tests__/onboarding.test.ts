@@ -39,7 +39,6 @@ describe('Onboarding Middleware Unit Tests', () => {
     identity: {
       id: 444444444444444n,
       identity: 'johndoe',
-      type: 'user',
       createdAt: new Date(),
       updatedAt: new Date(),
     },

@@ -5,9 +5,17 @@ import {
   ACCESS_LEVELS,
   postContentSchema,
 } from '../../db/schema/posts'
+import {
+  COMMENT_TYPES,
+  commentContentSchema,
+} from '../../db/schema/comments'
 
 export const postIdParamSchema = z.object({
   id: z.string().regex(/^\d{1,20}$/, 'Invalid post ID format'),
+})
+
+export const commentIdParamSchema = z.object({
+  id: z.string().regex(/^\d{1,20}$/, 'Invalid comment ID format'),
 })
 
 export const userPostsParamSchema = z.object({
@@ -47,10 +55,32 @@ export const userPostsQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 })
 
+export const createCommentSchema = z.object({
+  content: commentContentSchema,
+  parentId: z.string().regex(/^\d{1,20}$/, 'Invalid parent ID format').nullable().optional(),
+  type: z.enum(COMMENT_TYPES).default('text').optional(),
+  payload: z.record(z.string(), z.unknown()).default({}).optional(),
+})
+
+export const replyCommentSchema = z.object({
+  content: commentContentSchema,
+  type: z.enum(COMMENT_TYPES).default('text').optional(),
+  payload: z.record(z.string(), z.unknown()).default({}).optional(),
+})
+
+export const listCommentsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+})
+
 export type PostIdParam = z.infer<typeof postIdParamSchema>
+export type CommentIdParam = z.infer<typeof commentIdParamSchema>
 export type UserPostsParam = z.infer<typeof userPostsParamSchema>
 export type CreatePostInput = z.infer<typeof createPostSchema>
 export type UpdatePostInput = z.infer<typeof updatePostSchema>
 export type PinPostInput = z.infer<typeof pinPostSchema>
 export type FeedQueryInput = z.infer<typeof feedQuerySchema>
 export type UserPostsQueryInput = z.infer<typeof userPostsQuerySchema>
+export type CreateCommentInput = z.infer<typeof createCommentSchema>
+export type ReplyCommentInput = z.infer<typeof replyCommentSchema>
+export type ListCommentsQueryInput = z.infer<typeof listCommentsQuerySchema>

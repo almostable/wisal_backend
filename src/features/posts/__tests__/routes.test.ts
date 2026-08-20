@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception'
 import type { SafeAccount } from '../../../db/schema/accounts'
 import type { Session } from '../../../db/schema/sessions'
 import type { ProfileWithIdentity } from '../../../db/schema/profiles'
-import type { PostResponse } from '../types'
+import type { PostResponse, CommentResponse } from '../types'
 
 describe('Posts Feature Route Tests', () => {
   const maleAccount: SafeAccount = {
@@ -89,7 +89,27 @@ describe('Posts Feature Route Tests', () => {
     accessLevel: 'public',
     isPinned: false,
     likesCount: 0,
+    commentsCount: 0,
     isLiked: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    author: {
+      id: maleAccount.id,
+      name: 'Male User',
+      identity: 'male_user',
+      avatarKey: null,
+      isMale: true,
+    },
+  }
+
+  const sampleComment: CommentResponse = {
+    id: 888888888888881n,
+    postId: samplePost.id,
+    authorId: maleAccount.id,
+    parentId: null,
+    type: 'text',
+    payload: {},
+    content: 'First comment on post',
     createdAt: new Date(),
     updatedAt: new Date(),
     author: {
@@ -123,6 +143,28 @@ describe('Posts Feature Route Tests', () => {
 
     const resUnlike = await app.request('/posts/999999999999991/unlike', { method: 'POST' })
     expect(resUnlike.status).toBe(401)
+
+    const resComments = await app.request('/posts/999999999999991/comments', { method: 'GET' })
+    expect(resComments.status).toBe(401)
+
+    const resPostComment = await app.request('/posts/999999999999991/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'Comment' }),
+    })
+    expect(resPostComment.status).toBe(401)
+
+    const resReplyComment = await app.request('/posts/comments/888888888888881/reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'Reply' }),
+    })
+    expect(resReplyComment.status).toBe(401)
+
+    const resDeleteComment = await app.request('/posts/comments/888888888888881', {
+      method: 'DELETE',
+    })
+    expect(resDeleteComment.status).toBe(401)
   })
 
   it('rejects users who have not completed onboarding with 403', async () => {
@@ -665,6 +707,381 @@ describe('Posts Feature Route Tests', () => {
     expect(res.status).toBe(404)
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe('Post not found')
+  })
+
+  it('GET /posts/:id/comments returns post comments list with pagination', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      getPostComments: async () => ({
+        comments: [sampleComment],
+        total: 1,
+        limit: 50,
+        offset: 0,
+      }),
+    }))
+
+    const res = await app.request('/posts/999999999999991/comments?limit=50&offset=0', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      comments: CommentResponse[]
+      total: number
+      limit: number
+      offset: number
+    }
+    expect(body.success).toBe(true)
+    expect(body.comments.length).toBe(1)
+    expect(body.comments[0].content).toBe('First comment on post')
+    expect(body.total).toBe(1)
+  })
+
+  it('GET /posts/:id/comments returns 404 when post access is restricted or post does not exist', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: femaleAccount,
+        session: femaleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => femaleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      getPostComments: async () => {
+        throw new HTTPException(404, { message: 'Post not found' })
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991/comments', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_female_token',
+      },
+    })
+
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Post not found')
+  })
+
+  it('POST /posts/:id/comments creates a new root comment successfully', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      createComment: async (
+        postId: bigint,
+        authorAccountId: bigint,
+        _viewer: any,
+        input: any
+      ) => ({
+        ...sampleComment,
+        postId,
+        authorId: authorAccountId,
+        content: input.content,
+        parentId: input.parentId ?? null,
+      }),
+    }))
+
+    const res = await app.request('/posts/999999999999991/comments', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Great post content!',
+      }),
+    })
+
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { success: boolean; comment: CommentResponse }
+    expect(body.success).toBe(true)
+    expect(body.comment.content).toBe('Great post content!')
+    expect(body.comment.parentId).toBeNull()
+  })
+
+  it('POST /posts/:id/comments creates a reply when parentId is provided', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      createComment: async (
+        postId: bigint,
+        authorAccountId: bigint,
+        _viewer: any,
+        input: any
+      ) => ({
+        ...sampleComment,
+        id: 888888888888882n,
+        postId,
+        authorId: authorAccountId,
+        content: input.content,
+        parentId: input.parentId,
+      }),
+    }))
+
+    const res = await app.request('/posts/999999999999991/comments', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Replying to comment',
+        parentId: '888888888888881',
+      }),
+    })
+
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { success: boolean; comment: any }
+    expect(body.success).toBe(true)
+    expect(body.comment.content).toBe('Replying to comment')
+    expect(body.comment.parentId).toBe('888888888888881')
+  })
+
+  it('POST /posts/:id/comments rejects empty content with 400', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const res = await app.request('/posts/999999999999991/comments', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: '   ',
+      }),
+    })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /posts/comments/:id/reply replies directly to a comment', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      replyToComment: async (
+        commentId: bigint,
+        authorAccountId: bigint,
+        _viewer: any,
+        input: any
+      ) => ({
+        ...sampleComment,
+        id: 888888888888883n,
+        authorId: authorAccountId,
+        parentId: commentId,
+        content: input.content,
+      }),
+    }))
+
+    const res = await app.request('/posts/comments/888888888888881/reply', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Direct reply to comment',
+      }),
+    })
+
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { success: boolean; comment: any }
+    expect(body.success).toBe(true)
+    expect(body.comment.content).toBe('Direct reply to comment')
+    expect(body.comment.parentId).toBe('888888888888881')
+  })
+
+  it('POST /posts/comments/:id/reply returns 404 when parent comment does not exist', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      replyToComment: async () => {
+        throw new HTTPException(404, { message: 'Comment not found' })
+      },
+    }))
+
+    const res = await app.request('/posts/comments/999999999999999/reply', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Reply to non-existent comment',
+      }),
+    })
+
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Comment not found')
+  })
+
+  it('DELETE /posts/comments/:id deletes a comment successfully', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      deleteComment: async (authorAccountId: bigint, commentId: bigint) => {
+        expect(authorAccountId).toBe(maleAccount.id)
+        expect(commentId).toBe(888888888888881n)
+        return {
+          success: true,
+          message: 'Comment deleted successfully',
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/comments/888888888888881', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; message: string }
+    expect(body.success).toBe(true)
+    expect(body.message).toBe('Comment deleted successfully')
+  })
+
+  it('DELETE /posts/comments/:id returns 403 when user is not comment author', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: femaleAccount,
+        session: femaleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => femaleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      deleteComment: async () => {
+        throw new HTTPException(403, { message: 'You can only delete your own comments' })
+      },
+    }))
+
+    const res = await app.request('/posts/comments/888888888888881', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer valid_female_token',
+      },
+    })
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('You can only delete your own comments')
+  })
+
+  it('DELETE /posts/comments/:id returns 404 when comment does not exist', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      deleteComment: async () => {
+        throw new HTTPException(404, { message: 'Comment not found' })
+      },
+    }))
+
+    const res = await app.request('/posts/comments/999999999999999', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Comment not found')
   })
 })
 

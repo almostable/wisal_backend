@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception'
 import type { SafeAccount } from '../../../db/schema/accounts'
 import type { Session } from '../../../db/schema/sessions'
 import type { ProfileWithIdentity } from '../../../db/schema/profiles'
-import type { PublicProfile } from '../types'
+import type { PublicProfile, SafeProfile } from '../types'
 
 describe('Profile Feature Route Tests', () => {
   const mockAccount: SafeAccount = {
