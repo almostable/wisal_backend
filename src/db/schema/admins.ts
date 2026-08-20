@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { snowflakePrimaryKey, timestamps, emailSchema } from './common'
 import { adminSessions } from './admin-sessions'
 import { invites } from './invites'
+import { reports } from './reports'
 
 export const ADMIN_ROLES = ['admin', 'moderator'] as const
 export type AdminRole = (typeof ADMIN_ROLES)[number]
@@ -29,6 +30,7 @@ export const admins = pgTable(
 export const adminsRelations = relations(admins, ({ many }) => ({
   sessions: many(adminSessions),
   invitesCreated: many(invites),
+  reportsResolved: many(reports, { relationName: 'resolvedBy' }),
 }))
 
 export const adminEmailSchema = emailSchema
