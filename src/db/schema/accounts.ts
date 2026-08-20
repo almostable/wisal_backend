@@ -7,6 +7,7 @@ import { sessions } from './sessions'
 import { profiles } from './profiles'
 import { invites } from './invites'
 import { follows } from './follows'
+import { posts } from './posts'
 
 export const accounts = pgTable(
   'accounts',
@@ -29,6 +30,7 @@ export const accountsRelations = relations(accounts, ({ one, many }) => ({
   invites: many(invites, { relationName: 'inviter' }),
   followers: many(follows, { relationName: 'following' }),
   following: many(follows, { relationName: 'follower' }),
+  posts: many(posts),
 }))
 
 export { emailSchema }

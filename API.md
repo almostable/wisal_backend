@@ -416,6 +416,237 @@ Header `Authorization: Bearer <token>`.
 
 ---
 
+## Публикации и лента (`/posts`)
+
+> **Важно:** Все эндпоинты `/posts` требуют авторизации (`Authorization: Bearer <token>`) и полностью пройденного онбординга (заданный пол `isMale` и уникальный `identity`).
+
+### `POST /posts`
+- **Доступ:** Авторизованный пользователь с онбордингом
+- **Тело запроса (JSON):**
+  - `content` *(string, обязательное, мин. 1, макс. 5000 симв.)* — текст поста
+  - `type` *(string, опционально, `"text"`, по умолчанию: `"text"`)* — тип поста
+  - `payload` *(object, опционально, по умолчанию: `{}`)* — дополнительные метаданные
+  - `genderScope` *(string, опционально, `"all" | "same_gender"`, по умолчанию: `"all"`)* — охват по полу (`same_gender` — только для своего пола)
+  - `accessLevel` *(string, опционально, `"public" | "followers"`, по умолчанию: `"public"`)* — уровень видимости
+  - `isPinned` *(boolean, опционально, по умолчанию: `false`)* — закрепить пост (снимает закреп с других постов пользователя)
+- **Ответ `201 Created`:**
+  ```json
+  {
+    "success": true,
+    "post": {
+      "id": "999999999999991",
+      "authorId": "111111111111111",
+      "authorGender": true,
+      "type": "text",
+      "payload": {},
+      "content": "Hello Wisal world!",
+      "genderScope": "all",
+      "accessLevel": "public",
+      "isPinned": false,
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "author": {
+        "id": "111111111111111",
+        "name": "John Doe",
+        "identity": "johndoe",
+        "avatarKey": null,
+        "isMale": true
+      }
+    }
+  }
+  ```
+
+### `PATCH /posts/:id`
+- **Доступ:** Автор поста (с онбордингом)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID поста
+- **Тело запроса (JSON):**
+  - `content` *(string, опционально, мин. 1, макс. 5000 симв.)*
+  - `genderScope` *(string, опционально, `"all" | "same_gender"`)*
+  - `accessLevel` *(string, опционально, `"public" | "followers"`)*
+  - `isPinned` *(boolean, опционально)*
+  - `payload` *(object, опционально)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "post": {
+      "id": "999999999999991",
+      "authorId": "111111111111111",
+      "authorGender": true,
+      "type": "text",
+      "payload": {},
+      "content": "Updated post content",
+      "genderScope": "same_gender",
+      "accessLevel": "public",
+      "isPinned": false,
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "author": {
+        "id": "111111111111111",
+        "name": "John Doe",
+        "identity": "johndoe",
+        "avatarKey": null,
+        "isMale": true
+      }
+    }
+  }
+  ```
+
+### `DELETE /posts/:id`
+- **Доступ:** Автор поста (с онбордингом)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID поста
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "message": "Post deleted successfully"
+  }
+  ```
+
+### `PATCH /posts/:id/pin`
+- **Доступ:** Автор поста (с онбордингом)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID поста
+- **Тело запроса (JSON):**
+  - `isPinned` *(boolean, опционально, по умолчанию: `true`)* — закрепить (`true`) или открепить (`false`)
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "post": {
+      "id": "999999999999991",
+      "authorId": "111111111111111",
+      "authorGender": true,
+      "type": "text",
+      "payload": {},
+      "content": "Pinned post content",
+      "genderScope": "all",
+      "accessLevel": "public",
+      "isPinned": true,
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "author": {
+        "id": "111111111111111",
+        "name": "John Doe",
+        "identity": "johndoe",
+        "avatarKey": null,
+        "isMale": true
+      }
+    }
+  }
+  ```
+
+### `GET /posts/feed`
+- **Доступ:** Авторизованный пользователь с онбордингом
+- **Query-параметры:**
+  - `feed` *(string, опционально, `"public" | "following"`, по умолчанию: `"public"`)* — вид ленты (`public` — рандомная выборка, `following` — подписки в хронологическом порядке)
+  - `limit` *(number, опционально, по умолчанию: 20, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "posts": [
+      {
+        "id": "999999999999991",
+        "authorId": "111111111111111",
+        "authorGender": true,
+        "type": "text",
+        "payload": {},
+        "content": "Feed post",
+        "genderScope": "all",
+        "accessLevel": "public",
+        "isPinned": false,
+        "createdAt": "2026-08-20T00:00:00.000Z",
+        "updatedAt": "2026-08-20T00:00:00.000Z",
+        "author": {
+          "id": "111111111111111",
+          "name": "John Doe",
+          "identity": "johndoe",
+          "avatarKey": null,
+          "isMale": true
+        }
+      }
+    ],
+    "limit": 20,
+    "offset": 0
+  }
+  ```
+
+### `GET /posts/:id`
+- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID поста
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "post": {
+      "id": "999999999999991",
+      "authorId": "111111111111111",
+      "authorGender": true,
+      "type": "text",
+      "payload": {},
+      "content": "Specific post content",
+      "genderScope": "all",
+      "accessLevel": "public",
+      "isPinned": false,
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "author": {
+        "id": "111111111111111",
+        "name": "John Doe",
+        "identity": "johndoe",
+        "avatarKey": null,
+        "isMale": true
+      }
+    }
+  }
+  ```
+
+### `GET /posts/user/:identity`
+- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
+- **URL-параметры:**
+  - `identity` *(string, обязательное)* — юзернейм/хэндл автора
+- **Query-параметры:**
+  - `limit` *(number, опционально, по умолчанию: 20, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "posts": [
+      {
+        "id": "999999999999991",
+        "authorId": "111111111111111",
+        "authorGender": true,
+        "type": "text",
+        "payload": {},
+        "content": "Pinned user post",
+        "genderScope": "all",
+        "accessLevel": "public",
+        "isPinned": true,
+        "createdAt": "2026-08-20T00:00:00.000Z",
+        "updatedAt": "2026-08-20T00:00:00.000Z",
+        "author": {
+          "id": "111111111111111",
+          "name": "John Doe",
+          "identity": "johndoe",
+          "avatarKey": null,
+          "isMale": true
+        }
+      }
+    ],
+    "total": 1,
+    "limit": 20,
+    "offset": 0
+  }
+  ```
+
+---
+
 # Admin API
 
 ### Авторизация
