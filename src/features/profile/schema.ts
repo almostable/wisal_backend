@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { paginationQuerySchema } from '../../db/schema/common'
 import {
   onboardingInputSchema,
   updateProfileInputSchema,
@@ -8,20 +9,19 @@ export const identityParamSchema = z.object({
   identity: z.string().min(1, 'Identity handle is required'),
 })
 
-export const listMyInvitesQuerySchema = z.object({
+export const listMyInvitesQuerySchema = paginationQuerySchema.extend({
   status: z.enum(['all', 'active', 'used', 'expired']).default('all'),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
 })
 
 export type ListMyInvitesQuery = z.infer<typeof listMyInvitesQuerySchema>
 
-export const listFollowsQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-})
+export const listFollowsQuerySchema = paginationQuerySchema
 
 export type ListFollowsQuery = z.infer<typeof listFollowsQuerySchema>
+
+export const listBlocksQuerySchema = paginationQuerySchema
+
+export type ListBlocksQuery = z.infer<typeof listBlocksQuerySchema>
 
 export { onboardingInputSchema, updateProfileInputSchema }
 

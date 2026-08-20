@@ -287,6 +287,13 @@ describe('Profile Feature Route Tests', () => {
   })
 
   it('GET /profile/check/:identity returns availability', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
     mock.module('../service', () => ({
       checkHandleAvailability: async (handle: string) => {
         if (handle === 'available_user') {
@@ -296,13 +303,19 @@ describe('Profile Feature Route Tests', () => {
       },
     }))
 
-    const res1 = await app.request('/profile/check/available_user', { method: 'GET' })
+    const res1 = await app.request('/profile/check/available_user', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_user_token' },
+    })
     expect(res1.status).toBe(200)
     const body1 = (await res1.json()) as { success: boolean; available: boolean }
     expect(body1.success).toBe(true)
     expect(body1.available).toBe(true)
 
-    const res2 = await app.request('/profile/check/taken_user', { method: 'GET' })
+    const res2 = await app.request('/profile/check/taken_user', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_user_token' },
+    })
     expect(res2.status).toBe(200)
     const body2 = (await res2.json()) as { success: boolean; available: boolean; reason: string }
     expect(body2.success).toBe(true)
@@ -311,6 +324,13 @@ describe('Profile Feature Route Tests', () => {
   })
 
   it('GET /profile/:identity returns public profile of another user', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
     mock.module('../service', () => ({
       getPublicProfile: async (handle: string) => {
         if (handle === 'wisaluser') {
@@ -320,7 +340,10 @@ describe('Profile Feature Route Tests', () => {
       },
     }))
 
-    const res = await app.request('/profile/wisaluser', { method: 'GET' })
+    const res = await app.request('/profile/wisaluser', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_user_token' },
+    })
     expect(res.status).toBe(200)
     const body = (await res.json()) as { success: boolean; profile: PublicProfile }
     expect(body.success).toBe(true)
@@ -329,14 +352,31 @@ describe('Profile Feature Route Tests', () => {
     expect((body.profile as any).identityId).toBeUndefined()
   })
 
+  it('GET /profile/:identity returns 401 when token is missing', async () => {
+    const res = await app.request('/profile/wisaluser', { method: 'GET' })
+    expect(res.status).toBe(401)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Missing or malformed Authorization header')
+  })
+
   it('GET /profile/:identity returns 404 when profile does not exist', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
     mock.module('../service', () => ({
       getPublicProfile: async () => {
         throw new HTTPException(404, { message: 'Profile not found' })
       },
     }))
 
-    const res = await app.request('/profile/unknown_user', { method: 'GET' })
+    const res = await app.request('/profile/unknown_user', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_user_token' },
+    })
     expect(res.status).toBe(404)
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe('Profile not found')
@@ -497,6 +537,13 @@ describe('Profile Feature Route Tests', () => {
   })
 
   it('GET /profile/:identity/followers and GET /profile/:identity/following return public lists', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
     mock.module('../service', () => ({
       getUserFollowersByIdentity: async (handle: string) => {
         if (handle === 'targetuser') {
@@ -531,20 +578,29 @@ describe('Profile Feature Route Tests', () => {
       },
     }))
 
-    const resFollowers = await app.request('/profile/targetuser/followers', { method: 'GET' })
+    const resFollowers = await app.request('/profile/targetuser/followers', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_user_token' },
+    })
     expect(resFollowers.status).toBe(200)
     const bodyFollowers = (await resFollowers.json()) as { success: boolean; users: any[]; total: number }
     expect(bodyFollowers.success).toBe(true)
     expect(bodyFollowers.users.length).toBe(1)
     expect(bodyFollowers.users[0].identity).toBe('publicfan')
 
-    const resFollowing = await app.request('/profile/targetuser/following', { method: 'GET' })
+    const resFollowing = await app.request('/profile/targetuser/following', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_user_token' },
+    })
     expect(resFollowing.status).toBe(200)
     const bodyFollowing = (await resFollowing.json()) as { success: boolean; total: number }
     expect(bodyFollowing.success).toBe(true)
     expect(bodyFollowing.total).toBe(0)
 
-    const res404 = await app.request('/profile/nonexistent/followers', { method: 'GET' })
+    const res404 = await app.request('/profile/nonexistent/followers', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_user_token' },
+    })
     expect(res404.status).toBe(404)
   })
 
@@ -644,6 +700,229 @@ describe('Profile Feature Route Tests', () => {
     expect(resSelf.status).toBe(400)
     const bodySelf = (await resSelf.json()) as { error: string }
     expect(bodySelf.error).toBe('Users cannot unfollow themselves')
+  })
+
+  it('GET /profile/blocks returns list of blocked users', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      getBlockedUsers: async (_accountId: bigint, _options: any) => ({
+        users: [
+          {
+            id: 999999999999999n,
+            name: 'Blocked User',
+            avatarKey: null,
+            identity: 'blockeduser',
+            isMale: false,
+            blockedAt: new Date(),
+          },
+        ],
+        total: 1,
+        limit: 50,
+        offset: 0,
+      }),
+    }))
+
+    const res = await app.request('/profile/blocks', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; users: any[]; total: number }
+    expect(body.success).toBe(true)
+    expect(body.users.length).toBe(1)
+    expect(body.users[0].identity).toBe('blockeduser')
+  })
+
+  it('POST /profile/:identity/block blocks a user and rejects self block', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      blockUser: async (_blockerId: bigint, handle: string) => {
+        if (handle === 'myself') {
+          throw new HTTPException(400, { message: 'Users cannot block themselves' })
+        }
+        return {
+          blocked: true,
+          message: 'Successfully blocked user',
+        }
+      },
+    }))
+
+    const res = await app.request('/profile/targetuser/block', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; blocked: boolean }
+    expect(body.success).toBe(true)
+    expect(body.blocked).toBe(true)
+
+    const resSelf = await app.request('/profile/myself/block', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+    expect(resSelf.status).toBe(400)
+  })
+
+  it('DELETE /profile/:identity/block unblocks a user', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      unblockUser: async (_blockerId: bigint, _handle: string) => ({
+        blocked: false,
+        message: 'Successfully unblocked user',
+      }),
+    }))
+
+    const res = await app.request('/profile/targetuser/block', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; blocked: boolean }
+    expect(body.success).toBe(true)
+    expect(body.blocked).toBe(false)
+  })
+
+  it('GET /profile/:identity returns restricted profile with is_blocked/is_hidden when block exists', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      getPublicProfile: async (handle: string, viewerId?: bigint) => {
+        expect(viewerId).toBe(mockAccount.id)
+        if (handle === 'blocked_by_me') {
+          return {
+            id: 888888888888888n,
+            name: 'Blocked User',
+            isMale: true,
+            avatarKey: null,
+            description: null,
+            contacts: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            identity: 'blocked_by_me',
+            isBlocked: true,
+            is_blocked: true,
+          }
+        }
+        return {
+          id: 777777777777777n,
+          name: 'Hidden User',
+          isMale: false,
+          avatarKey: null,
+          description: null,
+          contacts: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          identity: 'hidden_user',
+          isHidden: true,
+          is_hidden: true,
+        }
+      },
+    }))
+
+    const resBlocked = await app.request('/profile/blocked_by_me', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+
+    expect(resBlocked.status).toBe(200)
+    const bodyBlocked = (await resBlocked.json()) as { success: boolean; profile: any }
+    expect(bodyBlocked.profile.is_blocked).toBe(true)
+    expect(bodyBlocked.profile.avatarKey).toBeNull()
+    expect(bodyBlocked.profile.description).toBeNull()
+
+    const resHidden = await app.request('/profile/hidden_user', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+
+    expect(resHidden.status).toBe(200)
+    const bodyHidden = (await resHidden.json()) as { success: boolean; profile: any }
+    expect(bodyHidden.profile.is_hidden).toBe(true)
+    expect(bodyHidden.profile.avatarKey).toBeNull()
+  })
+
+  it('GET /profile/:identity/followers and following return empty list when blocked', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      getUserFollowersByIdentity: async () => ({
+        users: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      }),
+      getUserFollowingByIdentity: async () => ({
+        users: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+      }),
+    }))
+
+    const resFollowers = await app.request('/profile/blockeduser/followers', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+    expect(resFollowers.status).toBe(200)
+    const bodyFollowers = (await resFollowers.json()) as { success: boolean; users: any[]; total: number }
+    expect(bodyFollowers.users).toEqual([])
+    expect(bodyFollowers.total).toBe(0)
+
+    const resFollowing = await app.request('/profile/blockeduser/following', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+    expect(resFollowing.status).toBe(200)
+    const bodyFollowing = (await resFollowing.json()) as { success: boolean; users: any[]; total: number }
+    expect(bodyFollowing.users).toEqual([])
+    expect(bodyFollowing.total).toBe(0)
   })
 })
 

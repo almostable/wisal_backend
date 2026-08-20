@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { createPaginationSchema } from '../../db/schema/common'
 import {
   POST_TYPES,
   GENDER_SCOPES,
@@ -43,17 +44,12 @@ export const pinPostSchema = z.object({
   isPinned: z.boolean().default(true),
 })
 
-export const feedQuerySchema = z.object({
+export const feedQuerySchema = createPaginationSchema(20, 100).extend({
   feed: z.enum(['public', 'following']).default('public').optional(),
   type: z.enum(['public', 'following']).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  offset: z.coerce.number().int().min(0).default(0),
 })
 
-export const userPostsQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  offset: z.coerce.number().int().min(0).default(0),
-})
+export const userPostsQuerySchema = createPaginationSchema(20, 100)
 
 export const createCommentSchema = z.object({
   content: commentContentSchema,
@@ -68,10 +64,7 @@ export const replyCommentSchema = z.object({
   payload: z.record(z.string(), z.unknown()).default({}).optional(),
 })
 
-export const listCommentsQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-})
+export const listCommentsQuerySchema = createPaginationSchema(50, 100)
 
 export type PostIdParam = z.infer<typeof postIdParamSchema>
 export type CommentIdParam = z.infer<typeof commentIdParamSchema>

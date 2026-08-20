@@ -353,7 +353,12 @@ export async function listUsers(options: ListUsersOptions = {}): Promise<ListUse
   const [accountRecords, totalResult] = await Promise.all([
     db
       .select({
-        account: accounts,
+        account: {
+          id: accounts.id,
+          email: accounts.email,
+          createdAt: accounts.createdAt,
+          updatedAt: accounts.updatedAt,
+        },
         profile: profiles,
         identity: identities,
       })
@@ -367,7 +372,6 @@ export async function listUsers(options: ListUsersOptions = {}): Promise<ListUse
   ])
 
   const users: UserListItem[] = accountRecords.map(({ account, profile, identity }) => {
-    const { password, ...safeAcc } = account
     const fullProfile: ProfileWithIdentity | null =
       profile && profile.id
         ? {
@@ -377,7 +381,7 @@ export async function listUsers(options: ListUsersOptions = {}): Promise<ListUse
         : null
 
     return {
-      ...safeAccountSchema.parse(safeAcc),
+      ...account,
       profile: formatProfileResponse(fullProfile),
     }
   })

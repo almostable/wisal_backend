@@ -1,7 +1,7 @@
 import { describe, it, expect, mock } from 'bun:test'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import { authMiddleware, optionalAuthMiddleware, extractBearerToken } from '../auth'
+import { authMiddleware, extractBearerToken } from '../auth'
 import type { SafeAccount } from '../../db/schema/accounts'
 import type { Session } from '../../db/schema/sessions'
 
@@ -94,31 +94,5 @@ describe('Auth Middleware Unit Tests', () => {
     const body = (await res.json()) as { email: string; sessionId: string }
     expect(body.email).toBe('user@wisal.dev')
     expect(body.sessionId).toBe('222222222222222')
-  })
-
-  it('optionalAuthMiddleware passes with and without token', async () => {
-    const app = createTestApp()
-    app.use('/public-feed', optionalAuthMiddleware)
-    app.get('/public-feed', (c) => {
-      const account = c.get('account')
-      return c.json({ loggedIn: Boolean(account) })
-    })
-
-    const resNoToken = await app.request('/public-feed')
-    expect(resNoToken.status).toBe(200)
-    expect(await resNoToken.json()).toEqual({ loggedIn: false })
-
-    mock.module('../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: mockAccount,
-        session: mockSession,
-      }),
-    }))
-
-    const resWithToken = await app.request('/public-feed', {
-      headers: { Authorization: 'Bearer some_token' },
-    })
-    expect(resWithToken.status).toBe(200)
-    expect(await resWithToken.json()).toEqual({ loggedIn: true })
   })
 })

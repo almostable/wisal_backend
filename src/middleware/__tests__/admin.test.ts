@@ -1,7 +1,7 @@
 import { describe, it, expect, mock } from 'bun:test'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import { adminAuthMiddleware, requireAdminRole, optionalAdminAuthMiddleware } from '../admin'
+import { adminAuthMiddleware, requireAdminRole } from '../admin'
 import type { SafeAdmin } from '../../db/schema/admins'
 import type { AdminSession } from '../../db/schema/admin-sessions'
 
@@ -133,34 +133,5 @@ describe('Admin Middleware Unit Tests', () => {
     expect(resOk.status).toBe(200)
     const okBody = (await resOk.json()) as { secret: string }
     expect(okBody.secret).toBe('super_secret')
-  })
-
-  it('optionalAdminAuthMiddleware works with and without token', async () => {
-    const app = createTestApp()
-    app.use('/test', optionalAdminAuthMiddleware)
-    app.get('/test', (c) => {
-      const admin = c.get('admin')
-      return c.json({ isAuthenticated: Boolean(admin) })
-    })
-
-    const resNoToken = await app.request('/test')
-    expect(resNoToken.status).toBe(200)
-    const noTokenBody = (await resNoToken.json()) as { isAuthenticated: boolean }
-    expect(noTokenBody.isAuthenticated).toBe(false)
-
-    mock.module('../../lib/admin-session', () => ({
-      validateAdminSessionToken: async () => ({
-        admin: mockAdmin,
-        session: mockSession,
-      }),
-      ADMIN_COOKIE_NAME: 'admin_session',
-    }))
-
-    const resWithToken = await app.request('/test', {
-      headers: { Authorization: 'Bearer some_token' },
-    })
-    expect(resWithToken.status).toBe(200)
-    const tokenBody = (await resWithToken.json()) as { isAuthenticated: boolean }
-    expect(tokenBody.isAuthenticated).toBe(true)
   })
 })

@@ -1,11 +1,13 @@
 import {
   eq,
   and,
+  or,
   ne,
   desc,
   asc,
   isNull,
   count,
+  inArray,
   sql,
   type SQL,
 } from 'drizzle-orm'
@@ -13,6 +15,7 @@ import { HTTPException } from 'hono/http-exception'
 import { db } from '../../db'
 import { posts, type Post, type PostType, type GenderScope, type AccessLevel } from '../../db/schema/posts'
 import { comments, type Comment, type CommentType } from '../../db/schema/comments'
+import { userBlocks } from '../../db/schema/user-blocks'
 import { postLikes } from '../../db/schema/post-likes'
 import { accounts } from '../../db/schema/accounts'
 import { profiles } from '../../db/schema/profiles'
@@ -39,6 +42,36 @@ import type {
   ListCommentsResult,
   DeleteCommentResult,
 } from './types'
+
+const authorSelectFields = {
+  authorAccount: { id: accounts.id },
+  authorProfile: {
+    name: profiles.name,
+    avatarKey: profiles.avatarKey,
+    isMale: profiles.isMale,
+  },
+  authorIdentity: { identity: identities.identity },
+}
+
+type AuthorSelectResult = {
+  authorAccount: { id: bigint }
+  authorProfile: {
+    name: string | null
+    avatarKey: string | null
+    isMale: boolean | null
+  } | null
+  authorIdentity: { identity: string | null } | null
+}
+
+function mapAuthor(data: AuthorSelectResult): PostAuthorInfo {
+  return {
+    id: data.authorAccount.id,
+    name: data.authorProfile?.name ?? null,
+    avatarKey: data.authorProfile?.avatarKey ?? null,
+    identity: data.authorIdentity?.identity ?? null,
+    isMale: data.authorProfile?.isMale ?? null,
+  }
+}
 
 function formatPost(
   post: Post,
@@ -98,6 +131,27 @@ async function checkPostAccess(
   const isAuthor = viewer.accountId === post.authorId
 
   if (!isAuthor) {
+    const [blockRecord] = await executor
+      .select({ blockerId: userBlocks.blockerId })
+      .from(userBlocks)
+      .where(
+        or(
+          and(
+            eq(userBlocks.blockerId, viewer.accountId),
+            eq(userBlocks.blockedId, post.authorId)
+          ),
+          and(
+            eq(userBlocks.blockerId, post.authorId),
+            eq(userBlocks.blockedId, viewer.accountId)
+          )
+        )
+      )
+      .limit(1)
+
+    if (blockRecord) {
+      throw new HTTPException(404, { message: 'Post not found' })
+    }
+
     if (post.genderScope === 'same_gender' && post.authorGender !== viewer.isMale) {
       throw new HTTPException(404, { message: 'Post not found' })
     }
@@ -163,20 +217,14 @@ export async function createPost(
     }
 
     const [authorData] = await tx
-      .select({
-        id: accounts.id,
-        name: profiles.name,
-        avatarKey: profiles.avatarKey,
-        identity: identities.identity,
-        isMale: profiles.isMale,
-      })
+      .select(authorSelectFields)
       .from(accounts)
       .leftJoin(profiles, eq(accounts.id, profiles.accountId))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
       .where(eq(accounts.id, authorAccountId))
       .limit(1)
 
-    return formatPost(created, authorData ?? null, false)
+    return formatPost(created, authorData ? mapAuthor(authorData) : null, false)
   })
 }
 
@@ -237,13 +285,7 @@ export async function updatePost(
       .returning()
 
     const [authorData] = await tx
-      .select({
-        id: accounts.id,
-        name: profiles.name,
-        avatarKey: profiles.avatarKey,
-        identity: identities.identity,
-        isMale: profiles.isMale,
-      })
+      .select(authorSelectFields)
       .from(accounts)
       .leftJoin(profiles, eq(accounts.id, profiles.accountId))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
@@ -261,7 +303,7 @@ export async function updatePost(
       )
       .limit(1)
 
-    return formatPost(updated, authorData ?? null, Boolean(likedRecord))
+    return formatPost(updated, authorData ? mapAuthor(authorData) : null, Boolean(likedRecord))
   })
 }
 
@@ -336,13 +378,7 @@ export async function pinPost(
       .returning()
 
     const [authorData] = await tx
-      .select({
-        id: accounts.id,
-        name: profiles.name,
-        avatarKey: profiles.avatarKey,
-        identity: identities.identity,
-        isMale: profiles.isMale,
-      })
+      .select(authorSelectFields)
       .from(accounts)
       .leftJoin(profiles, eq(accounts.id, profiles.accountId))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
@@ -360,7 +396,7 @@ export async function pinPost(
       )
       .limit(1)
 
-    return formatPost(updated, authorData ?? null, Boolean(likedRecord))
+    return formatPost(updated, authorData ? mapAuthor(authorData) : null, Boolean(likedRecord))
   })
 }
 
@@ -369,38 +405,7 @@ export async function likePost(
   viewer: { accountId: bigint; isMale: boolean }
 ): Promise<LikeActionResult> {
   return await db.transaction(async (tx) => {
-    const post = await tx.query.posts.findFirst({
-      where: and(eq(posts.id, postId), isNull(posts.deletedAt)),
-    })
-
-    if (!post) {
-      throw new HTTPException(404, { message: 'Post not found' })
-    }
-
-    const isAuthor = viewer.accountId === post.authorId
-
-    if (!isAuthor) {
-      if (post.genderScope === 'same_gender' && post.authorGender !== viewer.isMale) {
-        throw new HTTPException(404, { message: 'Post not found' })
-      }
-
-      if (post.accessLevel === 'followers') {
-        const [followRecord] = await tx
-          .select({ followerId: follows.followerId })
-          .from(follows)
-          .where(
-            and(
-              eq(follows.followerId, viewer.accountId),
-              eq(follows.followingId, post.authorId)
-            )
-          )
-          .limit(1)
-
-        if (!followRecord) {
-          throw new HTTPException(404, { message: 'Post not found' })
-        }
-      }
-    }
+    const post = await checkPostAccess(tx, postId, viewer)
 
     const inserted = await tx
       .insert(postLikes)
@@ -440,38 +445,7 @@ export async function unlikePost(
   viewer: { accountId: bigint; isMale: boolean }
 ): Promise<LikeActionResult> {
   return await db.transaction(async (tx) => {
-    const post = await tx.query.posts.findFirst({
-      where: and(eq(posts.id, postId), isNull(posts.deletedAt)),
-    })
-
-    if (!post) {
-      throw new HTTPException(404, { message: 'Post not found' })
-    }
-
-    const isAuthor = viewer.accountId === post.authorId
-
-    if (!isAuthor) {
-      if (post.genderScope === 'same_gender' && post.authorGender !== viewer.isMale) {
-        throw new HTTPException(404, { message: 'Post not found' })
-      }
-
-      if (post.accessLevel === 'followers') {
-        const [followRecord] = await tx
-          .select({ followerId: follows.followerId })
-          .from(follows)
-          .where(
-            and(
-              eq(follows.followerId, viewer.accountId),
-              eq(follows.followingId, post.authorId)
-            )
-          )
-          .limit(1)
-
-        if (!followRecord) {
-          throw new HTTPException(404, { message: 'Post not found' })
-        }
-      }
-    }
+    const post = await checkPostAccess(tx, postId, viewer)
 
     const deleted = await tx
       .delete(postLikes)
@@ -511,16 +485,12 @@ export async function getPostById(
   postId: bigint,
   viewer: { accountId: bigint; isMale: boolean }
 ): Promise<PostResponse> {
+  await checkPostAccess(db, postId, viewer)
+
   const [result] = await db
     .select({
       post: posts,
-      authorAccount: { id: accounts.id },
-      authorProfile: {
-        name: profiles.name,
-        avatarKey: profiles.avatarKey,
-        isMale: profiles.isMale,
-      },
-      authorIdentity: { identity: identities.identity },
+      ...authorSelectFields,
       isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
     })
     .from(posts)
@@ -541,41 +511,7 @@ export async function getPostById(
     throw new HTTPException(404, { message: 'Post not found' })
   }
 
-  const { post, authorAccount, authorProfile, authorIdentity, isLiked } = result
-  const isAuthor = viewer.accountId === post.authorId
-
-  if (!isAuthor) {
-    if (post.genderScope === 'same_gender' && post.authorGender !== viewer.isMale) {
-      throw new HTTPException(404, { message: 'Post not found' })
-    }
-
-    if (post.accessLevel === 'followers') {
-      const [followRecord] = await db
-        .select({ followerId: follows.followerId })
-        .from(follows)
-        .where(
-          and(
-            eq(follows.followerId, viewer.accountId),
-            eq(follows.followingId, post.authorId)
-          )
-        )
-        .limit(1)
-
-      if (!followRecord) {
-        throw new HTTPException(404, { message: 'Post not found' })
-      }
-    }
-  }
-
-  const author: PostAuthorInfo = {
-    id: authorAccount.id,
-    name: authorProfile?.name ?? null,
-    avatarKey: authorProfile?.avatarKey ?? null,
-    identity: authorIdentity?.identity ?? null,
-    isMale: authorProfile?.isMale ?? null,
-  }
-
-  return formatPost(post, author, Boolean(isLiked))
+  return formatPost(result.post, mapAuthor(result), Boolean(result.isLiked))
 }
 
 export async function getFeed(
@@ -586,11 +522,18 @@ export async function getFeed(
   const limit = Math.min(Math.max(query.limit ?? 20, 1), 100)
   const offset = Math.max(query.offset ?? 0, 0)
 
+  const notBlockedCondition = sql`NOT EXISTS (
+    SELECT 1 FROM ${userBlocks}
+    WHERE (${userBlocks.blockerId} = ${viewer.accountId} AND ${userBlocks.blockedId} = ${posts.authorId})
+       OR (${userBlocks.blockerId} = ${posts.authorId} AND ${userBlocks.blockedId} = ${viewer.accountId})
+  )`
+
   let whereCondition: SQL
 
   if (feedType === 'following') {
     whereCondition = and(
       isNull(posts.deletedAt),
+      notBlockedCondition,
       sql`(${posts.authorId} = ${viewer.accountId} OR EXISTS (
         SELECT 1 FROM ${follows}
         WHERE ${follows.followerId} = ${viewer.accountId}
@@ -601,6 +544,7 @@ export async function getFeed(
   } else {
     whereCondition = and(
       isNull(posts.deletedAt),
+      notBlockedCondition,
       sql`(${posts.authorId} = ${viewer.accountId} OR (
         (${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))
         AND
@@ -616,13 +560,7 @@ export async function getFeed(
   const items = await db
     .select({
       post: posts,
-      authorAccount: { id: accounts.id },
-      authorProfile: {
-        name: profiles.name,
-        avatarKey: profiles.avatarKey,
-        isMale: profiles.isMale,
-      },
-      authorIdentity: { identity: identities.identity },
+      ...authorSelectFields,
       isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
     })
     .from(posts)
@@ -642,17 +580,7 @@ export async function getFeed(
     .offset(offset)
 
   const formattedPosts = items.map((item) =>
-    formatPost(
-      item.post,
-      {
-        id: item.authorAccount.id,
-        name: item.authorProfile?.name ?? null,
-        avatarKey: item.authorProfile?.avatarKey ?? null,
-        identity: item.authorIdentity?.identity ?? null,
-        isMale: item.authorProfile?.isMale ?? null,
-      },
-      Boolean(item.isLiked)
-    )
+    formatPost(item.post, mapAuthor(item), Boolean(item.isLiked))
   )
 
   return {
@@ -681,6 +609,34 @@ export async function getUserPosts(
   }
 
   const isAuthor = viewer.accountId === targetAccountId
+
+  if (!isAuthor) {
+    const [blockRecord] = await db
+      .select({ blockerId: userBlocks.blockerId })
+      .from(userBlocks)
+      .where(
+        or(
+          and(
+            eq(userBlocks.blockerId, viewer.accountId),
+            eq(userBlocks.blockedId, targetAccountId)
+          ),
+          and(
+            eq(userBlocks.blockerId, targetAccountId),
+            eq(userBlocks.blockedId, viewer.accountId)
+          )
+        )
+      )
+      .limit(1)
+
+    if (blockRecord) {
+      return {
+        posts: [],
+        total: 0,
+        limit,
+        offset,
+      }
+    }
+  }
 
   let isFollowing = false
   if (!isAuthor) {
@@ -719,13 +675,7 @@ export async function getUserPosts(
     db
       .select({
         post: posts,
-        authorAccount: { id: accounts.id },
-        authorProfile: {
-          name: profiles.name,
-          avatarKey: profiles.avatarKey,
-          isMale: profiles.isMale,
-        },
-        authorIdentity: { identity: identities.identity },
+        ...authorSelectFields,
         isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
       })
       .from(posts)
@@ -750,28 +700,18 @@ export async function getUserPosts(
   ])
 
   const formattedPosts = items.map((item) =>
-    formatPost(
-      item.post,
-      {
-        id: item.authorAccount.id,
-        name: item.authorProfile?.name ?? null,
-        avatarKey: item.authorProfile?.avatarKey ?? null,
-        identity: item.authorIdentity?.identity ?? null,
-        isMale: item.authorProfile?.isMale ?? null,
-      },
-      Boolean(item.isLiked)
-    )
+    formatPost(item.post, mapAuthor(item), Boolean(item.isLiked))
   )
 
-    return {
-      posts: formattedPosts,
-      total: totalResult[0]?.count ?? 0,
-      limit,
-      offset,
-    }
+  return {
+    posts: formattedPosts,
+    total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
   }
+}
 
-  export async function getPostComments(
+export async function getPostComments(
     postId: bigint,
     viewer: { accountId: bigint; isMale: boolean },
     query: ListCommentsQueryDTO
@@ -790,13 +730,7 @@ export async function getUserPosts(
       db
         .select({
           comment: comments,
-          authorAccount: { id: accounts.id },
-          authorProfile: {
-            name: profiles.name,
-            avatarKey: profiles.avatarKey,
-            isMale: profiles.isMale,
-          },
-          authorIdentity: { identity: identities.identity },
+          ...authorSelectFields,
         })
         .from(comments)
         .innerJoin(accounts, eq(comments.authorId, accounts.id))
@@ -812,15 +746,77 @@ export async function getUserPosts(
         .where(whereClause),
     ])
 
-    const formattedComments = items.map((item) =>
-      formatComment(item.comment, {
-        id: item.authorAccount.id,
-        name: item.authorProfile?.name ?? null,
-        avatarKey: item.authorProfile?.avatarKey ?? null,
-        identity: item.authorIdentity?.identity ?? null,
-        isMale: item.authorProfile?.isMale ?? null,
-      })
+  const otherAuthorIds = Array.from(
+    new Set(
+      items
+        .map((item) => item.authorAccount.id)
+        .filter((id) => id !== viewer.accountId)
     )
+  )
+
+  const blockedByViewer = new Set<bigint>()
+  const blockedViewer = new Set<bigint>()
+
+  if (otherAuthorIds.length > 0) {
+    const blockRows = await db
+      .select({
+        blockerId: userBlocks.blockerId,
+        blockedId: userBlocks.blockedId,
+      })
+      .from(userBlocks)
+      .where(
+        or(
+          and(
+            eq(userBlocks.blockerId, viewer.accountId),
+            inArray(userBlocks.blockedId, otherAuthorIds)
+          ),
+          and(
+            eq(userBlocks.blockedId, viewer.accountId),
+            inArray(userBlocks.blockerId, otherAuthorIds)
+          )
+        )
+      )
+
+    for (const row of blockRows) {
+      if (row.blockerId === viewer.accountId) {
+        blockedByViewer.add(row.blockedId)
+      } else {
+        blockedViewer.add(row.blockerId)
+      }
+    }
+  }
+
+  const formattedComments = items.map((item) => {
+    const isBlocked = blockedByViewer.has(item.authorAccount.id)
+    const isHidden = blockedViewer.has(item.authorAccount.id)
+
+    if (isBlocked || isHidden) {
+      return {
+        id: item.comment.id,
+        postId: item.comment.postId,
+        authorId: item.comment.authorId,
+        parentId: item.comment.parentId ?? null,
+        type: item.comment.type as CommentType,
+        payload: {},
+        content: '',
+        createdAt: item.comment.createdAt,
+        updatedAt: item.comment.updatedAt,
+        author: {
+          id: item.authorAccount.id,
+          name: item.authorProfile?.name ?? null,
+          avatarKey: null,
+          identity: item.authorIdentity?.identity ?? null,
+          isMale: item.authorProfile?.isMale ?? null,
+          ...(isBlocked ? { isBlocked: true, is_blocked: true } : {}),
+          ...(isHidden ? { isHidden: true, is_hidden: true } : {}),
+        },
+        ...(isBlocked ? { isBlocked: true, is_blocked: true } : {}),
+        ...(isHidden ? { isHidden: true, is_hidden: true } : {}),
+      }
+    }
+
+    return formatComment(item.comment, mapAuthor(item))
+  })
 
     return {
       comments: formattedComments,
@@ -876,20 +872,14 @@ export async function getUserPosts(
         .where(eq(posts.id, postId))
 
       const [authorData] = await tx
-        .select({
-          id: accounts.id,
-          name: profiles.name,
-          avatarKey: profiles.avatarKey,
-          identity: identities.identity,
-          isMale: profiles.isMale,
-        })
+        .select(authorSelectFields)
         .from(accounts)
         .leftJoin(profiles, eq(accounts.id, profiles.accountId))
         .leftJoin(identities, eq(profiles.identityId, identities.id))
         .where(eq(accounts.id, authorAccountId))
         .limit(1)
 
-      return formatComment(created, authorData ?? null)
+      return formatComment(created, authorData ? mapAuthor(authorData) : null)
     })
   }
 

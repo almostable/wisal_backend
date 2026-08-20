@@ -1083,5 +1083,141 @@ describe('Posts Feature Route Tests', () => {
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe('Comment not found')
   })
+
+  it('GET /posts/user/:identity returns empty list when block exists', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      getUserPosts: async () => ({
+        posts: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      }),
+    }))
+
+    const res = await app.request('/posts/user/blocked_user', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      posts: any[]
+      total: number
+      limit: number
+      offset: number
+    }
+    expect(body.success).toBe(true)
+    expect(body.posts).toEqual([])
+    expect(body.total).toBe(0)
+  })
+
+  it('GET /posts/:id/comments returns masked comments when comment author is blocked', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      getPostComments: async () => ({
+        comments: [
+          {
+            ...sampleComment,
+            content: '',
+            author: {
+              ...sampleComment.author,
+              avatarKey: null,
+              isBlocked: true,
+              is_blocked: true,
+            },
+            isBlocked: true,
+            is_blocked: true,
+          },
+        ],
+        total: 1,
+        limit: 50,
+        offset: 0,
+      }),
+    }))
+
+    const res = await app.request('/posts/999999999999991/comments', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; comments: any[] }
+    expect(body.success).toBe(true)
+    expect(body.comments[0].content).toBe('')
+    expect(body.comments[0].is_blocked).toBe(true)
+    expect(body.comments[0].author.avatarKey).toBeNull()
+  })
+
+  it('GET /posts/:id, POST /posts/:id/like, POST /posts/:id/unlike return 404 for blocked or restricted post access', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      getPostById: async () => {
+        throw new HTTPException(404, { message: 'Post not found' })
+      },
+      likePost: async () => {
+        throw new HTTPException(404, { message: 'Post not found' })
+      },
+      unlikePost: async () => {
+        throw new HTTPException(404, { message: 'Post not found' })
+      },
+    }))
+
+    const resGet = await app.request('/posts/999999999999991', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_male_token' },
+    })
+    expect(resGet.status).toBe(404)
+
+    const resLike = await app.request('/posts/999999999999991/like', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer valid_male_token' },
+    })
+    expect(resLike.status).toBe(404)
+
+    const resUnlike = await app.request('/posts/999999999999991/unlike', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer valid_male_token' },
+    })
+    expect(resUnlike.status).toBe(404)
+  })
 })
 

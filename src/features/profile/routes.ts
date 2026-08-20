@@ -1,12 +1,13 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
-import { authMiddleware, optionalAuthMiddleware } from '../../middleware/auth'
+import { authMiddleware } from '../../middleware/auth'
 import {
   identityParamSchema,
   onboardingInputSchema,
   updateProfileInputSchema,
   listMyInvitesQuerySchema,
   listFollowsQuerySchema,
+  listBlocksQuerySchema,
 } from './schema'
 import {
   getMyProfile,
@@ -21,11 +22,16 @@ import {
   getUserFollowingByIdentity,
   followUser,
   unfollowUser,
+  blockUser,
+  unblockUser,
+  getBlockedUsers,
 } from './service'
 
 export const profileRouter = new Hono()
 
-profileRouter.get('/me', authMiddleware, async (c) => {
+profileRouter.use('*', authMiddleware)
+
+profileRouter.get('/me', async (c) => {
   const account = c.get('account')
   const result = await getMyProfile(account.id)
 
@@ -37,7 +43,6 @@ profileRouter.get('/me', authMiddleware, async (c) => {
 
 profileRouter.post(
   '/onboarding',
-  authMiddleware,
   zValidator('json', onboardingInputSchema),
   async (c) => {
     const account = c.get('account')
@@ -53,7 +58,6 @@ profileRouter.post(
 
 profileRouter.patch(
   '/me',
-  authMiddleware,
   zValidator('json', updateProfileInputSchema),
   async (c) => {
     const account = c.get('account')
@@ -69,7 +73,6 @@ profileRouter.patch(
 
 profileRouter.get(
   '/invites',
-  authMiddleware,
   zValidator('query', listMyInvitesQuerySchema),
   async (c) => {
     const account = c.get('account')
@@ -84,8 +87,22 @@ profileRouter.get(
 )
 
 profileRouter.get(
+  '/blocks',
+  zValidator('query', listBlocksQuerySchema),
+  async (c) => {
+    const account = c.get('account')
+    const query = c.req.valid('query')
+    const result = await getBlockedUsers(account.id, query)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+profileRouter.get(
   '/followers',
-  authMiddleware,
   zValidator('query', listFollowsQuerySchema),
   async (c) => {
     const account = c.get('account')
@@ -101,7 +118,6 @@ profileRouter.get(
 
 profileRouter.get(
   '/following',
-  authMiddleware,
   zValidator('query', listFollowsQuerySchema),
   async (c) => {
     const account = c.get('account')
@@ -127,7 +143,6 @@ profileRouter.get('/check/:identity', zValidator('param', identityParamSchema), 
 
 profileRouter.post(
   '/:identity/follow',
-  authMiddleware,
   zValidator('param', identityParamSchema),
   async (c) => {
     const account = c.get('account')
@@ -143,7 +158,6 @@ profileRouter.post(
 
 profileRouter.delete(
   '/:identity/follow',
-  authMiddleware,
   zValidator('param', identityParamSchema),
   async (c) => {
     const account = c.get('account')
@@ -157,15 +171,45 @@ profileRouter.delete(
   }
 )
 
+profileRouter.post(
+  '/:identity/block',
+  zValidator('param', identityParamSchema),
+  async (c) => {
+    const account = c.get('account')
+    const { identity } = c.req.valid('param')
+    const result = await blockUser(account.id, identity)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+profileRouter.delete(
+  '/:identity/block',
+  zValidator('param', identityParamSchema),
+  async (c) => {
+    const account = c.get('account')
+    const { identity } = c.req.valid('param')
+    const result = await unblockUser(account.id, identity)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
 profileRouter.get(
   '/:identity/followers',
-  optionalAuthMiddleware,
   zValidator('param', identityParamSchema),
   zValidator('query', listFollowsQuerySchema),
   async (c) => {
+    const account = c.get('account')
     const { identity } = c.req.valid('param')
     const query = c.req.valid('query')
-    const result = await getUserFollowersByIdentity(identity, query)
+    const result = await getUserFollowersByIdentity(identity, query, account.id)
 
     return c.json({
       success: true,
@@ -176,13 +220,13 @@ profileRouter.get(
 
 profileRouter.get(
   '/:identity/following',
-  optionalAuthMiddleware,
   zValidator('param', identityParamSchema),
   zValidator('query', listFollowsQuerySchema),
   async (c) => {
+    const account = c.get('account')
     const { identity } = c.req.valid('param')
     const query = c.req.valid('query')
-    const result = await getUserFollowingByIdentity(identity, query)
+    const result = await getUserFollowingByIdentity(identity, query, account.id)
 
     return c.json({
       success: true,
@@ -193,11 +237,11 @@ profileRouter.get(
 
 profileRouter.get(
   '/:identity',
-  optionalAuthMiddleware,
   zValidator('param', identityParamSchema),
   async (c) => {
+    const account = c.get('account')
     const { identity } = c.req.valid('param')
-    const profile = await getPublicProfile(identity)
+    const profile = await getPublicProfile(identity, account.id)
 
     return c.json({
       success: true,

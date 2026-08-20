@@ -66,3 +66,24 @@ export interface FollowActionResult {
   message: string
 }
 
+export interface BlockedUserItem {
+  id: bigint
+  name: string | null
+  avatarKey: string | null
+  identity: string | null
+  isMale: boolean | null
+  blockedAt: Date
+}
+
+export interface ListBlocksResult {
+  users: BlockedUserItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface BlockActionResult {
+  blocked: boolean
+  message: string
+}
+

@@ -12,11 +12,6 @@ export type AdminAuthVariables = {
   admin: SafeAdmin
 }
 
-export type OptionalAdminAuthVariables = {
-  adminSession?: AdminSession
-  admin?: SafeAdmin
-}
-
 declare module 'hono' {
   interface ContextVariableMap {
     admin: SafeAdmin
@@ -75,19 +70,3 @@ export function requireAdminRole(...allowedRoles: AdminRole[]) {
     await next()
   })
 }
-
-export const optionalAdminAuthMiddleware = createMiddleware<{
-  Variables: OptionalAdminAuthVariables
-}>(async (c, next) => {
-  const token = extractAdminToken(c)
-
-  if (token) {
-    const result = await validateAdminSessionToken(token)
-    if (result) {
-      c.set('adminSession', result.session)
-      c.set('admin', result.admin)
-    }
-  }
-
-  await next()
-})

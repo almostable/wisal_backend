@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../db'
-import { profiles, type Profile, type ProfileWithIdentity, type OnboardingInput, type UpdateProfileInput } from '../db/schema/profiles'
+import { profiles, type Profile, type ProfileWithIdentity, type OnboardingInput, type UpdateProfileInput, type Contacts } from '../db/schema/profiles'
 import { identities, identityFormatSchema, type Identity } from '../db/schema/identities'
 
 export interface SafeProfile {
@@ -10,10 +10,14 @@ export interface SafeProfile {
   isMale: boolean | null
   avatarKey: string | null
   description: string | null
-  contacts: any
+  contacts: Contacts | null
   createdAt: Date
   updatedAt: Date
   identity: string | null
+  isBlocked?: boolean
+  is_blocked?: boolean
+  isHidden?: boolean
+  is_hidden?: boolean
 }
 
 export function formatProfileResponse(
@@ -37,6 +41,41 @@ export function formatProfileResponse(
     updatedAt: profile.updatedAt,
     identity: identityStr,
   }
+}
+
+export function formatRestrictedProfileResponse(
+  profile: (Profile & { identity?: Identity | null | string }) | null,
+  flags: { isBlocked?: boolean; isHidden?: boolean }
+): SafeProfile | null {
+  if (!profile) return null
+
+  const identityStr =
+    typeof profile.identity === 'string'
+      ? profile.identity
+      : profile.identity?.identity ?? null
+
+  const res: SafeProfile = {
+    id: profile.id,
+    name: profile.name,
+    isMale: profile.isMale,
+    avatarKey: null,
+    description: null,
+    contacts: null,
+    createdAt: profile.createdAt,
+    updatedAt: profile.updatedAt,
+    identity: identityStr,
+  }
+
+  if (flags.isBlocked) {
+    res.isBlocked = true
+    res.is_blocked = true
+  }
+  if (flags.isHidden) {
+    res.isHidden = true
+    res.is_hidden = true
+  }
+
+  return res
 }
 
 export function isOnboardingCompleted(

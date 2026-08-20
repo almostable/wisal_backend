@@ -33,6 +33,10 @@ export interface CommentAuthorInfo {
   identity: string | null
   avatarKey: string | null
   isMale: boolean | null
+  isBlocked?: boolean
+  is_blocked?: boolean
+  isHidden?: boolean
+  is_hidden?: boolean
 }
 
 export interface CommentResponse {
@@ -46,6 +50,10 @@ export interface CommentResponse {
   createdAt: Date
   updatedAt: Date
   author?: CommentAuthorInfo | null
+  isBlocked?: boolean
+  is_blocked?: boolean
+  isHidden?: boolean
+  is_hidden?: boolean
 }
 
 export interface LikeActionResult {

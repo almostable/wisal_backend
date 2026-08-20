@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { generateToken, hashToken } from '../token'
+import { generateToken, hashToken, calculateExpiryDate, isExpired } from '../token'
 
 describe('Token Utility Tests', () => {
   it('generates unique random tokens with base64url encoding', () => {
@@ -22,6 +22,23 @@ describe('Token Utility Tests', () => {
     expect(h1).toBe(h2)
     expect(h1).toHaveLength(64)
     expect(/^[0-9a-f]{64}$/.test(h1)).toBe(true)
+  })
+
+  it('calculateExpiryDate returns a date in the future corresponding to given days', () => {
+    const now = Date.now()
+    const expiry = calculateExpiryDate(30)
+    const diffDays = (expiry.getTime() - now) / (1000 * 60 * 60 * 24)
+
+    expect(diffDays).toBeGreaterThanOrEqual(29.9)
+    expect(diffDays).toBeLessThanOrEqual(30.1)
+  })
+
+  it('isExpired accurately determines expiration state', () => {
+    const past = new Date(Date.now() - 1000)
+    const future = new Date(Date.now() + 100000)
+
+    expect(isExpired(past)).toBe(true)
+    expect(isExpired(future)).toBe(false)
   })
 })
 

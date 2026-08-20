@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import { adminSessions, type AdminSession } from '../db/schema/admin-sessions'
 import { admins, safeAdminSchema, type SafeAdmin } from '../db/schema/admins'
-import { generateToken, hashToken } from './token'
+import { generateToken, hashToken, calculateExpiryDate, isExpired } from './token'
 
 export const ADMIN_SESSION_TTL_DAYS = 30
 export const ADMIN_COOKIE_NAME = 'admin_session'
@@ -21,7 +21,7 @@ export async function createAdminSession(
 ): Promise<{ session: AdminSession; token: string }> {
   const token = generateAdminSessionToken()
   const tokenHash = hashAdminSessionToken(token)
-  const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000)
+  const expiresAt = calculateExpiryDate(ttlDays)
 
   const [session] = await db
     .insert(adminSessions)
@@ -62,7 +62,7 @@ export async function validateAdminSessionToken(
     return null
   }
 
-  if (Date.now() >= result.session.expiresAt.getTime()) {
+  if (isExpired(result.session.expiresAt)) {
     db.delete(adminSessions).where(eq(adminSessions.id, result.session.id)).catch(() => {})
     return null
   }

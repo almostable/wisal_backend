@@ -9,11 +9,6 @@ export type AuthVariables = {
   account: SafeAccount
 }
 
-export type OptionalAuthVariables = {
-  session?: Session
-  account?: SafeAccount
-}
-
 declare module 'hono' {
   interface ContextVariableMap {
     session: Session
@@ -49,23 +44,6 @@ export const authMiddleware = createMiddleware<{
 
   c.set('session', result.session)
   c.set('account', result.account)
-
-  await next()
-})
-
-export const optionalAuthMiddleware = createMiddleware<{
-  Variables: OptionalAuthVariables
-}>(async (c, next) => {
-  const authHeader = c.req.header('Authorization')
-  const token = extractBearerToken(authHeader)
-
-  if (token) {
-    const result = await validateSessionToken(token)
-    if (result) {
-      c.set('session', result.session)
-      c.set('account', result.account)
-    }
-  }
 
   await next()
 })

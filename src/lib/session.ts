@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import { sessions, type Session } from '../db/schema/sessions'
 import { accounts, safeAccountSchema, type SafeAccount } from '../db/schema/accounts'
-import { generateToken, hashToken } from './token'
+import { generateToken, hashToken, calculateExpiryDate, isExpired } from './token'
 
 export const SESSION_TTL_DAYS = 360
 
@@ -20,7 +20,7 @@ export async function createSession(
 ): Promise<{ session: Session; token: string }> {
   const token = generateSessionToken()
   const tokenHash = hashSessionToken(token)
-  const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000)
+  const expiresAt = calculateExpiryDate(ttlDays)
 
   const [session] = await db
     .insert(sessions)
@@ -61,7 +61,7 @@ export async function validateSessionToken(
     return null
   }
 
-  if (Date.now() >= result.session.expiresAt.getTime()) {
+  if (isExpired(result.session.expiresAt)) {
     db.delete(sessions).where(eq(sessions.id, result.session.id)).catch(() => {})
     return null
   }

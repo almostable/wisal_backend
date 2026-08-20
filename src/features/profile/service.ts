@@ -1,6 +1,7 @@
 import {
   eq,
   and,
+  or,
   count,
   desc,
   isNull,
@@ -17,6 +18,7 @@ import { accounts } from '../../db/schema/accounts'
 import { profiles } from '../../db/schema/profiles'
 import { identities } from '../../db/schema/identities'
 import { follows } from '../../db/schema/follows'
+import { userBlocks } from '../../db/schema/user-blocks'
 import {
   getProfileByAccountId,
   getProfileByIdentity,
@@ -25,6 +27,7 @@ import {
   checkIdentityAvailable,
   isOnboardingCompleted,
   formatProfileResponse,
+  formatRestrictedProfileResponse,
   type SafeProfile,
 } from '../../lib/profile'
 import type {
@@ -32,7 +35,7 @@ import type {
   OnboardingInput,
   UpdateProfileInput,
 } from '../../db/schema/profiles'
-import type { ListMyInvitesQuery, ListFollowsQuery } from './schema'
+import type { ListMyInvitesQuery, ListFollowsQuery, ListBlocksQuery } from './schema'
 import type {
   PublicProfile,
   MyProfileResult,
@@ -43,6 +46,9 @@ import type {
   FollowUserItem,
   ListFollowsResult,
   FollowActionResult,
+  BlockedUserItem,
+  ListBlocksResult,
+  BlockActionResult,
 } from './types'
 
 export async function getMyProfile(accountId: bigint): Promise<MyProfileResult> {
@@ -74,11 +80,43 @@ export async function updateUserProfile(
   return formatProfileResponse(profile)!
 }
 
-export async function getPublicProfile(identityHandle: string): Promise<PublicProfile> {
+export async function getPublicProfile(
+  identityHandle: string,
+  viewerAccountId: bigint
+): Promise<PublicProfile> {
   const profile = await getProfileByIdentity(identityHandle)
 
   if (!profile || !profile.identity) {
     throw new HTTPException(404, { message: 'Profile not found' })
+  }
+
+  if (viewerAccountId !== profile.accountId) {
+    const [blockRecord] = await db
+      .select({
+        isBlocked: sql<boolean>`CASE WHEN ${userBlocks.blockerId} = ${viewerAccountId} AND ${userBlocks.blockedId} = ${profile.accountId} THEN true ELSE false END`,
+        isHidden: sql<boolean>`CASE WHEN ${userBlocks.blockerId} = ${profile.accountId} AND ${userBlocks.blockedId} = ${viewerAccountId} THEN true ELSE false END`,
+      })
+      .from(userBlocks)
+      .where(
+        or(
+          and(
+            eq(userBlocks.blockerId, viewerAccountId),
+            eq(userBlocks.blockedId, profile.accountId)
+          ),
+          and(
+            eq(userBlocks.blockerId, profile.accountId),
+            eq(userBlocks.blockedId, viewerAccountId)
+          )
+        )
+      )
+      .limit(1)
+
+    if (blockRecord) {
+      return formatRestrictedProfileResponse(profile, {
+        isBlocked: Boolean(blockRecord.isBlocked),
+        isHidden: Boolean(blockRecord.isHidden),
+      })!
+    }
   }
 
   return formatProfileResponse(profile)!
@@ -204,12 +242,15 @@ export async function getAccountIdByIdentity(identityHandle: string): Promise<bi
   return result?.accountId ?? null
 }
 
-export async function getFollowers(
+async function fetchFollowList(
+  type: 'followers' | 'following',
   targetAccountId: bigint,
   options: ListFollowsQuery = { limit: 50, offset: 0 }
 ): Promise<ListFollowsResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
+  const targetCol = type === 'followers' ? follows.followingId : follows.followerId
+  const joinCol = type === 'followers' ? follows.followerId : follows.followingId
 
   const [items, totalResult] = await Promise.all([
     db
@@ -222,17 +263,17 @@ export async function getFollowers(
         followedAt: follows.createdAt,
       })
       .from(follows)
-      .innerJoin(accounts, eq(follows.followerId, accounts.id))
+      .innerJoin(accounts, eq(joinCol, accounts.id))
       .leftJoin(profiles, eq(accounts.id, profiles.accountId))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
-      .where(eq(follows.followingId, targetAccountId))
+      .where(eq(targetCol, targetAccountId))
       .orderBy(desc(follows.createdAt))
       .limit(limit)
       .offset(offset),
     db
       .select({ count: count() })
       .from(follows)
-      .where(eq(follows.followingId, targetAccountId)),
+      .where(eq(targetCol, targetAccountId)),
   ])
 
   return {
@@ -248,87 +289,118 @@ export async function getFollowers(
     limit,
     offset,
   }
+}
+
+export async function getFollowers(
+  targetAccountId: bigint,
+  options: ListFollowsQuery = { limit: 50, offset: 0 }
+): Promise<ListFollowsResult> {
+  return fetchFollowList('followers', targetAccountId, options)
 }
 
 export async function getFollowing(
   targetAccountId: bigint,
   options: ListFollowsQuery = { limit: 50, offset: 0 }
 ): Promise<ListFollowsResult> {
-  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
-  const offset = Math.max(options.offset ?? 0, 0)
+  return fetchFollowList('following', targetAccountId, options)
+}
 
-  const [items, totalResult] = await Promise.all([
-    db
-      .select({
-        accountId: accounts.id,
-        name: profiles.name,
-        avatarKey: profiles.avatarKey,
-        description: profiles.description,
-        identity: identities.identity,
-        followedAt: follows.createdAt,
-      })
-      .from(follows)
-      .innerJoin(accounts, eq(follows.followingId, accounts.id))
-      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
-      .leftJoin(identities, eq(profiles.identityId, identities.id))
-      .where(eq(follows.followerId, targetAccountId))
-      .orderBy(desc(follows.createdAt))
-      .limit(limit)
-      .offset(offset),
-    db
-      .select({ count: count() })
-      .from(follows)
-      .where(eq(follows.followerId, targetAccountId)),
-  ])
+export async function checkBlockExists(
+  accountIdA: bigint,
+  accountIdB: bigint
+): Promise<boolean> {
+  const [record] = await db
+    .select({ blockerId: userBlocks.blockerId })
+    .from(userBlocks)
+    .where(
+      or(
+        and(
+          eq(userBlocks.blockerId, accountIdA),
+          eq(userBlocks.blockedId, accountIdB)
+        ),
+        and(
+          eq(userBlocks.blockerId, accountIdB),
+          eq(userBlocks.blockedId, accountIdA)
+        )
+      )
+    )
+    .limit(1)
 
-  return {
-    users: items.map((item) => ({
-      id: item.accountId,
-      name: item.name,
-      avatarKey: item.avatarKey,
-      description: item.description,
-      identity: item.identity,
-      followedAt: item.followedAt,
-    })),
-    total: totalResult[0]?.count ?? 0,
-    limit,
-    offset,
+  return Boolean(record)
+}
+
+async function getUserFollowListByIdentity(
+  type: 'followers' | 'following',
+  identityHandle: string,
+  options: ListFollowsQuery = { limit: 50, offset: 0 },
+  viewerAccountId: bigint
+): Promise<ListFollowsResult> {
+  const targetAccountId = await getAccountIdByIdentity(identityHandle)
+  if (!targetAccountId) {
+    throw new HTTPException(404, { message: 'Profile not found' })
   }
+
+  if (viewerAccountId !== targetAccountId) {
+    const isBlocked = await checkBlockExists(viewerAccountId, targetAccountId)
+    if (isBlocked) {
+      return {
+        users: [],
+        total: 0,
+        limit: Math.min(Math.max(options.limit ?? 50, 1), 100),
+        offset: Math.max(options.offset ?? 0, 0),
+      }
+    }
+  }
+
+  return fetchFollowList(type, targetAccountId, options)
 }
 
 export async function getUserFollowersByIdentity(
   identityHandle: string,
-  options: ListFollowsQuery = { limit: 50, offset: 0 }
+  options: ListFollowsQuery = { limit: 50, offset: 0 },
+  viewerAccountId: bigint
 ): Promise<ListFollowsResult> {
-  const targetAccountId = await getAccountIdByIdentity(identityHandle)
-  if (!targetAccountId) {
-    throw new HTTPException(404, { message: 'Profile not found' })
-  }
-  return getFollowers(targetAccountId, options)
+  return getUserFollowListByIdentity('followers', identityHandle, options, viewerAccountId)
 }
 
 export async function getUserFollowingByIdentity(
   identityHandle: string,
-  options: ListFollowsQuery = { limit: 50, offset: 0 }
+  options: ListFollowsQuery = { limit: 50, offset: 0 },
+  viewerAccountId: bigint
 ): Promise<ListFollowsResult> {
-  const targetAccountId = await getAccountIdByIdentity(identityHandle)
+  return getUserFollowListByIdentity('following', identityHandle, options, viewerAccountId)
+}
+
+async function resolveTargetAccount(
+  actorAccountId: bigint,
+  targetIdentity: string,
+  selfErrorMessage: string
+): Promise<bigint> {
+  const targetAccountId = await getAccountIdByIdentity(targetIdentity)
   if (!targetAccountId) {
     throw new HTTPException(404, { message: 'Profile not found' })
   }
-  return getFollowing(targetAccountId, options)
+
+  if (actorAccountId === targetAccountId) {
+    throw new HTTPException(400, { message: selfErrorMessage })
+  }
+
+  return targetAccountId
 }
 
 export async function followUser(
   followerAccountId: bigint,
   targetIdentity: string
 ): Promise<FollowActionResult> {
-  const targetAccountId = await getAccountIdByIdentity(targetIdentity)
-  if (!targetAccountId) {
-    throw new HTTPException(404, { message: 'Profile not found' })
-  }
+  const targetAccountId = await resolveTargetAccount(
+    followerAccountId,
+    targetIdentity,
+    'Users cannot follow themselves'
+  )
 
-  if (followerAccountId === targetAccountId) {
-    throw new HTTPException(400, { message: 'Users cannot follow themselves' })
+  const isBlocked = await checkBlockExists(followerAccountId, targetAccountId)
+  if (isBlocked) {
+    throw new HTTPException(400, { message: 'Cannot follow a blocked user' })
   }
 
   await db
@@ -349,14 +421,11 @@ export async function unfollowUser(
   followerAccountId: bigint,
   targetIdentity: string
 ): Promise<FollowActionResult> {
-  const targetAccountId = await getAccountIdByIdentity(targetIdentity)
-  if (!targetAccountId) {
-    throw new HTTPException(404, { message: 'Profile not found' })
-  }
-
-  if (followerAccountId === targetAccountId) {
-    throw new HTTPException(400, { message: 'Users cannot unfollow themselves' })
-  }
+  const targetAccountId = await resolveTargetAccount(
+    followerAccountId,
+    targetIdentity,
+    'Users cannot unfollow themselves'
+  )
 
   await db
     .delete(follows)
@@ -370,6 +439,120 @@ export async function unfollowUser(
   return {
     following: false,
     message: 'Successfully unfollowed user',
+  }
+}
+
+export async function blockUser(
+  blockerAccountId: bigint,
+  targetIdentity: string
+): Promise<BlockActionResult> {
+  const targetAccountId = await resolveTargetAccount(
+    blockerAccountId,
+    targetIdentity,
+    'Users cannot block themselves'
+  )
+
+  return await db.transaction(async (tx) => {
+    await tx
+      .insert(userBlocks)
+      .values({
+        blockerId: blockerAccountId,
+        blockedId: targetAccountId,
+      })
+      .onConflictDoNothing()
+
+    await tx
+      .delete(follows)
+      .where(
+        or(
+          and(
+            eq(follows.followerId, blockerAccountId),
+            eq(follows.followingId, targetAccountId)
+          ),
+          and(
+            eq(follows.followerId, targetAccountId),
+            eq(follows.followingId, blockerAccountId)
+          )
+        )
+      )
+
+    return {
+      blocked: true,
+      message: 'Successfully blocked user',
+    }
+  })
+}
+
+export async function unblockUser(
+  blockerAccountId: bigint,
+  targetIdentity: string
+): Promise<BlockActionResult> {
+  const targetAccountId = await resolveTargetAccount(
+    blockerAccountId,
+    targetIdentity,
+    'Users cannot unblock themselves'
+  )
+
+  await db
+    .delete(userBlocks)
+    .where(
+      and(
+        eq(userBlocks.blockerId, blockerAccountId),
+        eq(userBlocks.blockedId, targetAccountId)
+      )
+    )
+
+  return {
+    blocked: false,
+    message: 'Successfully unblocked user',
+  }
+}
+
+export async function getBlockedUsers(
+  accountId: bigint,
+  options: ListBlocksQuery = { limit: 50, offset: 0 }
+): Promise<ListBlocksResult> {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
+  const offset = Math.max(options.offset ?? 0, 0)
+
+  const whereClause = eq(userBlocks.blockerId, accountId)
+
+  const [items, totalResult] = await Promise.all([
+    db
+      .select({
+        accountId: accounts.id,
+        name: profiles.name,
+        avatarKey: profiles.avatarKey,
+        identity: identities.identity,
+        isMale: profiles.isMale,
+        blockedAt: userBlocks.createdAt,
+      })
+      .from(userBlocks)
+      .innerJoin(accounts, eq(userBlocks.blockedId, accounts.id))
+      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(whereClause)
+      .orderBy(desc(userBlocks.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(userBlocks)
+      .where(whereClause),
+  ])
+
+  return {
+    users: items.map((item) => ({
+      id: item.accountId,
+      name: item.name,
+      avatarKey: item.avatarKey,
+      identity: item.identity,
+      isMale: item.isMale,
+      blockedAt: item.blockedAt,
+    })),
+    total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
   }
 }
 

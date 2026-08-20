@@ -1,10 +1,6 @@
 import { z } from 'zod'
 import { ADMIN_ROLES, adminRawPasswordSchema } from '../../db/schema/admins'
-import { emailSchema } from '../../db/schema/common'
-
-export const snowflakeParamSchema = z.object({
-  id: z.string().regex(/^\d{1,20}$/, 'Invalid ID format'),
-})
+import { emailSchema, paginationQuerySchema, snowflakeParamSchema } from '../../db/schema/common'
 
 export const loginInputSchema = z.object({
   email: emailSchema,
@@ -31,11 +27,6 @@ export const createInviteInputSchema = z.object({
     }),
 })
 
-export const paginationQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-})
-
 export const inviteStatusEnum = z.enum(['all', 'active', 'used', 'expired'])
 export type InviteStatus = z.infer<typeof inviteStatusEnum>
 
@@ -44,6 +35,8 @@ export const listInvitesQuerySchema = paginationQuerySchema.extend({
   q: z.string().trim().optional(),
   search: z.string().trim().optional(),
 })
+
+export { snowflakeParamSchema, paginationQuerySchema }
 
 export type SnowflakeParam = z.infer<typeof snowflakeParamSchema>
 export type LoginInput = z.infer<typeof loginInputSchema>

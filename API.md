@@ -374,6 +374,58 @@ Header `Authorization: Bearer <token>`.
   }
   ```
 
+### `GET /profile/blocks`
+- **Доступ:** Авторизованный пользователь
+- **Query-параметры:**
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "users": [
+      {
+        "id": "111111111111111",
+        "name": "Blocked User",
+        "avatarKey": null,
+        "identity": "blocked_handle",
+        "isMale": false,
+        "blockedAt": "2026-08-20T00:00:00.000Z"
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `POST /profile/:identity/block`
+- **Доступ:** Авторизованный пользователь
+- **URL-параметры:**
+  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя для блокировки
+- **Поведение:** Взаимные подписки в `follows` мгновенно удаляются в обоих направлениях в одной транзакции.
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "blocked": true,
+    "message": "Successfully blocked user"
+  }
+  ```
+
+### `DELETE /profile/:identity/block`
+- **Доступ:** Авторизованный пользователь
+- **URL-параметры:**
+  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя для разблокировки
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "blocked": false,
+    "message": "Successfully unblocked user"
+  }
+  ```
+
 ### `GET /profile/check/:identity`
 - **Доступ:** Публичный
 - **URL-параметры:**
@@ -388,10 +440,12 @@ Header `Authorization: Bearer <token>`.
   ```
 
 ### `GET /profile/:identity`
-- **Доступ:** Публичный
+- **Доступ:** Публичный / Опциональная авторизация
 - **URL-параметры:**
   - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
-- **Ответ `200 OK`:**
+- **Поведение при блокировке:**
+  - Если авторизованный пользователь заблокировал автора (`is_blocked: true`) или заблокирован автором (`is_hidden: true`): возвращаются только `id`, `name`, `identity`, `isMale` (аватарка, описание, контакты отсутствуют).
+- **Ответ `200 OK` (обычный):**
   ```json
   {
     "success": true,
@@ -410,6 +464,24 @@ Header `Authorization: Bearer <token>`.
       },
       "createdAt": "2026-08-20T00:00:00.000Z",
       "identity": "johndoe"
+    }
+  }
+  ```
+- **Ответ `200 OK` (при блокировке):**
+  ```json
+  {
+    "success": true,
+    "profile": {
+      "id": "222222222222222",
+      "name": "John Doe",
+      "isMale": true,
+      "avatarKey": null,
+      "description": null,
+      "contacts": null,
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "identity": "johndoe",
+      "is_blocked": true,
+      "isBlocked": true
     }
   }
   ```
