@@ -443,6 +443,8 @@ Header `Authorization: Bearer <token>`.
       "genderScope": "all",
       "accessLevel": "public",
       "isPinned": false,
+      "likesCount": 0,
+      "isLiked": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -480,6 +482,8 @@ Header `Authorization: Bearer <token>`.
       "genderScope": "same_gender",
       "accessLevel": "public",
       "isPinned": false,
+      "likesCount": 0,
+      "isLiked": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -525,6 +529,8 @@ Header `Authorization: Bearer <token>`.
       "genderScope": "all",
       "accessLevel": "public",
       "isPinned": true,
+      "likesCount": 0,
+      "isLiked": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -535,6 +541,34 @@ Header `Authorization: Bearer <token>`.
         "isMale": true
       }
     }
+  }
+  ```
+
+### `POST /posts/:id/like`
+- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID поста
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "liked": true,
+    "likesCount": 1,
+    "message": "Post liked successfully"
+  }
+  ```
+
+### `POST /posts/:id/unlike`
+- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID поста
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "liked": false,
+    "likesCount": 0,
+    "message": "Post unliked successfully"
   }
   ```
 
@@ -559,6 +593,8 @@ Header `Authorization: Bearer <token>`.
         "genderScope": "all",
         "accessLevel": "public",
         "isPinned": false,
+        "likesCount": 5,
+        "isLiked": true,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
         "author": {
@@ -593,6 +629,8 @@ Header `Authorization: Bearer <token>`.
       "genderScope": "all",
       "accessLevel": "public",
       "isPinned": false,
+      "likesCount": 10,
+      "isLiked": true,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -628,6 +666,8 @@ Header `Authorization: Bearer <token>`.
         "genderScope": "all",
         "accessLevel": "public",
         "isPinned": true,
+        "likesCount": 3,
+        "isLiked": false,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
         "author": {

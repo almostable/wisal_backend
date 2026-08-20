@@ -18,9 +18,17 @@ export interface PostResponse {
   genderScope: GenderScope
   accessLevel: AccessLevel
   isPinned: boolean
+  likesCount: number
+  isLiked?: boolean
   createdAt: Date
   updatedAt: Date
   author?: PostAuthorInfo | null
+}
+
+export interface LikeActionResult {
+  liked: boolean
+  likesCount: number
+  message: string
 }
 
 export interface CreatePostDTO {

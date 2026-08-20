@@ -27,6 +27,7 @@ describe('Posts Schema Tests', () => {
     expect(parsed.genderScope).toBe('same_gender')
     expect(parsed.accessLevel).toBe('followers')
     expect(parsed.isPinned).toBe(true)
+    expect(parsed.likesCount).toBeUndefined()
     expect(parsed.type).toBe('text')
     expect(parsed.payload).toEqual({})
   })
@@ -73,6 +74,7 @@ describe('Posts Schema Tests', () => {
       genderScope: 'all',
       accessLevel: 'public',
       isPinned: false,
+      likesCount: 5,
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -81,6 +83,7 @@ describe('Posts Schema Tests', () => {
     const parsed = selectPostSchema.parse(record)
     expect(parsed.id).toBe(900000000000001n)
     expect(parsed.authorGender).toBe(true)
+    expect(parsed.likesCount).toBe(5)
     expect(parsed.deletedAt).toBeNull()
   })
 
@@ -93,6 +96,7 @@ describe('Posts Schema Tests', () => {
     expect(indexNames).toContain('posts_gender_scope_idx')
     expect(indexNames).toContain('posts_access_level_idx')
     expect(indexNames).toContain('posts_is_pinned_idx')
+    expect(indexNames).toContain('posts_likes_count_idx')
   })
 
   it('has expected enum constants defined', () => {

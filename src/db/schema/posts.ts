@@ -1,9 +1,10 @@
-import { pgTable, varchar, boolean, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core'
+import { pgTable, varchar, boolean, text, jsonb, timestamp, integer, index } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
 import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
 import { accounts } from './accounts'
+import { postLikes } from './post-likes'
 
 export const POST_TYPES = ['text'] as const
 export type PostType = (typeof POST_TYPES)[number]
@@ -28,6 +29,7 @@ export const posts = pgTable(
     genderScope: varchar('gender_scope', { length: 32 }).notNull().default('all'),
     accessLevel: varchar('access_level', { length: 32 }).notNull().default('public'),
     isPinned: boolean('is_pinned').notNull().default(false),
+    likesCount: integer('likes_count').notNull().default(0),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
     ...timestamps,
   },
@@ -38,14 +40,16 @@ export const posts = pgTable(
     index('posts_gender_scope_idx').on(table.genderScope),
     index('posts_access_level_idx').on(table.accessLevel),
     index('posts_is_pinned_idx').on(table.isPinned),
+    index('posts_likes_count_idx').on(table.likesCount),
   ]
 )
 
-export const postsRelations = relations(posts, ({ one }) => ({
+export const postsRelations = relations(posts, ({ one, many }) => ({
   author: one(accounts, {
     fields: [posts.authorId],
     references: [accounts.id],
   }),
+  likes: many(postLikes),
 }))
 
 export const postContentSchema = z

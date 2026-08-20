@@ -19,6 +19,8 @@ import {
   getPostById,
   getFeed,
   getUserPosts,
+  likePost,
+  unlikePost,
 } from './service'
 
 export const postsRouter = new Hono()
@@ -132,6 +134,38 @@ postsRouter.patch(
   }
 )
 
+postsRouter.post('/:id/like', zValidator('param', postIdParamSchema), async (c) => {
+  const account = c.get('account')
+  const profile = c.get('profile')
+  const { id } = c.req.valid('param')
+
+  const result = await likePost(BigInt(id), {
+    accountId: account.id,
+    isMale: profile.isMale!,
+  })
+
+  return c.json({
+    success: true,
+    ...result,
+  })
+})
+
+postsRouter.post('/:id/unlike', zValidator('param', postIdParamSchema), async (c) => {
+  const account = c.get('account')
+  const profile = c.get('profile')
+  const { id } = c.req.valid('param')
+
+  const result = await unlikePost(BigInt(id), {
+    accountId: account.id,
+    isMale: profile.isMale!,
+  })
+
+  return c.json({
+    success: true,
+    ...result,
+  })
+})
+
 postsRouter.delete('/:id', zValidator('param', postIdParamSchema), async (c) => {
   const account = c.get('account')
   const { id } = c.req.valid('param')
@@ -143,3 +177,4 @@ postsRouter.delete('/:id', zValidator('param', postIdParamSchema), async (c) => 
     ...result,
   })
 })
+
