@@ -45,7 +45,12 @@ export const reports = pgTable(
     ...timestamps,
   },
   (table) => [
-    unique('uq_reporter_target').on(table.reporterId, table.targetType, table.targetId),
+    unique('uq_reporter_target_reason').on(
+      table.reporterId,
+      table.targetType,
+      table.targetId,
+      table.reason
+    ),
     index('idx_reports_reported_user').on(table.reportedUserId),
     index('reports_status_idx').on(table.status),
     index('reports_created_at_idx').on(table.createdAt),

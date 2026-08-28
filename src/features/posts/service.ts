@@ -11,6 +11,7 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../../db'
 import { posts, type Post, type PostType, type GenderScope, type AccessLevel } from '../../db/schema/posts'
@@ -36,12 +37,16 @@ import type {
   LikeActionResult,
   CommentResponse,
   CommentAuthorInfo,
+  ReplyToUserInfo,
   CreateCommentDTO,
   ReplyCommentDTO,
+  UpdateCommentDTO,
   ListCommentsQueryDTO,
   ListCommentsResult,
   DeleteCommentResult,
 } from './types'
+
+const EDIT_TIME_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
 
 const authorSelectFields = {
   authorAccount: { id: accounts.id },
@@ -63,6 +68,22 @@ type AuthorSelectResult = {
   authorIdentity: { identity: string | null } | null
 }
 
+const replyToAccounts = alias(accounts, 'reply_to_accounts')
+const replyToProfiles = alias(profiles, 'reply_to_profiles')
+const replyToIdentities = alias(identities, 'reply_to_identities')
+
+const replyToUserSelectFields = {
+  replyToAccount: { id: replyToAccounts.id },
+  replyToProfile: { name: replyToProfiles.name },
+  replyToIdentity: { identity: replyToIdentities.identity },
+}
+
+type ReplyToUserSelectResult = {
+  replyToAccount: { id: bigint | null } | null
+  replyToProfile: { name: string | null } | null
+  replyToIdentity: { identity: string | null } | null
+}
+
 function mapAuthor(data: AuthorSelectResult): PostAuthorInfo {
   return {
     id: data.authorAccount.id,
@@ -70,6 +91,17 @@ function mapAuthor(data: AuthorSelectResult): PostAuthorInfo {
     avatarKey: data.authorProfile?.avatarKey ?? null,
     identity: data.authorIdentity?.identity ?? null,
     isMale: data.authorProfile?.isMale ?? null,
+  }
+}
+
+function mapReplyToUser(data: ReplyToUserSelectResult | null | undefined): ReplyToUserInfo | null {
+  if (!data || !data.replyToAccount || !data.replyToAccount.id) {
+    return null
+  }
+  return {
+    id: data.replyToAccount.id,
+    name: data.replyToProfile?.name ?? null,
+    identity: data.replyToIdentity?.identity ?? null,
   }
 }
 
@@ -99,16 +131,20 @@ function formatPost(
 
 function formatComment(
   comment: Comment,
-  author?: CommentAuthorInfo | null
+  author?: CommentAuthorInfo | null,
+  replyToUser?: ReplyToUserInfo | null
 ): CommentResponse {
   return {
     id: comment.id,
     postId: comment.postId,
     authorId: comment.authorId,
     parentId: comment.parentId ?? null,
+    replyToCommentId: comment.replyToCommentId ?? null,
+    replyToUser: replyToUser ?? null,
     type: comment.type as CommentType,
     payload: (comment.payload as Record<string, unknown>) ?? {},
     content: comment.content,
+    repliesCount: comment.repliesCount ?? 0,
     createdAt: comment.createdAt,
     updatedAt: comment.updatedAt,
     author: author ?? null,
@@ -156,7 +192,7 @@ async function checkPostAccess(
       throw new HTTPException(404, { message: 'Post not found' })
     }
 
-    if (post.accessLevel === 'followers') {
+    if (post.accessLevel === 'followers') { 
       const [followRecord] = await executor
         .select({ followerId: follows.followerId })
         .from(follows)
@@ -244,6 +280,12 @@ export async function updatePost(
 
     if (existing.authorId !== authorAccountId) {
       throw new HTTPException(403, { message: 'You can only edit your own posts' })
+    }
+
+    if (Date.now() - existing.createdAt.getTime() > EDIT_TIME_WINDOW_MS) {
+      throw new HTTPException(403, {
+        message: 'Post can only be edited within 15 minutes of creation',
+      })
     }
 
     if (input.isPinned === true) {
@@ -534,12 +576,12 @@ export async function getFeed(
     whereCondition = and(
       isNull(posts.deletedAt),
       notBlockedCondition,
-      sql`(${posts.authorId} = ${viewer.accountId} OR EXISTS (
+      sql`EXISTS (
         SELECT 1 FROM ${follows}
         WHERE ${follows.followerId} = ${viewer.accountId}
           AND ${follows.followingId} = ${posts.authorId}
-      ))`,
-      sql`(${posts.authorId} = ${viewer.accountId} OR ${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`
+      )`,
+      sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`
     )!
   } else {
     whereCondition = and(
@@ -712,39 +754,40 @@ export async function getUserPosts(
 }
 
 export async function getPostComments(
-    postId: bigint,
-    viewer: { accountId: bigint; isMale: boolean },
-    query: ListCommentsQueryDTO
-  ): Promise<ListCommentsResult> {
-    await checkPostAccess(db, postId, viewer)
+  postId: bigint,
+  viewer: { accountId: bigint; isMale: boolean },
+  query: ListCommentsQueryDTO
+): Promise<ListCommentsResult> {
+  await checkPostAccess(db, postId, viewer)
 
-    const limit = Math.min(Math.max(query.limit ?? 50, 1), 100)
-    const offset = Math.max(query.offset ?? 0, 0)
+  const limit = Math.min(Math.max(query.limit ?? 50, 1), 100)
+  const offset = Math.max(query.offset ?? 0, 0)
 
-    const whereClause = and(
-      eq(comments.postId, postId),
-      isNull(comments.deletedAt)
-    )
+  const whereClause = and(
+    eq(comments.postId, postId),
+    isNull(comments.parentId),
+    isNull(comments.deletedAt)
+  )
 
-    const [items, totalResult] = await Promise.all([
-      db
-        .select({
-          comment: comments,
-          ...authorSelectFields,
-        })
-        .from(comments)
-        .innerJoin(accounts, eq(comments.authorId, accounts.id))
-        .leftJoin(profiles, eq(accounts.id, profiles.accountId))
-        .leftJoin(identities, eq(profiles.identityId, identities.id))
-        .where(whereClause)
-        .orderBy(asc(comments.createdAt))
-        .limit(limit)
-        .offset(offset),
-      db
-        .select({ count: count() })
-        .from(comments)
-        .where(whereClause),
-    ])
+  const [items, totalResult] = await Promise.all([
+    db
+      .select({
+        comment: comments,
+        ...authorSelectFields,
+      })
+      .from(comments)
+      .innerJoin(accounts, eq(comments.authorId, accounts.id))
+      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(whereClause)
+      .orderBy(asc(comments.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(comments)
+      .where(whereClause),
+  ])
 
   const otherAuthorIds = Array.from(
     new Set(
@@ -796,9 +839,12 @@ export async function getPostComments(
         postId: item.comment.postId,
         authorId: item.comment.authorId,
         parentId: item.comment.parentId ?? null,
+        replyToCommentId: null,
+        replyToUser: null,
         type: item.comment.type as CommentType,
         payload: {},
         content: '',
+        repliesCount: item.comment.repliesCount ?? 0,
         createdAt: item.comment.createdAt,
         updatedAt: item.comment.updatedAt,
         author: {
@@ -815,140 +861,406 @@ export async function getPostComments(
       }
     }
 
-    return formatComment(item.comment, mapAuthor(item))
+    return formatComment(item.comment, mapAuthor(item), null)
   })
 
-    return {
-      comments: formattedComments,
-      total: totalResult[0]?.count ?? 0,
-      limit,
-      offset,
+  return {
+    comments: formattedComments,
+    total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
+  }
+}
+
+export async function getCommentReplies(
+  commentId: bigint,
+  viewer: { accountId: bigint; isMale: boolean },
+  query: ListCommentsQueryDTO
+): Promise<ListCommentsResult> {
+  const targetComment = await db.query.comments.findFirst({
+    where: and(eq(comments.id, commentId), isNull(comments.deletedAt)),
+  })
+
+  if (!targetComment) {
+    throw new HTTPException(404, { message: 'Comment not found' })
+  }
+
+  await checkPostAccess(db, targetComment.postId, viewer)
+
+  const threadRootId = targetComment.parentId ?? targetComment.id
+
+  const limit = Math.min(Math.max(query.limit ?? 50, 1), 100)
+  const offset = Math.max(query.offset ?? 0, 0)
+
+  const whereClause = and(
+    eq(comments.parentId, threadRootId),
+    isNull(comments.deletedAt)
+  )
+
+  const [items, totalResult] = await Promise.all([
+    db
+      .select({
+        comment: comments,
+        ...authorSelectFields,
+        ...replyToUserSelectFields,
+      })
+      .from(comments)
+      .innerJoin(accounts, eq(comments.authorId, accounts.id))
+      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .leftJoin(replyToAccounts, eq(comments.replyToUserId, replyToAccounts.id))
+      .leftJoin(replyToProfiles, eq(replyToAccounts.id, replyToProfiles.accountId))
+      .leftJoin(replyToIdentities, eq(replyToProfiles.identityId, replyToIdentities.id))
+      .where(whereClause)
+      .orderBy(asc(comments.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(comments)
+      .where(whereClause),
+  ])
+
+  const otherAuthorIds = Array.from(
+    new Set(
+      items
+        .map((item) => item.authorAccount.id)
+        .filter((id) => id !== viewer.accountId)
+    )
+  )
+
+  const blockedByViewer = new Set<bigint>()
+  const blockedViewer = new Set<bigint>()
+
+  if (otherAuthorIds.length > 0) {
+    const blockRows = await db
+      .select({
+        blockerId: userBlocks.blockerId,
+        blockedId: userBlocks.blockedId,
+      })
+      .from(userBlocks)
+      .where(
+        or(
+          and(
+            eq(userBlocks.blockerId, viewer.accountId),
+            inArray(userBlocks.blockedId, otherAuthorIds)
+          ),
+          and(
+            eq(userBlocks.blockedId, viewer.accountId),
+            inArray(userBlocks.blockerId, otherAuthorIds)
+          )
+        )
+      )
+
+    for (const row of blockRows) {
+      if (row.blockerId === viewer.accountId) {
+        blockedByViewer.add(row.blockedId)
+      } else {
+        blockedViewer.add(row.blockerId)
+      }
     }
   }
 
-  export async function createComment(
-    postId: bigint,
-    authorAccountId: bigint,
-    viewer: { accountId: bigint; isMale: boolean },
-    input: CreateCommentDTO
-  ): Promise<CommentResponse> {
-    return await db.transaction(async (tx) => {
-      await checkPostAccess(tx, postId, viewer)
+  const formattedReplies = items.map((item) => {
+    const isBlocked = blockedByViewer.has(item.authorAccount.id)
+    const isHidden = blockedViewer.has(item.authorAccount.id)
+    const mappedReplyToUser = mapReplyToUser(item)
 
-      if (input.parentId) {
-        const parentComment = await tx.query.comments.findFirst({
-          where: and(
-            eq(comments.id, input.parentId),
-            isNull(comments.deletedAt)
-          ),
-        })
-
-        if (!parentComment || parentComment.postId !== postId) {
-          throw new HTTPException(404, { message: 'Parent comment not found' })
-        }
+    if (isBlocked || isHidden) {
+      return {
+        id: item.comment.id,
+        postId: item.comment.postId,
+        authorId: item.comment.authorId,
+        parentId: item.comment.parentId ?? null,
+        replyToCommentId: item.comment.replyToCommentId ?? null,
+        replyToUser: mappedReplyToUser,
+        type: item.comment.type as CommentType,
+        payload: {},
+        content: '',
+        repliesCount: item.comment.repliesCount ?? 0,
+        createdAt: item.comment.createdAt,
+        updatedAt: item.comment.updatedAt,
+        author: {
+          id: item.authorAccount.id,
+          name: item.authorProfile?.name ?? null,
+          avatarKey: null,
+          identity: item.authorIdentity?.identity ?? null,
+          isMale: item.authorProfile?.isMale ?? null,
+          ...(isBlocked ? { isBlocked: true, is_blocked: true } : {}),
+          ...(isHidden ? { isHidden: true, is_hidden: true } : {}),
+        },
+        ...(isBlocked ? { isBlocked: true, is_blocked: true } : {}),
+        ...(isHidden ? { isHidden: true, is_hidden: true } : {}),
       }
+    }
 
-      const [created] = await tx
-        .insert(comments)
-        .values({
-          postId,
-          authorId: authorAccountId,
-          parentId: input.parentId ?? null,
-          type: input.type ?? 'text',
-          payload: input.payload ?? {},
-          content: input.content.trim(),
-        })
-        .returning()
+    return formatComment(item.comment, mapAuthor(item), mappedReplyToUser)
+  })
 
-      if (!created) {
-        throw new HTTPException(500, { message: 'Failed to create comment' })
-      }
-
-      await tx
-        .update(posts)
-        .set({
-          commentsCount: sql`${posts.commentsCount} + 1`,
-        })
-        .where(eq(posts.id, postId))
-
-      const [authorData] = await tx
-        .select(authorSelectFields)
-        .from(accounts)
-        .leftJoin(profiles, eq(accounts.id, profiles.accountId))
-        .leftJoin(identities, eq(profiles.identityId, identities.id))
-        .where(eq(accounts.id, authorAccountId))
-        .limit(1)
-
-      return formatComment(created, authorData ? mapAuthor(authorData) : null)
-    })
+  return {
+    comments: formattedReplies,
+    total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
   }
+}
 
-  export async function replyToComment(
-    commentId: bigint,
-    authorAccountId: bigint,
-    viewer: { accountId: bigint; isMale: boolean },
-    input: ReplyCommentDTO
-  ): Promise<CommentResponse> {
-    return await db.transaction(async (tx) => {
-      const parentComment = await tx.query.comments.findFirst({
+export async function createComment(
+  postId: bigint,
+  authorAccountId: bigint,
+  viewer: { accountId: bigint; isMale: boolean },
+  input: CreateCommentDTO
+): Promise<CommentResponse> {
+  return await db.transaction(async (tx) => {
+    await checkPostAccess(tx, postId, viewer)
+
+    let threadRootId: bigint | null = null
+    let replyToCommentId: bigint | null = null
+    let replyToUserId: bigint | null = null
+
+    if (input.parentId) {
+      const targetComment = await tx.query.comments.findFirst({
         where: and(
-          eq(comments.id, commentId),
+          eq(comments.id, input.parentId),
           isNull(comments.deletedAt)
         ),
       })
 
-      if (!parentComment) {
-        throw new HTTPException(404, { message: 'Comment not found' })
+      if (!targetComment || targetComment.postId !== postId) {
+        throw new HTTPException(404, { message: 'Parent comment not found' })
       }
 
-      return await createComment(
-        parentComment.postId,
-        authorAccountId,
-        viewer,
-        {
-          content: input.content,
-          parentId: commentId,
-          type: input.type,
-          payload: input.payload,
-        }
-      )
-    })
-  }
-
-  export async function deleteComment(
-    authorAccountId: bigint,
-    commentId: bigint
-  ): Promise<DeleteCommentResult> {
-    return await db.transaction(async (tx) => {
-      const existing = await tx.query.comments.findFirst({
-        where: and(eq(comments.id, commentId), isNull(comments.deletedAt)),
-      })
-
-      if (!existing) {
-        throw new HTTPException(404, { message: 'Comment not found' })
-      }
-
-      if (existing.authorId !== authorAccountId) {
-        throw new HTTPException(403, { message: 'You can only delete your own comments' })
-      }
+      threadRootId = targetComment.parentId ?? targetComment.id
+      replyToCommentId = targetComment.id
+      replyToUserId = targetComment.authorId
 
       await tx
         .update(comments)
         .set({
-          deletedAt: new Date(),
+          repliesCount: sql`${comments.repliesCount} + 1`,
         })
-        .where(eq(comments.id, commentId))
+        .where(eq(comments.id, threadRootId))
+    }
 
-      await tx
-        .update(posts)
-        .set({
-          commentsCount: sql`GREATEST(0, ${posts.commentsCount} - 1)`,
+    const [created] = await tx
+      .insert(comments)
+      .values({
+        postId,
+        authorId: authorAccountId,
+        parentId: threadRootId,
+        replyToCommentId,
+        replyToUserId,
+        type: input.type ?? 'text',
+        payload: input.payload ?? {},
+        content: input.content.trim(),
+      })
+      .returning()
+
+    if (!created) {
+      throw new HTTPException(500, { message: 'Failed to create comment' })
+    }
+
+    await tx
+      .update(posts)
+      .set({
+        commentsCount: sql`${posts.commentsCount} + 1`,
+      })
+      .where(eq(posts.id, postId))
+
+    const [authorData] = await tx
+      .select(authorSelectFields)
+      .from(accounts)
+      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(eq(accounts.id, authorAccountId))
+      .limit(1)
+
+    let replyToUserData: ReplyToUserInfo | null = null
+    if (replyToUserId) {
+      const [replyToRow] = await tx
+        .select({
+          account: { id: accounts.id },
+          profile: { name: profiles.name },
+          identity: { identity: identities.identity },
         })
-        .where(eq(posts.id, existing.postId))
+        .from(accounts)
+        .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+        .leftJoin(identities, eq(profiles.identityId, identities.id))
+        .where(eq(accounts.id, replyToUserId))
+        .limit(1)
 
-      return {
-        success: true,
-        message: 'Comment deleted successfully',
+      if (replyToRow) {
+        replyToUserData = {
+          id: replyToRow.account.id,
+          name: replyToRow.profile?.name ?? null,
+          identity: replyToRow.identity?.identity ?? null,
+        }
       }
+    }
+
+    return formatComment(
+      created,
+      authorData ? mapAuthor(authorData) : null,
+      replyToUserData
+    )
+  })
+}
+
+export async function replyToComment(
+  commentId: bigint,
+  authorAccountId: bigint,
+  viewer: { accountId: bigint; isMale: boolean },
+  input: ReplyCommentDTO
+): Promise<CommentResponse> {
+  return await db.transaction(async (tx) => {
+    const parentComment = await tx.query.comments.findFirst({
+      where: and(
+        eq(comments.id, commentId),
+        isNull(comments.deletedAt)
+      ),
     })
-  }
+
+    if (!parentComment) {
+      throw new HTTPException(404, { message: 'Comment not found' })
+    }
+
+    return await createComment(
+      parentComment.postId,
+      authorAccountId,
+      viewer,
+      {
+        content: input.content,
+        parentId: commentId,
+        type: input.type,
+        payload: input.payload,
+      }
+    )
+  })
+}
+
+export async function deleteComment(
+  authorAccountId: bigint,
+  commentId: bigint
+): Promise<DeleteCommentResult> {
+  return await db.transaction(async (tx) => {
+    const existing = await tx.query.comments.findFirst({
+      where: and(eq(comments.id, commentId), isNull(comments.deletedAt)),
+    })
+
+    if (!existing) {
+      throw new HTTPException(404, { message: 'Comment not found' })
+    }
+
+    if (existing.authorId !== authorAccountId) {
+      throw new HTTPException(403, { message: 'You can only delete your own comments' })
+    }
+
+    await tx
+      .update(comments)
+      .set({
+        deletedAt: new Date(),
+      })
+      .where(eq(comments.id, commentId))
+
+    await tx
+      .update(posts)
+      .set({
+        commentsCount: sql`GREATEST(0, ${posts.commentsCount} - 1)`,
+      })
+      .where(eq(posts.id, existing.postId))
+
+    if (existing.parentId) {
+      await tx
+        .update(comments)
+        .set({
+          repliesCount: sql`GREATEST(0, ${comments.repliesCount} - 1)`,
+        })
+        .where(eq(comments.id, existing.parentId))
+    }
+
+    return {
+      success: true,
+      message: 'Comment deleted successfully',
+    }
+  })
+}
+
+export async function updateComment(
+  authorAccountId: bigint,
+  commentId: bigint,
+  input: UpdateCommentDTO
+): Promise<CommentResponse> {
+  return await db.transaction(async (tx) => {
+    const existing = await tx.query.comments.findFirst({
+      where: and(eq(comments.id, commentId), isNull(comments.deletedAt)),
+    })
+
+    if (!existing) {
+      throw new HTTPException(404, { message: 'Comment not found' })
+    }
+
+    if (existing.authorId !== authorAccountId) {
+      throw new HTTPException(403, { message: 'You can only edit your own comments' })
+    }
+
+    if (Date.now() - existing.createdAt.getTime() > EDIT_TIME_WINDOW_MS) {
+      throw new HTTPException(403, {
+        message: 'Comment can only be edited within 15 minutes of creation',
+      })
+    }
+
+    const updateData: Partial<typeof comments.$inferInsert> = {
+      updatedAt: new Date(),
+    }
+
+    if (input.content !== undefined) {
+      updateData.content = input.content.trim()
+    }
+    if (input.payload !== undefined) {
+      updateData.payload = input.payload
+    }
+
+    const [updated] = await tx
+      .update(comments)
+      .set(updateData)
+      .where(eq(comments.id, commentId))
+      .returning()
+
+    const [authorData] = await tx
+      .select(authorSelectFields)
+      .from(accounts)
+      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(eq(accounts.id, authorAccountId))
+      .limit(1)
+
+    let replyToUserData: ReplyToUserInfo | null = null
+    if (updated.replyToUserId) {
+      const [replyToRow] = await tx
+        .select({
+          account: { id: accounts.id },
+          profile: { name: profiles.name },
+          identity: { identity: identities.identity },
+        })
+        .from(accounts)
+        .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+        .leftJoin(identities, eq(profiles.identityId, identities.id))
+        .where(eq(accounts.id, updated.replyToUserId))
+        .limit(1)
+
+      if (replyToRow) {
+        replyToUserData = {
+          id: replyToRow.account.id,
+          name: replyToRow.profile?.name ?? null,
+          identity: replyToRow.identity?.identity ?? null,
+        }
+      }
+    }
+
+    return formatComment(
+      updated,
+      authorData ? mapAuthor(authorData) : null,
+      replyToUserData
+    )
+  })
+}

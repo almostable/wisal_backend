@@ -199,16 +199,17 @@ describe('Reports Schema Tests', () => {
     expect(idColumn?.primary).toBe(true)
   })
 
-  it('has unique constraint for spam protection (uq_reporter_target)', () => {
+  it('has unique constraint for spam protection (uq_reporter_target_reason)', () => {
     const config = getTableConfig(reports)
     const uniqueConstraint = config.uniqueConstraints.find(
-      (u) => u.name === 'uq_reporter_target'
+      (u) => u.name === 'uq_reporter_target_reason'
     )
     expect(uniqueConstraint).toBeDefined()
     expect(uniqueConstraint?.columns.map((c) => c.name)).toEqual([
       'reporter_id',
       'target_type',
       'target_id',
+      'reason',
     ])
   })
 

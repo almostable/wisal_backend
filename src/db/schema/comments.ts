@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core'
+import { pgTable, varchar, text, jsonb, timestamp, integer, index } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
@@ -22,9 +22,16 @@ export const comments = pgTable(
     parentId: snowflakeId('parent_id').references((): any => comments.id, {
       onDelete: 'cascade',
     }),
+    replyToCommentId: snowflakeId('reply_to_comment_id').references((): any => comments.id, {
+      onDelete: 'set null',
+    }),
+    replyToUserId: snowflakeId('reply_to_user_id').references(() => accounts.id, {
+      onDelete: 'set null',
+    }),
     type: varchar('type', { length: 32 }).notNull().default('text'),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
     content: text('content').notNull(),
+    repliesCount: integer('replies_count').notNull().default(0),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
     ...timestamps,
   },
@@ -32,6 +39,9 @@ export const comments = pgTable(
     index('comments_post_id_idx').on(table.postId),
     index('comments_author_id_idx').on(table.authorId),
     index('comments_parent_id_idx').on(table.parentId),
+    index('comments_reply_to_comment_id_idx').on(table.replyToCommentId),
+    index('comments_reply_to_user_id_idx').on(table.replyToUserId),
+    index('comments_replies_count_idx').on(table.repliesCount),
     index('comments_created_at_idx').on(table.createdAt),
     index('comments_deleted_at_idx').on(table.deletedAt),
   ]
@@ -53,6 +63,15 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
   }),
   replies: many(comments, {
     relationName: 'comment_replies',
+  }),
+  replyToComment: one(comments, {
+    fields: [comments.replyToCommentId],
+    references: [comments.id],
+    relationName: 'comment_target',
+  }),
+  replyToUser: one(accounts, {
+    fields: [comments.replyToUserId],
+    references: [accounts.id],
   }),
 }))
 

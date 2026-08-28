@@ -39,14 +39,23 @@ export interface CommentAuthorInfo {
   is_hidden?: boolean
 }
 
+export interface ReplyToUserInfo {
+  id: bigint
+  name: string | null
+  identity: string | null
+}
+
 export interface CommentResponse {
   id: bigint
   postId: bigint
   authorId: bigint
   parentId: bigint | null
+  replyToCommentId?: bigint | null
+  replyToUser?: ReplyToUserInfo | null
   type: CommentType
   payload: Record<string, unknown>
   content: string
+  repliesCount: number
   createdAt: Date
   updatedAt: Date
   author?: CommentAuthorInfo | null
@@ -118,6 +127,11 @@ export interface CreateCommentDTO {
 export interface ReplyCommentDTO {
   content: string
   type?: CommentType
+  payload?: Record<string, unknown>
+}
+
+export interface UpdateCommentDTO {
+  content?: string
   payload?: Record<string, unknown>
 }
 

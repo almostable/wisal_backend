@@ -60,9 +60,12 @@ describe('Comments Schema Tests', () => {
       postId: 900000000000001n,
       authorId: 100000000000001n,
       parentId: null,
+      replyToCommentId: null,
+      replyToUserId: null,
       type: 'text',
       payload: {},
       content: 'Sample comment',
+      repliesCount: 3,
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -73,7 +76,10 @@ describe('Comments Schema Tests', () => {
     expect(parsed.postId).toBe(900000000000001n)
     expect(parsed.authorId).toBe(100000000000001n)
     expect(parsed.parentId).toBeNull()
+    expect(parsed.replyToCommentId).toBeNull()
+    expect(parsed.replyToUserId).toBeNull()
     expect(parsed.content).toBe('Sample comment')
+    expect(parsed.repliesCount).toBe(3)
     expect(parsed.deletedAt).toBeNull()
   })
 
@@ -83,6 +89,9 @@ describe('Comments Schema Tests', () => {
     expect(indexNames).toContain('comments_post_id_idx')
     expect(indexNames).toContain('comments_author_id_idx')
     expect(indexNames).toContain('comments_parent_id_idx')
+    expect(indexNames).toContain('comments_reply_to_comment_id_idx')
+    expect(indexNames).toContain('comments_reply_to_user_id_idx')
+    expect(indexNames).toContain('comments_replies_count_idx')
     expect(indexNames).toContain('comments_created_at_idx')
     expect(indexNames).toContain('comments_deleted_at_idx')
   })

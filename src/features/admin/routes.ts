@@ -11,6 +11,8 @@ import {
   createInviteInputSchema,
   paginationQuerySchema,
   listInvitesQuerySchema,
+  listReportsQuerySchema,
+  updateReportResolutionSchema,
   snowflakeParamSchema,
 } from './schema'
 import {
@@ -23,6 +25,9 @@ import {
   deleteInvite,
   listInvites,
   listUsers,
+  listReports,
+  getReportById,
+  updateReportResolution,
 } from './service'
 
 export const adminRouter = new Hono()
@@ -187,6 +192,58 @@ adminRouter.get(
     return c.json({
       success: true,
       ...result,
+    })
+  }
+)
+
+adminRouter.get(
+  '/reports',
+  adminAuthMiddleware,
+  zValidator('query', listReportsQuerySchema),
+  async (c) => {
+    const query = c.req.valid('query')
+    const result = await listReports(query)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+adminRouter.get(
+  '/reports/:id',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param')
+    const reportId = stringToSnowflake(id)
+
+    const report = await getReportById(reportId)
+
+    return c.json({
+      success: true,
+      report,
+    })
+  }
+)
+
+adminRouter.patch(
+  '/reports/:id',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  zValidator('json', updateReportResolutionSchema),
+  async (c) => {
+    const admin = c.get('admin')
+    const { id } = c.req.valid('param')
+    const data = c.req.valid('json')
+    const reportId = stringToSnowflake(id)
+
+    const report = await updateReportResolution(admin, reportId, data)
+
+    return c.json({
+      success: true,
+      report,
     })
   }
 )

@@ -295,7 +295,7 @@ Header `Authorization: Bearer <token>`.
   ```
 
 ### `GET /profile/:identity/followers`
-- **Доступ:** Публичный / Опциональная авторизация
+- **Доступ:** Авторизованный пользователь
 - **URL-параметры:**
   - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
 - **Query-параметры:**
@@ -322,7 +322,7 @@ Header `Authorization: Bearer <token>`.
   ```
 
 ### `GET /profile/:identity/following`
-- **Доступ:** Публичный / Опциональная авторизация
+- **Доступ:** Авторизованный пользователь
 - **URL-параметры:**
   - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
 - **Query-параметры:**
@@ -427,7 +427,7 @@ Header `Authorization: Bearer <token>`.
   ```
 
 ### `GET /profile/check/:identity`
-- **Доступ:** Публичный
+- **Доступ:** Авторизованный пользователь
 - **URL-параметры:**
   - `identity` *(string, обязательное)* — проверяемый юзернейм/хэндл
 - **Ответ `200 OK`:**
@@ -440,7 +440,7 @@ Header `Authorization: Bearer <token>`.
   ```
 
 ### `GET /profile/:identity`
-- **Доступ:** Публичный / Опциональная авторизация
+- **Доступ:** Авторизованный пользователь
 - **URL-параметры:**
   - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
 - **Поведение при блокировке:**
@@ -516,6 +516,7 @@ Header `Authorization: Bearer <token>`.
       "accessLevel": "public",
       "isPinned": false,
       "likesCount": 0,
+      "commentsCount": 0,
       "isLiked": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
@@ -532,6 +533,7 @@ Header `Authorization: Bearer <token>`.
 
 ### `PATCH /posts/:id`
 - **Доступ:** Автор поста (с онбордингом)
+- **Ограничение по времени:** Редактирование публикации разрешено только в течение **15 минут** с момента создания (`createdAt`). По истечении 15 минут возвращается ошибка `403 Forbidden`.
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID поста
 - **Тело запроса (JSON):**
@@ -555,6 +557,7 @@ Header `Authorization: Bearer <token>`.
       "accessLevel": "public",
       "isPinned": false,
       "likesCount": 0,
+      "commentsCount": 0,
       "isLiked": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
@@ -602,6 +605,7 @@ Header `Authorization: Bearer <token>`.
       "accessLevel": "public",
       "isPinned": true,
       "likesCount": 0,
+      "commentsCount": 0,
       "isLiked": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
@@ -666,6 +670,7 @@ Header `Authorization: Bearer <token>`.
         "accessLevel": "public",
         "isPinned": false,
         "likesCount": 5,
+        "commentsCount": 2,
         "isLiked": true,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
@@ -702,6 +707,7 @@ Header `Authorization: Bearer <token>`.
       "accessLevel": "public",
       "isPinned": false,
       "likesCount": 10,
+      "commentsCount": 4,
       "isLiked": true,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
@@ -739,6 +745,7 @@ Header `Authorization: Bearer <token>`.
         "accessLevel": "public",
         "isPinned": true,
         "likesCount": 3,
+        "commentsCount": 1,
         "isLiked": false,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
@@ -761,8 +768,16 @@ Header `Authorization: Bearer <token>`.
 
 ## Комментарии к публикациям (`/posts`)
 
+> **Модель веток комментариев (2-level flat hierarchy):**
+> - **1-й уровень:** Корневые комментарии непосредственно к посту (`parentId = null`, `replyToUser = null`).
+> - **2-й уровень (реплаи):** Все ответы внутри ветки привязаны к корневому комментарию (`parentId = <rootCommentId>`).
+> - Если пользователь отвечает на конкретный реплай внутри ветки, поле `parentId` автоматически указывает на корневой комментарий ветки, а `replyToCommentId` и `replyToUser` (`{ id, name, identity }`) содержат данные того комментария и автора, которому адресован ответ (для отображения в UI плашки `Reply to @username`).
+> - Поле `repliesCount` у корневого комментария отражает **общее число всех ответов в этой ветке**.
+> - Поле `commentsCount` у поста отражает **общее число всех комментариев и ответов под постом**.
+
 ### `GET /posts/:id/comments`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)
+- **Описание:** Возвращает только комментарии первого уровня (ответы непосредственно на сам пост). Реплаи на комментарии запрашиваются отдельно через `GET /posts/comments/:id/replies`.
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID поста
 - **Query-параметры:**
@@ -778,9 +793,12 @@ Header `Authorization: Bearer <token>`.
         "postId": "999999999999991",
         "authorId": "111111111111111",
         "parentId": null,
+        "replyToCommentId": null,
+        "replyToUser": null,
         "type": "text",
         "payload": {},
         "content": "First comment on post",
+        "repliesCount": 2,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
         "author": {
@@ -793,6 +811,76 @@ Header `Authorization: Bearer <token>`.
       }
     ],
     "total": 1,
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `GET /posts/comments/:id/replies`
+- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту комментария)
+- **Описание:** Возвращает плоский хронологический список всех ответов (реплаев) ветки указанного комментария (`createdAt ASC`). Принимает ID как корневого комментария, так и любого реплая ветки.
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID комментария
+- **Query-параметры:**
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "comments": [
+      {
+        "id": "888888888888882",
+        "postId": "999999999999991",
+        "authorId": "222222222222222",
+        "parentId": "888888888888881",
+        "replyToCommentId": "888888888888881",
+        "replyToUser": {
+          "id": "111111111111111",
+          "name": "John Doe",
+          "identity": "johndoe"
+        },
+        "type": "text",
+        "payload": {},
+        "content": "Reply to first comment",
+        "repliesCount": 0,
+        "createdAt": "2026-08-20T00:01:00.000Z",
+        "updatedAt": "2026-08-20T00:01:00.000Z",
+        "author": {
+          "id": "222222222222222",
+          "name": "Jane Smith",
+          "identity": "janesmith",
+          "avatarKey": null,
+          "isMale": false
+        }
+      },
+      {
+        "id": "888888888888883",
+        "postId": "999999999999991",
+        "authorId": "333333333333333",
+        "parentId": "888888888888881",
+        "replyToCommentId": "888888888888882",
+        "replyToUser": {
+          "id": "222222222222222",
+          "name": "Jane Smith",
+          "identity": "janesmith"
+        },
+        "type": "text",
+        "payload": {},
+        "content": "Reply to Jane inside same thread",
+        "repliesCount": 0,
+        "createdAt": "2026-08-20T00:02:00.000Z",
+        "updatedAt": "2026-08-20T00:02:00.000Z",
+        "author": {
+          "id": "333333333333333",
+          "name": "Alex Brown",
+          "identity": "alexbrown",
+          "avatarKey": null,
+          "isMale": true
+        }
+      }
+    ],
+    "total": 2,
     "limit": 50,
     "offset": 0
   }
@@ -816,9 +904,12 @@ Header `Authorization: Bearer <token>`.
       "postId": "999999999999991",
       "authorId": "111111111111111",
       "parentId": null,
+      "replyToCommentId": null,
+      "replyToUser": null,
       "type": "text",
       "payload": {},
       "content": "First comment on post",
+      "repliesCount": 0,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -835,7 +926,7 @@ Header `Authorization: Bearer <token>`.
 ### `POST /posts/comments/:id/reply`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)
 - **URL-параметры:**
-  - `id` *(string, обязательное)* — Snowflake ID родительского комментария
+  - `id` *(string, обязательное)* — Snowflake ID родительского комментария (корневого или реплая)
 - **Тело запроса (JSON):**
   - `content` *(string, обязательное, мин. 1, макс. 5000 симв.)* — текст ответа
   - `type` *(string, опционально, `"text"`, по умолчанию: `"text"`)*
@@ -847,13 +938,56 @@ Header `Authorization: Bearer <token>`.
     "comment": {
       "id": "888888888888882",
       "postId": "999999999999991",
-      "authorId": "111111111111111",
+      "authorId": "222222222222222",
       "parentId": "888888888888881",
+      "replyToCommentId": "888888888888881",
+      "replyToUser": {
+        "id": "111111111111111",
+        "name": "John Doe",
+        "identity": "johndoe"
+      },
       "type": "text",
       "payload": {},
       "content": "Reply to first comment",
+      "repliesCount": 0,
+      "createdAt": "2026-08-20T00:01:00.000Z",
+      "updatedAt": "2026-08-20T00:01:00.000Z",
+      "author": {
+        "id": "222222222222222",
+        "name": "Jane Smith",
+        "identity": "janesmith",
+        "avatarKey": null,
+        "isMale": false
+      }
+    }
+  }
+  ```
+
+### `PATCH /posts/comments/:id`
+- **Доступ:** Автор комментария (с онбордингом)
+- **Ограничение по времени:** Редактирование комментария разрешено только в течение **15 минут** с момента создания (`createdAt`). По истечении 15 минут возвращается ошибка `403 Forbidden`.
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID комментария
+- **Тело запроса (JSON):**
+  - `content` *(string, опционально, мин. 1, макс. 5000 симв.)* — обновленный текст комментария
+  - `payload` *(object, опционально)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "comment": {
+      "id": "888888888888881",
+      "postId": "999999999999991",
+      "authorId": "111111111111111",
+      "parentId": null,
+      "replyToCommentId": null,
+      "replyToUser": null,
+      "type": "text",
+      "payload": {},
+      "content": "Edited comment text",
+      "repliesCount": 2,
       "createdAt": "2026-08-20T00:00:00.000Z",
-      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:05:00.000Z",
       "author": {
         "id": "111111111111111",
         "name": "John Doe",
@@ -874,6 +1008,102 @@ Header `Authorization: Bearer <token>`.
   {
     "success": true,
     "message": "Comment deleted successfully"
+  }
+  ```
+
+---
+
+## Жалобы пользователей (`/reports`)
+
+### `POST /reports`
+- **Доступ:** Авторизованный пользователь с онбордингом
+- **Поведение и ограничения:**
+  - Пользователь может подать несколько жалоб на один и тот же целевой объект (`targetType`, `targetId`), но только с **разными** причинами (`reason`).
+  - При попытке отправить повторную жалобу на тот же объект с уже использованной ранее причиной возвращается ошибка `409 Conflict`.
+  - Запрещено жаловаться на самого себя или на собственный контент (`400 Bad Request`).
+- **Тело запроса (JSON):**
+  - `targetType` *(string, обязательное, `"post" | "comment" | "user"`)* — тип объекта жалобы
+  - `targetId` *(string, обязательное)* — Snowflake ID объекта жалобы
+  - `reason` *(string, обязательное, `"boundary_violation" | "inappropriate_content" | "toxicity" | "fraud_or_scam" | "spam" | "gender_mismatch" | "other"`)* — причина жалобы
+  - `details` *(string, опционально, макс. 1000 симв.)* — комментарий пожаловавшегося
+- **Ответ `201 Created`:**
+  ```json
+  {
+    "success": true,
+    "report": {
+      "id": "999999999999991",
+      "reporterId": "111111111111111",
+      "reportedUserId": "222222222222222",
+      "targetType": "post",
+      "targetId": "888888888888881",
+      "reason": "spam",
+      "details": "Spam details",
+      "status": "pending",
+      "resolveById": null,
+      "modNote": null,
+      "resolvedAt": null,
+      "createdAt": "2026-08-21T00:00:00.000Z",
+      "updatedAt": "2026-08-21T00:00:00.000Z"
+    }
+  }
+  ```
+
+### `GET /reports`
+- **Доступ:** Авторизованный пользователь с онбордингом
+- **Query-параметры:**
+  - `status` *(string, опционально, `"all" | "pending" | "resolved" | "rejected"`, по умолчанию: `"all"`)*
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "reports": [
+      {
+        "id": "999999999999991",
+        "reporterId": "111111111111111",
+        "reportedUserId": "222222222222222",
+        "targetType": "post",
+        "targetId": "888888888888881",
+        "reason": "spam",
+        "details": "Spam details",
+        "status": "pending",
+        "resolveById": null,
+        "modNote": null,
+        "resolvedAt": null,
+        "createdAt": "2026-08-21T00:00:00.000Z",
+        "updatedAt": "2026-08-21T00:00:00.000Z"
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `GET /reports/:id`
+- **Доступ:** Авторизованный пользователь с онбордингом (автор жалобы)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID жалобы
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "report": {
+      "id": "999999999999991",
+      "reporterId": "111111111111111",
+      "reportedUserId": "222222222222222",
+      "targetType": "post",
+      "targetId": "888888888888881",
+      "reason": "spam",
+      "details": "Spam details",
+      "status": "pending",
+      "resolveById": null,
+      "modNote": null,
+      "resolvedAt": null,
+      "createdAt": "2026-08-21T00:00:00.000Z",
+      "updatedAt": "2026-08-21T00:00:00.000Z"
+    }
   }
   ```
 
@@ -1115,5 +1345,145 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
     "total": 1,
     "limit": 50,
     "offset": 0
+  }
+  ```
+
+---
+
+## Жалобы и модерация (`/admin/reports`)
+
+### `GET /admin/reports`
+- **Доступ:** `admin`, `moderator`
+- **Query-параметры:**
+  - `status` *(string, опционально, `"all" | "pending" | "resolved" | "rejected"`, по умолчанию: `"all"`)*
+  - `targetType` *(string, опционально, `"all" | "post" | "comment" | "user"`, по умолчанию: `"all"`)*
+  - `reason` *(string, опционально, `"all" | "boundary_violation" | "inappropriate_content" | "toxicity" | "fraud_or_scam" | "spam" | "gender_mismatch" | "other"`, по умолчанию: `"all"`)*
+  - `q` / `search` *(string, опционально)* — поиск по деталям, заметкам модератора, email/handle авторов и нарушителей
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "reports": [
+      {
+        "id": "999999999999991",
+        "targetType": "post",
+        "targetId": "888888888888881",
+        "reason": "spam",
+        "details": "Spam post details",
+        "status": "pending",
+        "modNote": null,
+        "reporter": {
+          "id": "111111111111111",
+          "email": "reporter@wisal.dev",
+          "name": "Reporter Name",
+          "identity": "reporter_handle",
+          "avatarKey": null
+        },
+        "reportedUser": {
+          "id": "222222222222222",
+          "email": "spammer@wisal.dev",
+          "name": "Spammer Name",
+          "identity": "spammer_handle",
+          "avatarKey": null
+        },
+        "resolvedBy": null,
+        "resolvedAt": null,
+        "createdAt": "2026-08-21T00:00:00.000Z",
+        "updatedAt": "2026-08-21T00:00:00.000Z"
+      }
+    ],
+    "total": 1,
+    "stats": {
+      "pending": 1,
+      "resolved": 0,
+      "rejected": 0
+    },
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `GET /admin/reports/:id`
+- **Доступ:** `admin`, `moderator`
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID жалобы
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "report": {
+      "id": "999999999999991",
+      "targetType": "post",
+      "targetId": "888888888888881",
+      "reason": "spam",
+      "details": "Spam post details",
+      "status": "pending",
+      "modNote": null,
+      "reporter": {
+        "id": "111111111111111",
+        "email": "reporter@wisal.dev",
+        "name": "Reporter Name",
+        "identity": "reporter_handle",
+        "avatarKey": null
+      },
+      "reportedUser": {
+        "id": "222222222222222",
+        "email": "spammer@wisal.dev",
+        "name": "Spammer Name",
+        "identity": "spammer_handle",
+        "avatarKey": null
+      },
+      "resolvedBy": null,
+      "resolvedAt": null,
+      "createdAt": "2026-08-21T00:00:00.000Z",
+      "updatedAt": "2026-08-21T00:00:00.000Z"
+    }
+  }
+  ```
+
+### `PATCH /admin/reports/:id`
+- **Доступ:** `admin`, `moderator`
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID жалобы
+- **Тело запроса (JSON):**
+  - `status` *(string, обязательное, `"pending" | "resolved" | "rejected"`)*
+  - `modNote` *(string | null, опционально, макс. 1000 симв.)* — служебная заметка модератора
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "report": {
+      "id": "999999999999991",
+      "targetType": "post",
+      "targetId": "888888888888881",
+      "reason": "spam",
+      "details": "Spam post details",
+      "status": "resolved",
+      "modNote": "Post was removed and user warned",
+      "reporter": {
+        "id": "111111111111111",
+        "email": "reporter@wisal.dev",
+        "name": "Reporter Name",
+        "identity": "reporter_handle",
+        "avatarKey": null
+      },
+      "reportedUser": {
+        "id": "222222222222222",
+        "email": "spammer@wisal.dev",
+        "name": "Spammer Name",
+        "identity": "spammer_handle",
+        "avatarKey": null
+      },
+      "resolvedBy": {
+        "id": "111111111111111",
+        "email": "admin@wisal.dev",
+        "role": "admin"
+      },
+      "resolvedAt": "2026-08-21T01:00:00.000Z",
+      "createdAt": "2026-08-21T00:00:00.000Z",
+      "updatedAt": "2026-08-21T01:00:00.000Z"
+    }
   }
   ```

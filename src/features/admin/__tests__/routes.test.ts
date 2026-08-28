@@ -656,4 +656,206 @@ describe('Admin Feature Route Tests', () => {
     expect(body.users[0].profile.identity).toBe('johndoe')
     expect(body.users[0].profile.identityId).toBeUndefined()
   })
+
+  it('GET /admin/reports returns list of reports with stats', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    mock.module('../service', () => ({
+      listReports: async () => ({
+        reports: [
+          {
+            id: 9990001n,
+            targetType: 'post',
+            targetId: 8880001n,
+            reason: 'spam',
+            details: 'Spam post details',
+            status: 'pending',
+            modNote: null,
+            reporter: {
+              id: 111111n,
+              email: 'reporter@wisal.dev',
+              name: 'Reporter',
+              identity: 'reporter_guy',
+              avatarKey: null,
+            },
+            reportedUser: {
+              id: 222222n,
+              email: 'spammer@wisal.dev',
+              name: 'Spammer',
+              identity: 'spammer_guy',
+              avatarKey: null,
+            },
+            resolvedBy: null,
+            resolvedAt: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ],
+        total: 1,
+        stats: {
+          pending: 1,
+          resolved: 0,
+          rejected: 0,
+        },
+        limit: 50,
+        offset: 0,
+      }),
+    }))
+
+    const res = await app.request('/admin/reports?status=pending&targetType=post', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      reports: any[]
+      total: number
+      stats: { pending: number; resolved: number; rejected: number }
+    }
+    expect(body.success).toBe(true)
+    expect(body.reports.length).toBe(1)
+    expect(body.reports[0].id).toBe('9990001')
+    expect(body.stats.pending).toBe(1)
+  })
+
+  it('GET /admin/reports/:id returns single report by ID', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    mock.module('../service', () => ({
+      getReportById: async () => ({
+        id: 9990001n,
+        targetType: 'comment',
+        targetId: 7770001n,
+        reason: 'toxicity',
+        details: 'Toxic content',
+        status: 'pending',
+        modNote: null,
+        reporter: {
+          id: 111111n,
+          email: 'reporter@wisal.dev',
+          name: 'Reporter',
+          identity: 'reporter_guy',
+          avatarKey: null,
+        },
+        reportedUser: {
+          id: 222222n,
+          email: 'toxic@wisal.dev',
+          name: 'Toxic User',
+          identity: 'toxic_guy',
+          avatarKey: null,
+        },
+        resolvedBy: null,
+        resolvedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    }))
+
+    const res = await app.request('/admin/reports/9990001', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; report: any }
+    expect(body.success).toBe(true)
+    expect(body.report.id).toBe('9990001')
+    expect(body.report.reason).toBe('toxicity')
+  })
+
+  it('PATCH /admin/reports/:id updates report status and modNote', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    mock.module('../service', () => ({
+      updateReportResolution: async (_admin: any, _reportId: bigint, input: any) => ({
+        id: 9990001n,
+        targetType: 'post',
+        targetId: 8880001n,
+        reason: 'spam',
+        details: 'Spam post details',
+        status: input.status,
+        modNote: input.modNote,
+        reporter: null,
+        reportedUser: null,
+        resolvedBy: {
+          id: mockAdmin.id,
+          email: mockAdmin.email,
+          role: mockAdmin.role,
+        },
+        resolvedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    }))
+
+    const res = await app.request('/admin/reports/9990001', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_token',
+      },
+      body: JSON.stringify({
+        status: 'resolved',
+        modNote: 'Post was removed and user warned',
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; report: any }
+    expect(body.success).toBe(true)
+    expect(body.report.status).toBe('resolved')
+    expect(body.report.modNote).toBe('Post was removed and user warned')
+    expect(body.report.resolvedBy.email).toBe('admin@wisal.dev')
+  })
+
+  it('GET /admin/reports/:id returns 404 when report not found', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    mock.module('../service', () => ({
+      getReportById: async () => {
+        throw new HTTPException(404, { message: 'Report not found' })
+      },
+    }))
+
+    const res = await app.request('/admin/reports/9999999', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_token',
+      },
+    })
+
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Report not found')
+  })
 })

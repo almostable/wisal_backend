@@ -21,6 +21,12 @@ import { invites } from '../../db/schema/invites'
 import { accounts, safeAccountSchema } from '../../db/schema/accounts'
 import { profiles, type ProfileWithIdentity } from '../../db/schema/profiles'
 import { identities } from '../../db/schema/identities'
+import {
+  reports,
+  type ReportTargetType,
+  type ReportReason,
+  type ReportStatus,
+} from '../../db/schema/reports'
 import { hashPassword, verifyPassword } from '../../lib/password'
 import {
   createAdminSession,
@@ -44,6 +50,10 @@ import type {
   ListUsersOptions,
   ListUsersResult,
   UserListItem,
+  AdminReportItem,
+  ListReportsOptions,
+  ListReportsResult,
+  UpdateReportResolutionInput,
 } from './types'
 
 export async function loginAdmin(input: AdminLoginInput): Promise<AdminLoginResult> {
@@ -392,4 +402,331 @@ export async function listUsers(options: ListUsersOptions = {}): Promise<ListUse
     limit,
     offset,
   }
+}
+
+export async function listReports(options: ListReportsOptions = {}): Promise<ListReportsResult> {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
+  const offset = Math.max(options.offset ?? 0, 0)
+  const status = options.status ?? 'all'
+  const targetType = options.targetType ?? 'all'
+  const reason = options.reason ?? 'all'
+  const searchQuery = (options.q ?? options.search)?.trim()
+
+  const reporterAccounts = aliasedTable(accounts, 'reporter_accounts')
+  const reporterProfiles = aliasedTable(profiles, 'reporter_profiles')
+  const reporterIdentities = aliasedTable(identities, 'reporter_identities')
+
+  const reportedAccounts = aliasedTable(accounts, 'reported_accounts')
+  const reportedProfiles = aliasedTable(profiles, 'reported_profiles')
+  const reportedIdentities = aliasedTable(identities, 'reported_identities')
+
+  const resolverAdmins = aliasedTable(admins, 'resolver_admins')
+
+  const conditions: SQL[] = []
+
+  if (status !== 'all') {
+    conditions.push(eq(reports.status, status))
+  }
+
+  if (targetType !== 'all') {
+    conditions.push(eq(reports.targetType, targetType))
+  }
+
+  if (reason !== 'all') {
+    conditions.push(eq(reports.reason, reason))
+  }
+
+  if (searchQuery) {
+    const searchPattern = `%${searchQuery}%`
+    const searchCondition = or(
+      ilike(reports.details, searchPattern),
+      ilike(reports.modNote, searchPattern),
+      ilike(reporterAccounts.email, searchPattern),
+      ilike(reportedAccounts.email, searchPattern),
+      ilike(reporterProfiles.name, searchPattern),
+      ilike(reportedProfiles.name, searchPattern),
+      ilike(reporterIdentities.identity, searchPattern),
+      ilike(reportedIdentities.identity, searchPattern)
+    )
+    if (searchCondition) {
+      conditions.push(searchCondition)
+    }
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+  const totalCountQuery = searchQuery
+    ? db
+        .select({ count: count() })
+        .from(reports)
+        .leftJoin(reporterAccounts, eq(reports.reporterId, reporterAccounts.id))
+        .leftJoin(reporterProfiles, eq(reports.reporterId, reporterProfiles.accountId))
+        .leftJoin(reporterIdentities, eq(reporterProfiles.identityId, reporterIdentities.id))
+        .leftJoin(reportedAccounts, eq(reports.reportedUserId, reportedAccounts.id))
+        .leftJoin(reportedProfiles, eq(reports.reportedUserId, reportedProfiles.accountId))
+        .leftJoin(reportedIdentities, eq(reportedProfiles.identityId, reportedIdentities.id))
+        .leftJoin(resolverAdmins, eq(reports.resolveById, resolverAdmins.id))
+        .where(whereClause)
+    : db
+        .select({ count: count() })
+        .from(reports)
+        .where(whereClause)
+
+  const [items, totalResult, statsResult] = await Promise.all([
+    db
+      .select({
+        report: reports,
+        reporter: {
+          id: reporterAccounts.id,
+          email: reporterAccounts.email,
+        },
+        reporterProfile: {
+          name: reporterProfiles.name,
+          avatarKey: reporterProfiles.avatarKey,
+        },
+        reporterIdentity: {
+          identity: reporterIdentities.identity,
+        },
+        reportedUser: {
+          id: reportedAccounts.id,
+          email: reportedAccounts.email,
+        },
+        reportedUserProfile: {
+          name: reportedProfiles.name,
+          avatarKey: reportedProfiles.avatarKey,
+        },
+        reportedUserIdentity: {
+          identity: reportedIdentities.identity,
+        },
+        resolver: {
+          id: resolverAdmins.id,
+          email: resolverAdmins.email,
+          role: resolverAdmins.role,
+        },
+      })
+      .from(reports)
+      .leftJoin(reporterAccounts, eq(reports.reporterId, reporterAccounts.id))
+      .leftJoin(reporterProfiles, eq(reports.reporterId, reporterProfiles.accountId))
+      .leftJoin(reporterIdentities, eq(reporterProfiles.identityId, reporterIdentities.id))
+      .leftJoin(reportedAccounts, eq(reports.reportedUserId, reportedAccounts.id))
+      .leftJoin(reportedProfiles, eq(reports.reportedUserId, reportedProfiles.accountId))
+      .leftJoin(reportedIdentities, eq(reportedProfiles.identityId, reportedIdentities.id))
+      .leftJoin(resolverAdmins, eq(reports.resolveById, resolverAdmins.id))
+      .where(whereClause)
+      .orderBy(desc(reports.createdAt))
+      .limit(limit)
+      .offset(offset),
+    totalCountQuery,
+    db
+      .select({
+        pending: sql<number>`count(*) filter (where ${reports.status} = 'pending')::int`,
+        resolved: sql<number>`count(*) filter (where ${reports.status} = 'resolved')::int`,
+        rejected: sql<number>`count(*) filter (where ${reports.status} = 'rejected')::int`,
+      })
+      .from(reports),
+  ])
+
+  const mappedReports: AdminReportItem[] = items.map((item) => {
+    const reporterInfo =
+      item.reporter && item.reporter.id
+        ? {
+            id: item.reporter.id,
+            email: item.reporter.email,
+            name: item.reporterProfile?.name ?? null,
+            identity: item.reporterIdentity?.identity ?? null,
+            avatarKey: item.reporterProfile?.avatarKey ?? null,
+          }
+        : null
+
+    const reportedUserInfo =
+      item.reportedUser && item.reportedUser.id
+        ? {
+            id: item.reportedUser.id,
+            email: item.reportedUser.email,
+            name: item.reportedUserProfile?.name ?? null,
+            identity: item.reportedUserIdentity?.identity ?? null,
+            avatarKey: item.reportedUserProfile?.avatarKey ?? null,
+          }
+        : null
+
+    const resolverInfo =
+      item.resolver && item.resolver.id
+        ? {
+            id: item.resolver.id,
+            email: item.resolver.email,
+            role: item.resolver.role as AdminRole,
+          }
+        : null
+
+    return {
+      id: item.report.id,
+      targetType: item.report.targetType as ReportTargetType,
+      targetId: item.report.targetId,
+      reason: item.report.reason as ReportReason,
+      details: item.report.details,
+      status: item.report.status as ReportStatus,
+      modNote: item.report.modNote,
+      reporter: reporterInfo,
+      reportedUser: reportedUserInfo,
+      resolvedBy: resolverInfo,
+      resolvedAt: item.report.resolvedAt,
+      createdAt: item.report.createdAt,
+      updatedAt: item.report.updatedAt,
+    }
+  })
+
+  const stats = {
+    pending: Number(statsResult[0]?.pending ?? 0),
+    resolved: Number(statsResult[0]?.resolved ?? 0),
+    rejected: Number(statsResult[0]?.rejected ?? 0),
+  }
+
+  return {
+    reports: mappedReports,
+    total: totalResult[0]?.count ?? 0,
+    stats,
+    limit,
+    offset,
+  }
+}
+
+export async function getReportById(reportId: bigint): Promise<AdminReportItem> {
+  const reporterAccounts = aliasedTable(accounts, 'reporter_accounts')
+  const reporterProfiles = aliasedTable(profiles, 'reporter_profiles')
+  const reporterIdentities = aliasedTable(identities, 'reporter_identities')
+
+  const reportedAccounts = aliasedTable(accounts, 'reported_accounts')
+  const reportedProfiles = aliasedTable(profiles, 'reported_profiles')
+  const reportedIdentities = aliasedTable(identities, 'reported_identities')
+
+  const resolverAdmins = aliasedTable(admins, 'resolver_admins')
+
+  const [item] = await db
+    .select({
+      report: reports,
+      reporter: {
+        id: reporterAccounts.id,
+        email: reporterAccounts.email,
+      },
+      reporterProfile: {
+        name: reporterProfiles.name,
+        avatarKey: reporterProfiles.avatarKey,
+      },
+      reporterIdentity: {
+        identity: reporterIdentities.identity,
+      },
+      reportedUser: {
+        id: reportedAccounts.id,
+        email: reportedAccounts.email,
+      },
+      reportedUserProfile: {
+        name: reportedProfiles.name,
+        avatarKey: reportedProfiles.avatarKey,
+      },
+      reportedUserIdentity: {
+        identity: reportedIdentities.identity,
+      },
+      resolver: {
+        id: resolverAdmins.id,
+        email: resolverAdmins.email,
+        role: resolverAdmins.role,
+      },
+    })
+    .from(reports)
+    .leftJoin(reporterAccounts, eq(reports.reporterId, reporterAccounts.id))
+    .leftJoin(reporterProfiles, eq(reports.reporterId, reporterProfiles.accountId))
+    .leftJoin(reporterIdentities, eq(reporterProfiles.identityId, reporterIdentities.id))
+    .leftJoin(reportedAccounts, eq(reports.reportedUserId, reportedAccounts.id))
+    .leftJoin(reportedProfiles, eq(reports.reportedUserId, reportedProfiles.accountId))
+    .leftJoin(reportedIdentities, eq(reportedProfiles.identityId, reportedIdentities.id))
+    .leftJoin(resolverAdmins, eq(reports.resolveById, resolverAdmins.id))
+    .where(eq(reports.id, reportId))
+
+  if (!item) {
+    throw new HTTPException(404, { message: 'Report not found' })
+  }
+
+  const reporterInfo =
+    item.reporter && item.reporter.id
+      ? {
+          id: item.reporter.id,
+          email: item.reporter.email,
+          name: item.reporterProfile?.name ?? null,
+          identity: item.reporterIdentity?.identity ?? null,
+          avatarKey: item.reporterProfile?.avatarKey ?? null,
+        }
+      : null
+
+  const reportedUserInfo =
+    item.reportedUser && item.reportedUser.id
+      ? {
+          id: item.reportedUser.id,
+          email: item.reportedUser.email,
+          name: item.reportedUserProfile?.name ?? null,
+          identity: item.reportedUserIdentity?.identity ?? null,
+          avatarKey: item.reportedUserProfile?.avatarKey ?? null,
+        }
+      : null
+
+  const resolverInfo =
+    item.resolver && item.resolver.id
+      ? {
+          id: item.resolver.id,
+          email: item.resolver.email,
+          role: item.resolver.role as AdminRole,
+        }
+      : null
+
+  return {
+    id: item.report.id,
+    targetType: item.report.targetType as ReportTargetType,
+    targetId: item.report.targetId,
+    reason: item.report.reason as ReportReason,
+    details: item.report.details,
+    status: item.report.status as ReportStatus,
+    modNote: item.report.modNote,
+    reporter: reporterInfo,
+    reportedUser: reportedUserInfo,
+    resolvedBy: resolverInfo,
+    resolvedAt: item.report.resolvedAt,
+    createdAt: item.report.createdAt,
+    updatedAt: item.report.updatedAt,
+  }
+}
+
+export async function updateReportResolution(
+  admin: { id: bigint; role: AdminRole },
+  reportId: bigint,
+  input: UpdateReportResolutionInput
+): Promise<AdminReportItem> {
+  const existing = await db.query.reports.findFirst({
+    where: eq(reports.id, reportId),
+  })
+
+  if (!existing) {
+    throw new HTTPException(404, { message: 'Report not found' })
+  }
+
+  const { status, modNote } = input
+  const isResolving = status !== 'pending'
+  const resolvedAt = isResolving ? new Date() : null
+  const resolveById = isResolving ? admin.id : null
+
+  const [updated] = await db
+    .update(reports)
+    .set({
+      status,
+      modNote: modNote !== undefined ? (modNote && modNote.trim().length > 0 ? modNote.trim() : null) : existing.modNote,
+      resolveById,
+      resolvedAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(reports.id, reportId))
+    .returning()
+
+  if (!updated) {
+    throw new HTTPException(500, { message: 'Failed to update report' })
+  }
+
+  return getReportById(reportId)
 }

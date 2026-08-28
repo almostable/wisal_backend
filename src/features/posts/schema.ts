@@ -64,6 +64,11 @@ export const replyCommentSchema = z.object({
   payload: z.record(z.string(), z.unknown()).default({}).optional(),
 })
 
+export const updateCommentSchema = z.object({
+  content: commentContentSchema.optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
+})
+
 export const listCommentsQuerySchema = createPaginationSchema(50, 100)
 
 export type PostIdParam = z.infer<typeof postIdParamSchema>
@@ -76,4 +81,5 @@ export type FeedQueryInput = z.infer<typeof feedQuerySchema>
 export type UserPostsQueryInput = z.infer<typeof userPostsQuerySchema>
 export type CreateCommentInput = z.infer<typeof createCommentSchema>
 export type ReplyCommentInput = z.infer<typeof replyCommentSchema>
+export type UpdateCommentInput = z.infer<typeof updateCommentSchema>
 export type ListCommentsQueryInput = z.infer<typeof listCommentsQuerySchema>

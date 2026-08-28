@@ -107,9 +107,12 @@ describe('Posts Feature Route Tests', () => {
     postId: samplePost.id,
     authorId: maleAccount.id,
     parentId: null,
+    replyToCommentId: null,
+    replyToUser: null,
     type: 'text',
     payload: {},
     content: 'First comment on post',
+    repliesCount: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     author: {
@@ -147,6 +150,9 @@ describe('Posts Feature Route Tests', () => {
     const resComments = await app.request('/posts/999999999999991/comments', { method: 'GET' })
     expect(resComments.status).toBe(401)
 
+    const resReplies = await app.request('/posts/comments/888888888888881/replies', { method: 'GET' })
+    expect(resReplies.status).toBe(401)
+
     const resPostComment = await app.request('/posts/999999999999991/comments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -160,6 +166,13 @@ describe('Posts Feature Route Tests', () => {
       body: JSON.stringify({ content: 'Reply' }),
     })
     expect(resReplyComment.status).toBe(401)
+
+    const resUpdateComment = await app.request('/posts/comments/888888888888881', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'Edited' }),
+    })
+    expect(resUpdateComment.status).toBe(401)
 
     const resDeleteComment = await app.request('/posts/comments/888888888888881', {
       method: 'DELETE',
@@ -448,6 +461,43 @@ describe('Posts Feature Route Tests', () => {
     expect(body.success).toBe(true)
     expect(body.posts.length).toBe(1)
     expect(body.posts[0].content).toBe('First test post')
+  })
+
+  it('GET /posts/feed?feed=following passes feed parameter and returns following feed posts', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      getFeed: async (_viewer: any, query: any) => {
+        expect(query.feed).toBe('following')
+        return {
+          posts: [samplePost],
+          limit: 20,
+          offset: 0,
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/feed?feed=following&limit=20&offset=0', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; posts: PostResponse[]; limit: number; offset: number }
+    expect(body.success).toBe(true)
+    expect(body.posts.length).toBe(1)
   })
 
   it('GET /posts/:id returns post when allowed', async () => {
@@ -781,6 +831,178 @@ describe('Posts Feature Route Tests', () => {
     expect(res.status).toBe(404)
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe('Post not found')
+  })
+
+  it('GET /posts/comments/:id/replies returns comment replies list with pagination', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const sampleReply: CommentResponse = {
+      ...sampleComment,
+      id: 888888888888882n,
+      parentId: sampleComment.id,
+      content: 'First reply to comment',
+      repliesCount: 0,
+    }
+
+    mock.module('../service', () => ({
+      getCommentReplies: async (commentId: bigint) => {
+        expect(commentId).toBe(sampleComment.id)
+        return {
+          comments: [sampleReply],
+          total: 1,
+          limit: 50,
+          offset: 0,
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/comments/888888888888881/replies?limit=50&offset=0', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      comments: any[]
+      total: number
+      limit: number
+      offset: number
+    }
+    expect(body.success).toBe(true)
+    expect(body.comments.length).toBe(1)
+    expect(body.comments[0].id).toBe('888888888888882')
+    expect(body.comments[0].parentId).toBe('888888888888881')
+    expect(body.comments[0].content).toBe('First reply to comment')
+    expect(body.comments[0].repliesCount).toBe(0)
+    expect(body.total).toBe(1)
+  })
+
+  it('GET /posts/comments/:id/replies returns 404 when parent comment does not exist', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      getCommentReplies: async () => {
+        throw new HTTPException(404, { message: 'Comment not found' })
+      },
+    }))
+
+    const res = await app.request('/posts/comments/999999999999999/replies', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Comment not found')
+  })
+
+  it('GET /posts/comments/:id/replies returns 404 when post access is restricted or post does not exist', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: femaleAccount,
+        session: femaleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => femaleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      getCommentReplies: async () => {
+        throw new HTTPException(404, { message: 'Post not found' })
+      },
+    }))
+
+    const res = await app.request('/posts/comments/888888888888881/replies', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_female_token',
+      },
+    })
+
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Post not found')
+  })
+
+  it('GET /posts/comments/:id/replies returns masked replies when reply author is blocked', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const sampleReply: CommentResponse = {
+      ...sampleComment,
+      id: 888888888888882n,
+      parentId: sampleComment.id,
+      content: '',
+      repliesCount: 0,
+      isBlocked: true,
+      is_blocked: true,
+      author: {
+        ...sampleComment.author!,
+        avatarKey: null,
+        isBlocked: true,
+        is_blocked: true,
+      },
+    }
+
+    mock.module('../service', () => ({
+      getCommentReplies: async () => ({
+        comments: [sampleReply],
+        total: 1,
+        limit: 50,
+        offset: 0,
+      }),
+    }))
+
+    const res = await app.request('/posts/comments/888888888888881/replies', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; comments: any[] }
+    expect(body.success).toBe(true)
+    expect(body.comments[0].content).toBe('')
+    expect(body.comments[0].is_blocked).toBe(true)
+    expect(body.comments[0].author.avatarKey).toBeNull()
   })
 
   it('POST /posts/:id/comments creates a new root comment successfully', async () => {
@@ -1218,6 +1440,340 @@ describe('Posts Feature Route Tests', () => {
       headers: { Authorization: 'Bearer valid_male_token' },
     })
     expect(resUnlike.status).toBe(404)
+  })
+
+  it('GET /posts/:id/comments only returns root comments and excludes replies', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const rootComment1: CommentResponse = {
+      ...sampleComment,
+      id: 888888888888881n,
+      parentId: null,
+      content: 'Root comment 1',
+      repliesCount: 2,
+    }
+
+    const rootComment2: CommentResponse = {
+      ...sampleComment,
+      id: 888888888888882n,
+      parentId: null,
+      content: 'Root comment 2',
+      repliesCount: 0,
+    }
+
+    mock.module('../service', () => ({
+      getPostComments: async (postId: bigint) => {
+        expect(postId).toBe(999999999999991n)
+        return {
+          comments: [rootComment1, rootComment2],
+          total: 2,
+          limit: 50,
+          offset: 0,
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991/comments', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      comments: CommentResponse[]
+      total: number
+    }
+    expect(body.success).toBe(true)
+    expect(body.comments.length).toBe(2)
+    expect(body.comments[0].parentId).toBeNull()
+    expect(body.comments[0].repliesCount).toBe(2)
+    expect(body.comments[1].parentId).toBeNull()
+    expect(body.comments[1].repliesCount).toBe(0)
+    expect(body.total).toBe(2)
+  })
+
+  it('GET /posts/comments/:id/replies returns flat list with replyToUser info', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const reply1: CommentResponse = {
+      ...sampleComment,
+      id: 888888888888882n,
+      parentId: 888888888888881n,
+      replyToCommentId: 888888888888881n,
+      replyToUser: {
+        id: maleAccount.id,
+        name: 'Male User',
+        identity: 'male_user',
+      },
+      content: 'First reply to root',
+      repliesCount: 0,
+    }
+
+    const reply2: CommentResponse = {
+      ...sampleComment,
+      id: 888888888888883n,
+      authorId: femaleAccount.id,
+      parentId: 888888888888881n,
+      replyToCommentId: 888888888888882n,
+      replyToUser: {
+        id: maleAccount.id,
+        name: 'Male User',
+        identity: 'male_user',
+      },
+      content: 'Reply to reply1 in flat thread',
+      repliesCount: 0,
+      author: {
+        id: femaleAccount.id,
+        name: 'Female User',
+        identity: 'female_user',
+        avatarKey: null,
+        isMale: false,
+      },
+    }
+
+    mock.module('../service', () => ({
+      getCommentReplies: async (commentId: bigint) => {
+        expect(commentId).toBe(888888888888881n)
+        return {
+          comments: [reply1, reply2],
+          total: 2,
+          limit: 50,
+          offset: 0,
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/comments/888888888888881/replies', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      comments: any[]
+      total: number
+    }
+    expect(body.success).toBe(true)
+    expect(body.comments.length).toBe(2)
+    // Both belong to root parentId
+    expect(body.comments[0].parentId).toBe('888888888888881')
+    expect(body.comments[1].parentId).toBe('888888888888881')
+    // replyToUser is present
+    expect(body.comments[0].replyToUser?.identity).toBe('male_user')
+    expect(body.comments[1].replyToCommentId).toBe('888888888888882')
+    expect(body.comments[1].replyToUser?.name).toBe('Male User')
+  })
+
+  it('PATCH /posts/:id returns 403 when post is older than 15 minutes', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      updatePost: async () => {
+        throw new HTTPException(403, {
+          message: 'Post can only be edited within 15 minutes of creation',
+        })
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Trying to edit expired post',
+      }),
+    })
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Post can only be edited within 15 minutes of creation')
+  })
+
+  it('PATCH /posts/comments/:id updates comment successfully within 15 minutes', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      updateComment: async (authorAccountId: bigint, commentId: bigint, input: any) => {
+        expect(authorAccountId).toBe(maleAccount.id)
+        expect(commentId).toBe(888888888888881n)
+        return {
+          ...sampleComment,
+          id: commentId,
+          content: input.content,
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/comments/888888888888881', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Updated comment text',
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; comment: CommentResponse }
+    expect(body.success).toBe(true)
+    expect(body.comment.content).toBe('Updated comment text')
+  })
+
+  it('PATCH /posts/comments/:id returns 403 when user is not comment author', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: femaleAccount,
+        session: femaleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => femaleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      updateComment: async () => {
+        throw new HTTPException(403, { message: 'You can only edit your own comments' })
+      },
+    }))
+
+    const res = await app.request('/posts/comments/888888888888881', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer valid_female_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Malicious edit of someone else comment',
+      }),
+    })
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('You can only edit your own comments')
+  })
+
+  it('PATCH /posts/comments/:id returns 403 when comment is older than 15 minutes', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      updateComment: async () => {
+        throw new HTTPException(403, {
+          message: 'Comment can only be edited within 15 minutes of creation',
+        })
+      },
+    }))
+
+    const res = await app.request('/posts/comments/888888888888881', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Trying to edit after 15m',
+      }),
+    })
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Comment can only be edited within 15 minutes of creation')
+  })
+
+  it('PATCH /posts/comments/:id returns 404 when comment not found', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      updateComment: async () => {
+        throw new HTTPException(404, { message: 'Comment not found' })
+      },
+    }))
+
+    const res = await app.request('/posts/comments/999999999999999', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Edit missing comment',
+      }),
+    })
+
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Comment not found')
   })
 })
 

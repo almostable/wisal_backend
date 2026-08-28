@@ -1,5 +1,10 @@
 import { z } from 'zod'
 import { ADMIN_ROLES, adminRawPasswordSchema } from '../../db/schema/admins'
+import {
+  REPORT_TARGET_TYPES,
+  REPORT_REASONS,
+  REPORT_STATUSES,
+} from '../../db/schema/reports'
 import { emailSchema, paginationQuerySchema, snowflakeParamSchema } from '../../db/schema/common'
 
 export const loginInputSchema = z.object({
@@ -36,6 +41,35 @@ export const listInvitesQuerySchema = paginationQuerySchema.extend({
   search: z.string().trim().optional(),
 })
 
+export const adminReportStatusEnum = z.enum(['all', ...REPORT_STATUSES])
+export type AdminReportStatusFilter = z.infer<typeof adminReportStatusEnum>
+
+export const adminReportTargetTypeEnum = z.enum(['all', ...REPORT_TARGET_TYPES])
+export type AdminReportTargetTypeFilter = z.infer<typeof adminReportTargetTypeEnum>
+
+export const adminReportReasonEnum = z.enum(['all', ...REPORT_REASONS])
+export type AdminReportReasonFilter = z.infer<typeof adminReportReasonEnum>
+
+export const listReportsQuerySchema = paginationQuerySchema.extend({
+  status: adminReportStatusEnum.default('all'),
+  targetType: adminReportTargetTypeEnum.default('all'),
+  reason: adminReportReasonEnum.default('all'),
+  q: z.string().trim().optional(),
+  search: z.string().trim().optional(),
+})
+
+export const updateReportResolutionSchema = z.object({
+  status: z.enum(REPORT_STATUSES, {
+    message: `status must be one of: ${REPORT_STATUSES.join(', ')}`,
+  }),
+  modNote: z
+    .string()
+    .trim()
+    .max(1000, 'Moderator note must be at most 1000 characters')
+    .nullable()
+    .optional(),
+})
+
 export { snowflakeParamSchema, paginationQuerySchema }
 
 export type SnowflakeParam = z.infer<typeof snowflakeParamSchema>
@@ -44,3 +78,5 @@ export type CreateAdminRouteInput = z.infer<typeof createAdminInputSchema>
 export type CreateInviteRouteInput = z.infer<typeof createInviteInputSchema>
 export type PaginationQueryInput = z.infer<typeof paginationQuerySchema>
 export type ListInvitesQueryInput = z.infer<typeof listInvitesQuerySchema>
+export type ListReportsQueryInput = z.infer<typeof listReportsQuerySchema>
+export type UpdateReportResolutionRouteInput = z.infer<typeof updateReportResolutionSchema>

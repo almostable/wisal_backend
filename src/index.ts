@@ -14,6 +14,7 @@ import { adminRouter } from './features/admin'
 import { authRouter } from './features/auth'
 import { profileRouter } from './features/profile'
 import { postsRouter } from './features/posts'
+import { reportsRouter } from './features/reports'
 
 const app = new Hono()
 
@@ -62,6 +63,7 @@ app.route('/admin', adminRouter)
 app.route('/auth', authRouter)
 app.route('/profile', profileRouter)
 app.route('/posts', postsRouter)
+app.route('/reports', reportsRouter)
 
 export { app }
 

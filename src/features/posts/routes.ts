@@ -13,6 +13,7 @@ import {
   userPostsQuerySchema,
   createCommentSchema,
   replyCommentSchema,
+  updateCommentSchema,
   listCommentsQuerySchema,
 } from './schema'
 import {
@@ -26,8 +27,10 @@ import {
   likePost,
   unlikePost,
   getPostComments,
+  getCommentReplies,
   createComment,
   replyToComment,
+  updateComment,
   deleteComment,
 } from './service'
 
@@ -90,6 +93,29 @@ postsRouter.get(
   }
 )
 
+postsRouter.get(
+  '/comments/:id/replies',
+  zValidator('param', commentIdParamSchema),
+  zValidator('query', listCommentsQuerySchema),
+  async (c) => {
+    const account = c.get('account')
+    const profile = c.get('profile')
+    const { id } = c.req.valid('param')
+    const query = c.req.valid('query')
+
+    const result = await getCommentReplies(
+      BigInt(id),
+      { accountId: account.id, isMale: profile.isMale! },
+      query
+    )
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
 postsRouter.post(
   '/comments/:id/reply',
   zValidator('param', commentIdParamSchema),
@@ -114,6 +140,24 @@ postsRouter.post(
       },
       201
     )
+  }
+)
+
+postsRouter.patch(
+  '/comments/:id',
+  zValidator('param', commentIdParamSchema),
+  zValidator('json', updateCommentSchema),
+  async (c) => {
+    const account = c.get('account')
+    const { id } = c.req.valid('param')
+    const data = c.req.valid('json')
+
+    const comment = await updateComment(account.id, BigInt(id), data)
+
+    return c.json({
+      success: true,
+      comment,
+    })
   }
 )
 
