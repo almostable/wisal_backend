@@ -6,7 +6,7 @@ import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
 import { accounts } from './accounts'
 import { posts } from './posts'
 
-export const COMMENT_TYPES = ['text'] as const
+export const COMMENT_TYPES = ['text', 'media'] as const
 export type CommentType = (typeof COMMENT_TYPES)[number]
 
 export const comments = pgTable(
@@ -30,7 +30,7 @@ export const comments = pgTable(
     }),
     type: varchar('type', { length: 32 }).notNull().default('text'),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
-    content: text('content').notNull(),
+    content: text('content').notNull().default(''),
     repliesCount: integer('replies_count').notNull().default(0),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
     ...timestamps,

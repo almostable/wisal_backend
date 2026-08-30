@@ -97,6 +97,6 @@ describe('Comments Schema Tests', () => {
   })
 
   it('has expected enum constants defined', () => {
-    expect(COMMENT_TYPES).toEqual(['text'])
+    expect(COMMENT_TYPES).toEqual(['text', 'media'])
   })
 })

@@ -488,6 +488,39 @@ Header `Authorization: Bearer <token>`.
 
 ---
 
+## Загрузка медиафайлов (`/uploads`)
+
+Двухшаговая загрузка медиафайлов (изображений) в Cloudflare R2 по Presigned URL с хранением `fileKey` в PostgreSQL.
+
+### Архитектурный Flow
+1. iOS запрашивает ссылку: `POST /uploads/presign { "ext": "jpg", "contentType": "image/jpeg" }`.
+2. API валидирует расширение/MIME и возвращает `200 OK` с `uploadUrl` (TTL 10 минут) и `fileKey` (`media/YYYY-MM-DD/<snowflake>.jpg`).
+3. iOS загружает бинарный файл напрямую в Cloudflare R2 через HTTP `PUT <uploadUrl>` с заголовком `Content-Type: image/jpeg`.
+4. iOS использует `fileKey` в бизнес-логике:
+   - Обновление аватара профиля: `PATCH /profile/me { "avatarKey": "media/..." }`
+   - Создание публикации с фото: `POST /posts { "type": "media", "payload": { "media": [{ "fileKey": "media/...", "width": 1920, "height": 1080 }] }, "content": "..." }`
+   - Добавление комментария с фото: `POST /posts/:id/comments { "type": "media", "payload": { "media": [{ "fileKey": "media/...", "width": 800, "height": 600 }] }, "content": "..." }`
+
+### `POST /uploads/presign`
+- **Доступ:** Авторизованный пользователь (`Authorization: Bearer <token>`)
+- **Тело запроса (JSON):**
+  - `ext` *(string, обязательное, `"jpg" | "jpeg" | "png" | "webp"`)* — расширение файла
+  - `contentType` *(string, обязательное)* — MIME-тип (`image/jpeg`, `image/png`, `image/webp`)
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "uploadUrl": "https://<account_id>.r2.cloudflarestorage.com/wisal-media/media/2026-08-30/723491823749128301.jpg?X-Amz-Algorithm=...",
+    "fileKey": "media/2026-08-30/723491823749128301.jpg",
+    "expiresIn": 600
+  }
+  ```
+- **Ошибки:**
+  - `400 Bad Request` — неподдерживаемое расширение или несовпадающий MIME-тип.
+  - `401 Unauthorized` — отсутствие токена авторизации.
+
+---
+
 ## Публикации и лента (`/posts`)
 
 > **Важно:** Все эндпоинты `/posts` требуют авторизации (`Authorization: Bearer <token>`) и полностью пройденного онбординга (заданный пол `isMale` и уникальный `identity`).
@@ -495,9 +528,11 @@ Header `Authorization: Bearer <token>`.
 ### `POST /posts`
 - **Доступ:** Авторизованный пользователь с онбордингом
 - **Тело запроса (JSON):**
-  - `content` *(string, обязательное, мин. 1, макс. 5000 симв.)* — текст поста
-  - `type` *(string, опционально, `"text"`, по умолчанию: `"text"`)* — тип поста
-  - `payload` *(object, опционально, по умолчанию: `{}`)* — дополнительные метаданные
+  - `type` *(string, опционально, `"text" | "media"`, по умолчанию: `"text"`)* — тип поста
+  - `content` *(string, обязательное для `type: "text"`, опционально для `type: "media"`, макс. 5000 симв.)* — текст поста
+  - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*:
+    - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (от 1 до 10 файлов)
+    - Для `type: "text"`: `{}`
   - `genderScope` *(string, опционально, `"all" | "same_gender"`, по умолчанию: `"all"`)* — охват по полу (`same_gender` — только для своего пола)
   - `accessLevel` *(string, опционально, `"public" | "followers"`, по умолчанию: `"public"`)* — уровень видимости
   - `isPinned` *(boolean, опционально, по умолчанию: `false`)* — закрепить пост (снимает закреп с других постов пользователя)
@@ -509,8 +544,16 @@ Header `Authorization: Bearer <token>`.
       "id": "999999999999991",
       "authorId": "111111111111111",
       "authorGender": true,
-      "type": "text",
-      "payload": {},
+      "type": "media",
+      "payload": {
+        "media": [
+          {
+            "fileKey": "media/2026-08-30/723491823749128301.jpg",
+            "width": 1920,
+            "height": 1080
+          }
+        ]
+      },
       "content": "Hello Wisal world!",
       "genderScope": "all",
       "accessLevel": "public",
@@ -528,7 +571,6 @@ Header `Authorization: Bearer <token>`.
         "isMale": true
       }
     }
-  }
   ```
 
 ### `PATCH /posts/:id`
@@ -891,10 +933,12 @@ Header `Authorization: Bearer <token>`.
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID поста
 - **Тело запроса (JSON):**
-  - `content` *(string, обязательное, мин. 1, макс. 5000 симв.)* — текст комментария
+  - `type` *(string, опционально, `"text" | "media"`, по умолчанию: `"text"`)*
+  - `content` *(string, обязательное для `type: "text"`, опционально для `type: "media"`, макс. 5000 симв.)* — текст комментария
+  - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*:
+    - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (от 1 до 10 файлов)
+    - Для `type: "text"`: `{}`
   - `parentId` *(string | null, опционально)* — Snowflake ID родительского комментария (если ответ)
-  - `type` *(string, опционально, `"text"`, по умолчанию: `"text"`)*
-  - `payload` *(object, опционально, по умолчанию: `{}`)*
 - **Ответ `201 Created`:**
   ```json
   {
@@ -928,9 +972,9 @@ Header `Authorization: Bearer <token>`.
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID родительского комментария (корневого или реплая)
 - **Тело запроса (JSON):**
-  - `content` *(string, обязательное, мин. 1, макс. 5000 симв.)* — текст ответа
-  - `type` *(string, опционально, `"text"`, по умолчанию: `"text"`)*
-  - `payload` *(object, опционально, по умолчанию: `{}`)*
+  - `type` *(string, опционально, `"text" | "media"`, по умолчанию: `"text"`)*
+  - `content` *(string, обязательное для `type: "text"`, опционально для `type: "media"`, макс. 5000 симв.)* — текст ответа
+  - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*
 - **Ответ `201 Created`:**
   ```json
   {

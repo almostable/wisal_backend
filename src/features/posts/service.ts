@@ -234,14 +234,18 @@ export async function createPost(
         )
     }
 
+    const content = input.content ? input.content.trim() : ''
+    const postType = input.type ?? 'text'
+    const payload = input.payload ?? {}
+
     const [created] = await tx
       .insert(posts)
       .values({
         authorId: authorAccountId,
         authorGender,
-        type: input.type ?? 'text',
-        payload: input.payload ?? {},
-        content: input.content.trim(),
+        type: postType,
+        payload,
+        content,
         genderScope: input.genderScope ?? 'all',
         accessLevel: input.accessLevel ?? 'public',
         isPinned,
@@ -305,7 +309,10 @@ export async function updatePost(
     const updateData: Partial<typeof posts.$inferInsert> = {}
 
     if (input.content !== undefined) {
-      updateData.content = input.content.trim()
+      updateData.content = input.content ? input.content.trim() : ''
+    }
+    if (input.type !== undefined) {
+      updateData.type = input.type
     }
     if (input.genderScope !== undefined) {
       updateData.genderScope = input.genderScope
@@ -1042,6 +1049,10 @@ export async function createComment(
         .where(eq(comments.id, threadRootId))
     }
 
+    const content = input.content ? input.content.trim() : ''
+    const commentType = input.type ?? 'text'
+    const payload = input.payload ?? {}
+
     const [created] = await tx
       .insert(comments)
       .values({
@@ -1050,9 +1061,9 @@ export async function createComment(
         parentId: threadRootId,
         replyToCommentId,
         replyToUserId,
-        type: input.type ?? 'text',
-        payload: input.payload ?? {},
-        content: input.content.trim(),
+        type: commentType,
+        payload,
+        content,
       })
       .returning()
 
@@ -1214,7 +1225,7 @@ export async function updateComment(
     }
 
     if (input.content !== undefined) {
-      updateData.content = input.content.trim()
+      updateData.content = input.content ? input.content.trim() : ''
     }
     if (input.payload !== undefined) {
       updateData.payload = input.payload

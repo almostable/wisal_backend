@@ -1,5 +1,7 @@
-import type { PostType, GenderScope, AccessLevel } from '../../db/schema/posts'
+import type { PostType, GenderScope, AccessLevel, MediaItem, MediaPayload } from '../../db/schema/posts'
 import type { CommentType } from '../../db/schema/comments'
+
+export type { MediaItem, MediaPayload }
 
 export interface PostAuthorInfo {
   id: bigint
@@ -72,7 +74,7 @@ export interface LikeActionResult {
 }
 
 export interface CreatePostDTO {
-  content: string
+  content?: string | null
   type?: PostType
   payload?: Record<string, unknown>
   genderScope?: GenderScope
@@ -81,7 +83,8 @@ export interface CreatePostDTO {
 }
 
 export interface UpdatePostDTO {
-  content?: string
+  content?: string | null
+  type?: PostType
   genderScope?: GenderScope
   accessLevel?: AccessLevel
   isPinned?: boolean
@@ -118,20 +121,20 @@ export interface UserPostsResult {
 }
 
 export interface CreateCommentDTO {
-  content: string
+  content?: string | null
   parentId?: bigint | null
   type?: CommentType
   payload?: Record<string, unknown>
 }
 
 export interface ReplyCommentDTO {
-  content: string
+  content?: string | null
   type?: CommentType
   payload?: Record<string, unknown>
 }
 
 export interface UpdateCommentDTO {
-  content?: string
+  content?: string | null
   payload?: Record<string, unknown>
 }
 

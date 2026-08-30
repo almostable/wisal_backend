@@ -103,7 +103,7 @@ describe('Posts Schema Tests', () => {
   })
 
   it('has expected enum constants defined', () => {
-    expect(POST_TYPES).toEqual(['text'])
+    expect(POST_TYPES).toEqual(['text', 'media'])
     expect(GENDER_SCOPES).toEqual(['all', 'same_gender'])
     expect(ACCESS_LEVELS).toEqual(['public', 'followers'])
   })

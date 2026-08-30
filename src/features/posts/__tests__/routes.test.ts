@@ -283,6 +283,234 @@ describe('Posts Feature Route Tests', () => {
     expect(res.status).toBe(400)
   })
 
+  it('POST /posts creates a media post with single media item and no content successfully', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      createPost: async (
+        authorId: bigint,
+        authorGender: boolean,
+        input: any
+      ) => ({
+        ...samplePost,
+        authorId,
+        authorGender,
+        content: '',
+        type: 'media',
+        payload: input.payload ?? {},
+      }),
+    }))
+
+    const res = await app.request('/posts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'media',
+        payload: {
+          media: [
+            {
+              fileKey: 'media/2026-08-30/723491823749128301.jpg',
+              width: 1920,
+              height: 1080,
+            },
+          ],
+        },
+      }),
+    })
+
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { success: boolean; post: PostResponse }
+    expect(body.success).toBe(true)
+    expect(body.post.content).toBe('')
+    expect(body.post.type).toBe('media')
+    expect((body.post.payload as any).media).toHaveLength(1)
+    expect((body.post.payload as any).media[0].fileKey).toBe('media/2026-08-30/723491823749128301.jpg')
+    expect((body.post.payload as any).media[0].width).toBe(1920)
+    expect((body.post.payload as any).media[0].height).toBe(1080)
+  })
+
+  it('POST /posts creates a media post with multiple images (up to 10) in payload successfully', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      createPost: async (
+        authorId: bigint,
+        authorGender: boolean,
+        input: any
+      ) => ({
+        ...samplePost,
+        authorId,
+        authorGender,
+        content: input.content,
+        type: 'media',
+        payload: input.payload ?? {},
+      }),
+    }))
+
+    const res = await app.request('/posts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'media',
+        content: 'Check out my gallery!',
+        payload: {
+          media: [
+            {
+              fileKey: 'media/2026-08-30/723491823749128301.jpg',
+              width: 1080,
+              height: 1080,
+            },
+            {
+              fileKey: 'media/2026-08-30/723491823749128302.png',
+              width: 1920,
+              height: 1080,
+            },
+            {
+              fileKey: 'media/2026-08-30/723491823749128303.webp',
+              width: 800,
+              height: 600,
+            },
+          ],
+        },
+      }),
+    })
+
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { success: boolean; post: PostResponse }
+    expect(body.success).toBe(true)
+    expect(body.post.content).toBe('Check out my gallery!')
+    expect((body.post.payload as any).media).toHaveLength(3)
+    expect((body.post.payload as any).media[0].fileKey).toBe('media/2026-08-30/723491823749128301.jpg')
+    expect((body.post.payload as any).media[1].fileKey).toBe('media/2026-08-30/723491823749128302.png')
+    expect((body.post.payload as any).media[2].fileKey).toBe('media/2026-08-30/723491823749128303.webp')
+  })
+
+  it('POST /posts rejects media post with more than 10 images with 400', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const media = Array.from({ length: 11 }, (_, i) => ({
+      fileKey: `media/2026-08-30/72349182374912830${i}.jpg`,
+      width: 100,
+      height: 100,
+    }))
+
+    const res = await app.request('/posts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'media',
+        payload: {
+          media,
+        },
+      }),
+    })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /posts rejects media post with invalid payload fileKey with 400', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const res = await app.request('/posts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'media',
+        payload: {
+          media: [
+            {
+              fileKey: 'https://malicious.com/image.jpg',
+              width: 100,
+              height: 100,
+            },
+          ],
+        },
+      }),
+    })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /posts rejects media post with empty payload with 400', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const res = await app.request('/posts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'media',
+        payload: {},
+      }),
+    })
+
+    expect(res.status).toBe(400)
+  })
+
   it('PATCH /posts/:id updates post content and settings', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
@@ -1124,6 +1352,122 @@ describe('Posts Feature Route Tests', () => {
     })
 
     expect(res.status).toBe(400)
+  })
+
+  it('POST /posts/:id/comments creates comment with media type and payload (no content) successfully', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      createComment: async (
+        postId: bigint,
+        authorAccountId: bigint,
+        _viewer: any,
+        input: any
+      ) => ({
+        ...sampleComment,
+        id: 888888888888883n,
+        postId,
+        authorId: authorAccountId,
+        content: '',
+        type: 'media',
+        payload: input.payload ?? {},
+      }),
+    }))
+
+    const res = await app.request('/posts/999999999999991/comments', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'media',
+        payload: {
+          media: [
+            {
+              fileKey: 'media/2026-08-30/723491823749128301.jpg',
+              width: 800,
+              height: 600,
+            },
+          ],
+        },
+      }),
+    })
+
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { success: boolean; comment: CommentResponse }
+    expect(body.success).toBe(true)
+    expect(body.comment.content).toBe('')
+    expect(body.comment.type).toBe('media')
+    expect((body.comment.payload as any).media[0].fileKey).toBe('media/2026-08-30/723491823749128301.jpg')
+  })
+
+  it('POST /posts/:id/comments creates comment with media type, text AND payload successfully', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      createComment: async (
+        postId: bigint,
+        authorAccountId: bigint,
+        _viewer: any,
+        input: any
+      ) => ({
+        ...sampleComment,
+        id: 888888888888884n,
+        postId,
+        authorId: authorAccountId,
+        content: input.content,
+        type: 'media',
+        payload: input.payload ?? {},
+      }),
+    }))
+
+    const res = await app.request('/posts/999999999999991/comments', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'media',
+        content: 'Check this image comment!',
+        payload: {
+          media: [
+            {
+              fileKey: 'media/2026-08-30/723491823749128301.png',
+              width: 500,
+              height: 500,
+            },
+          ],
+        },
+      }),
+    })
+
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { success: boolean; comment: CommentResponse }
+    expect(body.success).toBe(true)
+    expect(body.comment.content).toBe('Check this image comment!')
+    expect((body.comment.payload as any).media[0].fileKey).toBe('media/2026-08-30/723491823749128301.png')
   })
 
   it('POST /posts/comments/:id/reply replies directly to a comment', async () => {

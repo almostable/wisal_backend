@@ -12,6 +12,11 @@ const envSchema = z.object({
     .optional(),
   ADMIN_PASSWORD: z.string().min(16).optional(),
   ADMIN_ROLE: z.enum(['admin', 'moderator']).default('admin'),
+  R2_ACCOUNT_ID: z.string().default('dummy-account-id'),
+  R2_ACCESS_KEY_ID: z.string().default('dummy-access-key-id'),
+  R2_SECRET_ACCESS_KEY: z.string().default('dummy-secret-access-key'),
+  R2_BUCKET_NAME: z.string().default('wisal-media'),
+  R2_PUBLIC_URL: z.string().url().optional(),
 })
 
 export type Env = z.infer<typeof envSchema>

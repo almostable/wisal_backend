@@ -6,8 +6,18 @@ import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
 import { accounts } from './accounts'
 import { postLikes } from './post-likes'
 
-export const POST_TYPES = ['text'] as const
+export const POST_TYPES = ['text', 'media'] as const
 export type PostType = (typeof POST_TYPES)[number]
+
+export interface MediaItem {
+  fileKey: string
+  width: number
+  height: number
+}
+
+export interface MediaPayload {
+  media: MediaItem[]
+}
 
 export const GENDER_SCOPES = ['all', 'same_gender'] as const
 export type GenderScope = (typeof GENDER_SCOPES)[number]
@@ -25,7 +35,7 @@ export const posts = pgTable(
     authorGender: boolean('author_gender').notNull(),
     type: varchar('type', { length: 32 }).notNull().default('text'),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
-    content: text('content').notNull(),
+    content: text('content').notNull().default(''),
     genderScope: varchar('gender_scope', { length: 32 }).notNull().default('all'),
     accessLevel: varchar('access_level', { length: 32 }).notNull().default('public'),
     isPinned: boolean('is_pinned').notNull().default(false),
