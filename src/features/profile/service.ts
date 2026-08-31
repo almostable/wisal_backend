@@ -539,7 +539,6 @@ export async function getBlockedUsers(
       .select({
         accountId: accounts.id,
         name: profiles.name,
-        avatarKey: profiles.avatarKey,
         identity: identities.identity,
         isMale: profiles.isMale,
         blockedAt: userBlocks.createdAt,
@@ -562,7 +561,6 @@ export async function getBlockedUsers(
     users: items.map((item) => ({
       id: item.accountId,
       name: item.name,
-      avatarKey: item.avatarKey,
       identity: item.identity,
       isMale: item.isMale,
       blockedAt: item.blockedAt,

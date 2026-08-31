@@ -876,8 +876,8 @@ export async function getPostComments(
         replyToCommentId: null,
         replyToUser: null,
         type: item.comment.type as CommentType,
-        payload: {},
-        content: '',
+        payload: (item.comment.payload as Record<string, unknown>) ?? {},
+        content: item.comment.content,
         repliesCount: item.comment.repliesCount ?? 0,
         createdAt: item.comment.createdAt,
         updatedAt: item.comment.updatedAt,
@@ -887,11 +887,11 @@ export async function getPostComments(
           avatarKey: null,
           identity: item.authorIdentity?.identity ?? null,
           isMale: item.authorProfile?.isMale ?? null,
-          ...(isBlocked ? { isBlocked: true, is_blocked: true } : {}),
-          ...(isHidden ? { isHidden: true, is_hidden: true } : {}),
+          ...(isBlocked ? { isBlocked: true } : {}),
+          ...(isHidden ? { isHidden: true } : {}),
         },
-        ...(isBlocked ? { isBlocked: true, is_blocked: true } : {}),
-        ...(isHidden ? { isHidden: true, is_hidden: true } : {}),
+        ...(isBlocked ? { isBlocked: true } : {}),
+        ...(isHidden ? { isHidden: true } : {}),
       }
     }
 
@@ -1009,8 +1009,8 @@ export async function getCommentReplies(
         replyToCommentId: item.comment.replyToCommentId ?? null,
         replyToUser: mappedReplyToUser,
         type: item.comment.type as CommentType,
-        payload: {},
-        content: '',
+        payload: (item.comment.payload as Record<string, unknown>) ?? {},
+        content: item.comment.content,
         repliesCount: item.comment.repliesCount ?? 0,
         createdAt: item.comment.createdAt,
         updatedAt: item.comment.updatedAt,
@@ -1020,11 +1020,11 @@ export async function getCommentReplies(
           avatarKey: null,
           identity: item.authorIdentity?.identity ?? null,
           isMale: item.authorProfile?.isMale ?? null,
-          ...(isBlocked ? { isBlocked: true, is_blocked: true } : {}),
-          ...(isHidden ? { isHidden: true, is_hidden: true } : {}),
+          ...(isBlocked ? { isBlocked: true } : {}),
+          ...(isHidden ? { isHidden: true } : {}),
         },
-        ...(isBlocked ? { isBlocked: true, is_blocked: true } : {}),
-        ...(isHidden ? { isHidden: true, is_hidden: true } : {}),
+        ...(isBlocked ? { isBlocked: true } : {}),
+        ...(isHidden ? { isHidden: true } : {}),
       }
     }
 
@@ -1067,6 +1067,44 @@ export async function createComment(
       threadRootId = targetComment.parentId ?? targetComment.id
       replyToCommentId = targetComment.id
       replyToUserId = targetComment.authorId
+
+      const targetAuthorIds: bigint[] = [targetComment.authorId]
+      if (threadRootId !== targetComment.id) {
+        const rootComment = await tx.query.comments.findFirst({
+          where: and(
+            eq(comments.id, threadRootId),
+            isNull(comments.deletedAt)
+          ),
+        })
+        if (rootComment && !targetAuthorIds.includes(rootComment.authorId)) {
+          targetAuthorIds.push(rootComment.authorId)
+        }
+      }
+
+      const otherTargetAuthorIds = targetAuthorIds.filter((id) => id !== authorAccountId)
+
+      if (otherTargetAuthorIds.length > 0) {
+        const [blockRecord] = await tx
+          .select({ blockerId: userBlocks.blockerId })
+          .from(userBlocks)
+          .where(
+            or(
+              and(
+                eq(userBlocks.blockerId, authorAccountId),
+                inArray(userBlocks.blockedId, otherTargetAuthorIds)
+              ),
+              and(
+                inArray(userBlocks.blockerId, otherTargetAuthorIds),
+                eq(userBlocks.blockedId, authorAccountId)
+              )
+            )
+          )
+          .limit(1)
+
+        if (blockRecord) {
+          throw new HTTPException(400, { message: 'Cannot reply to a blocked user' })
+        }
+      }
 
       await tx
         .update(comments)

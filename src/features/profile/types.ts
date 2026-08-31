@@ -69,7 +69,6 @@ export interface FollowActionResult {
 export interface BlockedUserItem {
   id: bigint
   name: string | null
-  avatarKey: string | null
   identity: string | null
   isMale: boolean | null
   blockedAt: Date

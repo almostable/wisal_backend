@@ -11,14 +11,10 @@ export interface SafeProfile {
   avatarKey: string | null
   description: string | null
   contacts: Contacts | null
-  createdAt: Date
-  updatedAt: Date
   identity: string | null
   isFollowing?: boolean
   isBlocked?: boolean
-  is_blocked?: boolean
   isHidden?: boolean
-  is_hidden?: boolean
 }
 
 export function formatProfileResponse(
@@ -39,8 +35,6 @@ export function formatProfileResponse(
     avatarKey: profile.avatarKey,
     description: profile.description,
     contacts: profile.contacts ?? null,
-    createdAt: profile.createdAt,
-    updatedAt: profile.updatedAt,
     identity: identityStr,
   }
 
@@ -69,18 +63,14 @@ export function formatRestrictedProfileResponse(
     avatarKey: null,
     description: null,
     contacts: null,
-    createdAt: profile.createdAt,
-    updatedAt: profile.updatedAt,
     identity: identityStr,
   }
 
   if (flags.isBlocked) {
     res.isBlocked = true
-    res.is_blocked = true
   }
   if (flags.isHidden) {
     res.isHidden = true
-    res.is_hidden = true
   }
   if (flags.isFollowing !== undefined) {
     res.isFollowing = flags.isFollowing

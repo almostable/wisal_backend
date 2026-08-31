@@ -62,8 +62,6 @@ Header `Authorization: Bearer <token>`.
         "website": null,
         "email": null
       },
-      "createdAt": "2026-08-20T00:00:00.000Z",
-      "updatedAt": "2026-08-20T00:00:00.000Z",
       "identity": "johndoe"
     },
     "isOnboardingCompleted": true
@@ -112,8 +110,6 @@ Header `Authorization: Bearer <token>`.
       "avatarKey": null,
       "description": "Bio text",
       "contacts": null,
-      "createdAt": "2026-08-20T00:00:00.000Z",
-      "updatedAt": "2026-08-20T00:00:00.000Z",
       "identity": "johndoe"
     },
     "isOnboardingCompleted": true
@@ -138,8 +134,6 @@ Header `Authorization: Bearer <token>`.
       "avatarKey": null,
       "description": "Bio text",
       "contacts": null,
-      "createdAt": "2026-08-20T00:00:00.000Z",
-      "updatedAt": "2026-08-20T00:00:00.000Z",
       "identity": "johndoe"
     },
     "isOnboardingCompleted": true
@@ -166,8 +160,6 @@ Header `Authorization: Bearer <token>`.
       "avatarKey": null,
       "description": "Bio text",
       "contacts": null,
-      "createdAt": "2026-08-20T00:00:00.000Z",
-      "updatedAt": "2026-08-20T00:00:00.000Z",
       "identity": "johndoe"
     }
   }
@@ -199,8 +191,6 @@ Header `Authorization: Bearer <token>`.
         "website": null,
         "email": null
       },
-      "createdAt": "2026-08-20T00:00:00.000Z",
-      "updatedAt": "2026-08-20T00:00:00.000Z",
       "identity": "johndoe"
     }
   }
@@ -387,7 +377,6 @@ Header `Authorization: Bearer <token>`.
       {
         "id": "111111111111111",
         "name": "Blocked User",
-        "avatarKey": null,
         "identity": "blocked_handle",
         "isMale": false,
         "blockedAt": "2026-08-20T00:00:00.000Z"
@@ -444,7 +433,7 @@ Header `Authorization: Bearer <token>`.
 - **URL-параметры:**
   - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
 - **Поведение при блокировке:**
-  - Если авторизованный пользователь заблокировал автора (`is_blocked: true`) или заблокирован автором (`is_hidden: true`): возвращаются только `id`, `name`, `identity`, `isMale` (аватарка, описание, контакты отсутствуют).
+  - Если авторизованный пользователь заблокировал автора (`isBlocked: true`) или заблокирован автором (`isHidden: true`): возвращаются только `id`, `name`, `identity`, `isMale` (аватарка, описание, контакты отсутствуют).
 - **Ответ `200 OK` (обычный):**
   ```json
   {
@@ -462,7 +451,6 @@ Header `Authorization: Bearer <token>`.
         "website": null,
         "email": null
       },
-      "createdAt": "2026-08-20T00:00:00.000Z",
       "identity": "johndoe",
       "isFollowing": true
     }
@@ -479,10 +467,8 @@ Header `Authorization: Bearer <token>`.
       "avatarKey": null,
       "description": null,
       "contacts": null,
-      "createdAt": "2026-08-20T00:00:00.000Z",
       "identity": "johndoe",
       "isFollowing": false,
-      "is_blocked": true,
       "isBlocked": true
     }
   }
@@ -821,6 +807,9 @@ Header `Authorization: Bearer <token>`.
 > - Если пользователь отвечает на конкретный реплай внутри ветки, поле `parentId` автоматически указывает на корневой комментарий ветки, а `replyToCommentId` и `replyToUser` (`{ id, name, identity }`) содержат данные того комментария и автора, которому адресован ответ (для отображения в UI плашки `Reply to @username`).
 > - Поле `repliesCount` у корневого комментария отражает **общее число всех ответов в этой ветке**.
 > - Поле `commentsCount` у поста отражает **общее число всех комментариев и ответов под постом**.
+> - **Поведение при блокировке:**
+>   - Если комментарий или реплай написан пользователем, с которым есть взаимная блокировка (заблокирован зрителем или заблокировал зрителя), текст комментария (`content`) и вложения (`payload`) остаются доступными, но `author.avatarKey` скрыт (`null`), и проставляется флаг `isBlocked: true` (если заблокирован зрителем) или `isHidden: true` (если зритель заблокирован автором).
+>   - Попытка ответить (`createComment` с `parentId` или `replyToComment`) на комментарий заблокированного пользователя или пользователя, который вас заблокировал, отклоняется с ошибкой `400 Bad Request` (`"Cannot reply to a blocked user"`).
 
 ### `GET /posts/:id/comments`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)

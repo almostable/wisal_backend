@@ -1197,15 +1197,13 @@ describe('Posts Feature Route Tests', () => {
       ...sampleComment,
       id: 888888888888882n,
       parentId: sampleComment.id,
-      content: '',
+      content: 'Visible reply content',
       repliesCount: 0,
       isBlocked: true,
-      is_blocked: true,
       author: {
         ...sampleComment.author!,
         avatarKey: null,
         isBlocked: true,
-        is_blocked: true,
       },
     }
 
@@ -1228,8 +1226,9 @@ describe('Posts Feature Route Tests', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as { success: boolean; comments: any[] }
     expect(body.success).toBe(true)
-    expect(body.comments[0].content).toBe('')
-    expect(body.comments[0].is_blocked).toBe(true)
+    expect(body.comments[0].content).toBe('Visible reply content')
+    expect(body.comments[0].isBlocked).toBe(true)
+    expect(body.comments[0].is_blocked).toBeUndefined()
     expect(body.comments[0].author.avatarKey).toBeNull()
   })
 
@@ -1710,15 +1709,13 @@ describe('Posts Feature Route Tests', () => {
         comments: [
           {
             ...sampleComment,
-            content: '',
+            content: 'Comment content visible',
             author: {
               ...sampleComment.author,
               avatarKey: null,
               isBlocked: true,
-              is_blocked: true,
             },
             isBlocked: true,
-            is_blocked: true,
           },
         ],
         total: 1,
@@ -1737,9 +1734,64 @@ describe('Posts Feature Route Tests', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as { success: boolean; comments: any[] }
     expect(body.success).toBe(true)
-    expect(body.comments[0].content).toBe('')
-    expect(body.comments[0].is_blocked).toBe(true)
+    expect(body.comments[0].content).toBe('Comment content visible')
+    expect(body.comments[0].isBlocked).toBe(true)
+    expect(body.comments[0].is_blocked).toBeUndefined()
     expect(body.comments[0].author.avatarKey).toBeNull()
+  })
+
+  it('POST /posts/:id/comments and POST /posts/comments/:id/reply reject replying to blocked user with 400', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      createComment: async () => {
+        throw new HTTPException(400, { message: 'Cannot reply to a blocked user' })
+      },
+      replyToComment: async () => {
+        throw new HTTPException(400, { message: 'Cannot reply to a blocked user' })
+      },
+    }))
+
+    const res1 = await app.request('/posts/999999999999991/comments', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Replying to blocked user comment',
+        parentId: '888888888888881',
+      }),
+    })
+
+    expect(res1.status).toBe(400)
+    const body1 = (await res1.json()) as { error: string }
+    expect(body1.error).toBe('Cannot reply to a blocked user')
+
+    const res2 = await app.request('/posts/comments/888888888888881/reply', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Replying to blocked user directly',
+      }),
+    })
+
+    expect(res2.status).toBe(400)
+    const body2 = (await res2.json()) as { error: string }
+    expect(body2.error).toBe('Cannot reply to a blocked user')
   })
 
   it('GET /posts/:id, POST /posts/:id/like, POST /posts/:id/unlike return 404 for blocked or restricted post access', async () => {

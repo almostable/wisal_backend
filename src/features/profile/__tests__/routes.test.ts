@@ -37,8 +37,6 @@ describe('Profile Feature Route Tests', () => {
       website: null,
       email: null,
     },
-    createdAt: new Date(),
-    updatedAt: new Date(),
     identity: 'wisaluser',
   }
 
@@ -736,7 +734,6 @@ describe('Profile Feature Route Tests', () => {
           {
             id: 999999999999999n,
             name: 'Blocked User',
-            avatarKey: null,
             identity: 'blockeduser',
             isMale: false,
             blockedAt: new Date(),
@@ -760,6 +757,7 @@ describe('Profile Feature Route Tests', () => {
     expect(body.success).toBe(true)
     expect(body.users.length).toBe(1)
     expect(body.users[0].identity).toBe('blockeduser')
+    expect(body.users[0].avatarKey).toBeUndefined()
   })
 
   it('POST /profile/:identity/block blocks a user and rejects self block', async () => {
@@ -831,7 +829,7 @@ describe('Profile Feature Route Tests', () => {
     expect(body.blocked).toBe(false)
   })
 
-  it('GET /profile/:identity returns restricted profile with is_blocked/is_hidden when block exists', async () => {
+  it('GET /profile/:identity returns restricted profile with isBlocked/isHidden when block exists', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -850,11 +848,8 @@ describe('Profile Feature Route Tests', () => {
             avatarKey: null,
             description: null,
             contacts: null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
             identity: 'blocked_by_me',
             isBlocked: true,
-            is_blocked: true,
           }
         }
         return {
@@ -864,11 +859,8 @@ describe('Profile Feature Route Tests', () => {
           avatarKey: null,
           description: null,
           contacts: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
           identity: 'hidden_user',
           isHidden: true,
-          is_hidden: true,
         }
       },
     }))
@@ -882,9 +874,12 @@ describe('Profile Feature Route Tests', () => {
 
     expect(resBlocked.status).toBe(200)
     const bodyBlocked = (await resBlocked.json()) as { success: boolean; profile: any }
-    expect(bodyBlocked.profile.is_blocked).toBe(true)
+    expect(bodyBlocked.profile.isBlocked).toBe(true)
+    expect(bodyBlocked.profile.is_blocked).toBeUndefined()
     expect(bodyBlocked.profile.avatarKey).toBeNull()
     expect(bodyBlocked.profile.description).toBeNull()
+    expect(bodyBlocked.profile.createdAt).toBeUndefined()
+    expect(bodyBlocked.profile.updatedAt).toBeUndefined()
 
     const resHidden = await app.request('/profile/hidden_user', {
       method: 'GET',
@@ -895,8 +890,11 @@ describe('Profile Feature Route Tests', () => {
 
     expect(resHidden.status).toBe(200)
     const bodyHidden = (await resHidden.json()) as { success: boolean; profile: any }
-    expect(bodyHidden.profile.is_hidden).toBe(true)
+    expect(bodyHidden.profile.isHidden).toBe(true)
+    expect(bodyHidden.profile.is_hidden).toBeUndefined()
     expect(bodyHidden.profile.avatarKey).toBeNull()
+    expect(bodyHidden.profile.createdAt).toBeUndefined()
+    expect(bodyHidden.profile.updatedAt).toBeUndefined()
   })
 
   it('GET /profile/:identity/followers and following return empty list when blocked', async () => {
