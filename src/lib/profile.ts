@@ -14,6 +14,7 @@ export interface SafeProfile {
   createdAt: Date
   updatedAt: Date
   identity: string | null
+  isFollowing?: boolean
   isBlocked?: boolean
   is_blocked?: boolean
   isHidden?: boolean
@@ -21,7 +22,8 @@ export interface SafeProfile {
 }
 
 export function formatProfileResponse(
-  profile: (Profile & { identity?: Identity | null | string }) | null
+  profile: (Profile & { identity?: Identity | null | string }) | null,
+  flags?: { isFollowing?: boolean }
 ): SafeProfile | null {
   if (!profile) return null
 
@@ -30,7 +32,7 @@ export function formatProfileResponse(
       ? profile.identity
       : profile.identity?.identity ?? null
 
-  return {
+  const res: SafeProfile = {
     id: profile.id,
     name: profile.name,
     isMale: profile.isMale,
@@ -41,11 +43,17 @@ export function formatProfileResponse(
     updatedAt: profile.updatedAt,
     identity: identityStr,
   }
+
+  if (flags?.isFollowing !== undefined) {
+    res.isFollowing = flags.isFollowing
+  }
+
+  return res
 }
 
 export function formatRestrictedProfileResponse(
   profile: (Profile & { identity?: Identity | null | string }) | null,
-  flags: { isBlocked?: boolean; isHidden?: boolean }
+  flags: { isBlocked?: boolean; isHidden?: boolean; isFollowing?: boolean }
 ): SafeProfile | null {
   if (!profile) return null
 
@@ -73,6 +81,9 @@ export function formatRestrictedProfileResponse(
   if (flags.isHidden) {
     res.isHidden = true
     res.is_hidden = true
+  }
+  if (flags.isFollowing !== undefined) {
+    res.isFollowing = flags.isFollowing
   }
 
   return res

@@ -2119,5 +2119,95 @@ describe('Posts Feature Route Tests', () => {
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe('Comment not found')
   })
+
+  it('GET /posts/feed and GET /posts/:id include author.isFollowing for viewer', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const postWithFollowingAuthor: PostResponse = {
+      ...samplePost,
+      author: {
+        ...samplePost.author!,
+        isFollowing: true,
+      },
+    }
+
+    mock.module('../service', () => ({
+      getFeed: async () => ({
+        posts: [postWithFollowingAuthor],
+        limit: 20,
+        offset: 0,
+      }),
+      getPostById: async () => postWithFollowingAuthor,
+    }))
+
+    const resFeed = await app.request('/posts/feed', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_male_token' },
+    })
+    expect(resFeed.status).toBe(200)
+    const bodyFeed = (await resFeed.json()) as { success: boolean; posts: PostResponse[] }
+    expect(bodyFeed.success).toBe(true)
+    expect(bodyFeed.posts[0].author?.isFollowing).toBe(true)
+
+    const resPost = await app.request('/posts/999999999999991', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_male_token' },
+    })
+    expect(resPost.status).toBe(200)
+    const bodyPost = (await resPost.json()) as { success: boolean; post: PostResponse }
+    expect(bodyPost.success).toBe(true)
+    expect(bodyPost.post.author?.isFollowing).toBe(true)
+  })
+
+  it('GET /posts/user/:identity includes author.isFollowing status', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const postWithUnfollowedAuthor: PostResponse = {
+      ...samplePost,
+      author: {
+        ...samplePost.author!,
+        isFollowing: false,
+      },
+    }
+
+    mock.module('../service', () => ({
+      getUserPosts: async () => ({
+        posts: [postWithUnfollowedAuthor],
+        total: 1,
+        limit: 20,
+        offset: 0,
+      }),
+    }))
+
+    const resUser = await app.request('/posts/user/male_user', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_male_token' },
+    })
+    expect(resUser.status).toBe(200)
+    const bodyUser = (await resUser.json()) as { success: boolean; posts: PostResponse[] }
+    expect(bodyUser.success).toBe(true)
+    expect(bodyUser.posts[0].author?.isFollowing).toBe(false)
+  })
 })
+
 

@@ -463,7 +463,8 @@ Header `Authorization: Bearer <token>`.
         "email": null
       },
       "createdAt": "2026-08-20T00:00:00.000Z",
-      "identity": "johndoe"
+      "identity": "johndoe",
+      "isFollowing": true
     }
   }
   ```
@@ -480,6 +481,7 @@ Header `Authorization: Bearer <token>`.
       "contacts": null,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "identity": "johndoe",
+      "isFollowing": false,
       "is_blocked": true,
       "isBlocked": true
     }
@@ -721,7 +723,8 @@ Header `Authorization: Bearer <token>`.
           "name": "John Doe",
           "identity": "johndoe",
           "avatarKey": null,
-          "isMale": true
+          "isMale": true,
+          "isFollowing": true
         }
       }
     ],
@@ -758,7 +761,8 @@ Header `Authorization: Bearer <token>`.
         "name": "John Doe",
         "identity": "johndoe",
         "avatarKey": null,
-        "isMale": true
+        "isMale": true,
+        "isFollowing": true
       }
     }
   }
@@ -796,7 +800,8 @@ Header `Authorization: Bearer <token>`.
           "name": "John Doe",
           "identity": "johndoe",
           "avatarKey": null,
-          "isMale": true
+          "isMale": true,
+          "isFollowing": true
         }
       }
     ],

@@ -68,6 +68,8 @@ type AuthorSelectResult = {
   authorIdentity: { identity: string | null } | null
 }
 
+const viewerFollows = alias(follows, 'viewer_follows')
+
 const replyToAccounts = alias(accounts, 'reply_to_accounts')
 const replyToProfiles = alias(profiles, 'reply_to_profiles')
 const replyToIdentities = alias(identities, 'reply_to_identities')
@@ -84,13 +86,14 @@ type ReplyToUserSelectResult = {
   replyToIdentity: { identity: string | null } | null
 }
 
-function mapAuthor(data: AuthorSelectResult): PostAuthorInfo {
+function mapAuthor(data: AuthorSelectResult, isFollowing?: boolean): PostAuthorInfo {
   return {
     id: data.authorAccount.id,
     name: data.authorProfile?.name ?? null,
     avatarKey: data.authorProfile?.avatarKey ?? null,
     identity: data.authorIdentity?.identity ?? null,
     isMale: data.authorProfile?.isMale ?? null,
+    ...(isFollowing !== undefined ? { isFollowing } : {}),
   }
 }
 
@@ -541,6 +544,7 @@ export async function getPostById(
       post: posts,
       ...authorSelectFields,
       isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
+      isFollowingAuthor: sql<boolean>`CASE WHEN ${viewerFollows.followingId} IS NOT NULL THEN true ELSE false END`,
     })
     .from(posts)
     .innerJoin(accounts, eq(posts.authorId, accounts.id))
@@ -553,6 +557,13 @@ export async function getPostById(
         eq(postLikes.userId, viewer.accountId)
       )
     )
+    .leftJoin(
+      viewerFollows,
+      and(
+        eq(viewerFollows.followerId, viewer.accountId),
+        eq(viewerFollows.followingId, posts.authorId)
+      )
+    )
     .where(and(eq(posts.id, postId), isNull(posts.deletedAt)))
     .limit(1)
 
@@ -560,7 +571,11 @@ export async function getPostById(
     throw new HTTPException(404, { message: 'Post not found' })
   }
 
-  return formatPost(result.post, mapAuthor(result), Boolean(result.isLiked))
+  return formatPost(
+    result.post,
+    mapAuthor(result, Boolean(result.isFollowingAuthor)),
+    Boolean(result.isLiked)
+  )
 }
 
 export async function getFeed(
@@ -611,6 +626,7 @@ export async function getFeed(
       post: posts,
       ...authorSelectFields,
       isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
+      isFollowingAuthor: sql<boolean>`CASE WHEN ${viewerFollows.followingId} IS NOT NULL THEN true ELSE false END`,
     })
     .from(posts)
     .innerJoin(accounts, eq(posts.authorId, accounts.id))
@@ -623,13 +639,24 @@ export async function getFeed(
         eq(postLikes.userId, viewer.accountId)
       )
     )
+    .leftJoin(
+      viewerFollows,
+      and(
+        eq(viewerFollows.followerId, viewer.accountId),
+        eq(viewerFollows.followingId, posts.authorId)
+      )
+    )
     .where(whereCondition)
     .orderBy(feedType === 'following' ? desc(posts.createdAt) : sql`random()`)
     .limit(limit)
     .offset(offset)
 
   const formattedPosts = items.map((item) =>
-    formatPost(item.post, mapAuthor(item), Boolean(item.isLiked))
+    formatPost(
+      item.post,
+      mapAuthor(item, Boolean(item.isFollowingAuthor)),
+      Boolean(item.isLiked)
+    )
   )
 
   return {
@@ -749,7 +776,7 @@ export async function getUserPosts(
   ])
 
   const formattedPosts = items.map((item) =>
-    formatPost(item.post, mapAuthor(item), Boolean(item.isLiked))
+    formatPost(item.post, mapAuthor(item, isFollowing), Boolean(item.isLiked))
   )
 
   return {

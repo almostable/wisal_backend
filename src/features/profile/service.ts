@@ -90,36 +90,53 @@ export async function getPublicProfile(
     throw new HTTPException(404, { message: 'Profile not found' })
   }
 
+  let isFollowing = false
+
   if (viewerAccountId !== profile.accountId) {
-    const [blockRecord] = await db
-      .select({
-        isBlocked: sql<boolean>`CASE WHEN ${userBlocks.blockerId} = ${viewerAccountId} AND ${userBlocks.blockedId} = ${profile.accountId} THEN true ELSE false END`,
-        isHidden: sql<boolean>`CASE WHEN ${userBlocks.blockerId} = ${profile.accountId} AND ${userBlocks.blockedId} = ${viewerAccountId} THEN true ELSE false END`,
-      })
-      .from(userBlocks)
-      .where(
-        or(
-          and(
-            eq(userBlocks.blockerId, viewerAccountId),
-            eq(userBlocks.blockedId, profile.accountId)
-          ),
-          and(
-            eq(userBlocks.blockerId, profile.accountId),
-            eq(userBlocks.blockedId, viewerAccountId)
+    const [[blockRecord], [followRecord]] = await Promise.all([
+      db
+        .select({
+          isBlocked: sql<boolean>`CASE WHEN ${userBlocks.blockerId} = ${viewerAccountId} AND ${userBlocks.blockedId} = ${profile.accountId} THEN true ELSE false END`,
+          isHidden: sql<boolean>`CASE WHEN ${userBlocks.blockerId} = ${profile.accountId} AND ${userBlocks.blockedId} = ${viewerAccountId} THEN true ELSE false END`,
+        })
+        .from(userBlocks)
+        .where(
+          or(
+            and(
+              eq(userBlocks.blockerId, viewerAccountId),
+              eq(userBlocks.blockedId, profile.accountId)
+            ),
+            and(
+              eq(userBlocks.blockerId, profile.accountId),
+              eq(userBlocks.blockedId, viewerAccountId)
+            )
           )
         )
-      )
-      .limit(1)
+        .limit(1),
+      db
+        .select({ followingId: follows.followingId })
+        .from(follows)
+        .where(
+          and(
+            eq(follows.followerId, viewerAccountId),
+            eq(follows.followingId, profile.accountId)
+          )
+        )
+        .limit(1),
+    ])
 
     if (blockRecord) {
       return formatRestrictedProfileResponse(profile, {
         isBlocked: Boolean(blockRecord.isBlocked),
         isHidden: Boolean(blockRecord.isHidden),
+        isFollowing: false,
       })!
     }
+
+    isFollowing = Boolean(followRecord)
   }
 
-  return formatProfileResponse(profile)!
+  return formatProfileResponse(profile, { isFollowing })!
 }
 
 export async function checkHandleAvailability(identity: string): Promise<CheckIdentityResult> {

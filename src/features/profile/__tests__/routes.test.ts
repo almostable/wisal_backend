@@ -323,7 +323,7 @@ describe('Profile Feature Route Tests', () => {
     expect(body2.reason).toBe('Identity is already taken')
   })
 
-  it('GET /profile/:identity returns public profile of another user', async () => {
+  it('GET /profile/:identity returns public profile of another user with isFollowing', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -334,22 +334,42 @@ describe('Profile Feature Route Tests', () => {
     mock.module('../service', () => ({
       getPublicProfile: async (handle: string) => {
         if (handle === 'wisaluser') {
-          return mockPublicProfile
+          return {
+            ...mockPublicProfile,
+            isFollowing: true,
+          }
+        }
+        if (handle === 'notfollowed') {
+          return {
+            ...mockPublicProfile,
+            identity: 'notfollowed',
+            isFollowing: false,
+          }
         }
         throw new HTTPException(404, { message: 'Profile not found' })
       },
     }))
 
-    const res = await app.request('/profile/wisaluser', {
+    const resFollowed = await app.request('/profile/wisaluser', {
       method: 'GET',
       headers: { Authorization: 'Bearer valid_user_token' },
     })
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { success: boolean; profile: PublicProfile }
-    expect(body.success).toBe(true)
-    expect(body.profile.name).toBe('Wisal User')
-    expect(body.profile.identity).toBe('wisaluser')
-    expect((body.profile as any).identityId).toBeUndefined()
+    expect(resFollowed.status).toBe(200)
+    const bodyFollowed = (await resFollowed.json()) as { success: boolean; profile: PublicProfile }
+    expect(bodyFollowed.success).toBe(true)
+    expect(bodyFollowed.profile.name).toBe('Wisal User')
+    expect(bodyFollowed.profile.identity).toBe('wisaluser')
+    expect(bodyFollowed.profile.isFollowing).toBe(true)
+    expect((bodyFollowed.profile as any).identityId).toBeUndefined()
+
+    const resNotFollowed = await app.request('/profile/notfollowed', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_user_token' },
+    })
+    expect(resNotFollowed.status).toBe(200)
+    const bodyNotFollowed = (await resNotFollowed.json()) as { success: boolean; profile: PublicProfile }
+    expect(bodyNotFollowed.success).toBe(true)
+    expect(bodyNotFollowed.profile.isFollowing).toBe(false)
   })
 
   it('GET /profile/:identity returns 401 when token is missing', async () => {

@@ -9,6 +9,7 @@ export interface PostAuthorInfo {
   identity: string | null
   avatarKey: string | null
   isMale: boolean | null
+  isFollowing?: boolean
 }
 
 export interface PostResponse {
