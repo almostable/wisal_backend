@@ -3,6 +3,7 @@ import {
   ALLOWED_IMAGE_EXTENSIONS,
   ALLOWED_TYPES,
   FILE_KEY_REGEX,
+  MAX_UPLOAD_FILE_SIZE,
 } from '../../lib/s3'
 
 export const fileKeySchema = z
@@ -29,6 +30,15 @@ export const presignRequestSchema = z
       message: `Invalid extension. Allowed extensions: ${ALLOWED_IMAGE_EXTENSIONS.join(', ')}`,
     }),
     contentType: z.string().trim().min(1, 'contentType is required'),
+    size: z.coerce
+      .number()
+      .int()
+      .positive('Size must be a positive integer')
+      .max(
+        MAX_UPLOAD_FILE_SIZE,
+        `File size must not exceed ${MAX_UPLOAD_FILE_SIZE / (1024 * 1024)}MB`
+      )
+      .optional(),
   })
   .superRefine((data, ctx) => {
     const extLower = data.ext.toLowerCase()
@@ -41,9 +51,10 @@ export const presignRequestSchema = z
       })
     }
   })
-  .transform((data) => ({
+  .transform((data): { ext: typeof data.ext; contentType: string; size?: number } => ({
     ext: data.ext,
     contentType: data.contentType.toLowerCase(),
+    ...(data.size !== undefined ? { size: data.size } : {}),
   }))
 
 export type PresignRequestInput = z.infer<typeof presignRequestSchema>

@@ -9,6 +9,7 @@
     "db:reset": "bun run src/db/reset.ts",
     "db:seed:admin": "bun run src/db/seed-admin.ts",
     "cron:recalculate-followers": "bun run src/jobs/recalculate-regular-followers.ts",
+    "cron:media-gc": "bun run src/jobs/media-gc.ts",
     "test": "bun test"
   },
   "dependencies": {

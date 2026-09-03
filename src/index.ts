@@ -17,9 +17,11 @@ import { postsRouter } from './features/posts'
 import { reportsRouter } from './features/reports'
 import { uploadsRouter } from './features/uploads'
 import { initRegularFollowersCron } from './jobs/recalculate-regular-followers'
+import { initMediaGcCron } from './jobs/media-gc'
 
 if (env.NODE_ENV !== 'test') {
   initRegularFollowersCron()
+  initMediaGcCron()
 }
 
 const app = new Hono()

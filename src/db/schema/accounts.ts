@@ -8,8 +8,9 @@ import { profiles } from './profiles'
 import { invites } from './invites'
 import { follows } from './follows'
 import { posts } from './posts'
-import { postLikes } from './post-likes'
+import { postSaves } from './post-saves'
 import { reports } from './reports'
+import { mediaUploads } from './media-uploads'
 
 export const accounts = pgTable(
   'accounts',
@@ -33,9 +34,10 @@ export const accountsRelations = relations(accounts, ({ one, many }) => ({
   followers: many(follows, { relationName: 'following' }),
   following: many(follows, { relationName: 'follower' }),
   posts: many(posts),
-  postLikes: many(postLikes),
+  postSaves: many(postSaves),
   reportsFiled: many(reports, { relationName: 'reporter' }),
   reportsReceived: many(reports, { relationName: 'reportedUser' }),
+  mediaUploads: many(mediaUploads),
 }))
 
 export { emailSchema }

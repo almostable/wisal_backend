@@ -18,24 +18,31 @@ import { db } from '../../db'
 import { posts, type Post, type PostType, type GenderScope, type AccessLevel } from '../../db/schema/posts'
 import { comments, type Comment, type CommentType } from '../../db/schema/comments'
 import { userBlocks } from '../../db/schema/user-blocks'
-import { postLikes } from '../../db/schema/post-likes'
+import { postSaves } from '../../db/schema/post-saves'
 import { accounts } from '../../db/schema/accounts'
 import { profiles } from '../../db/schema/profiles'
 import { identities } from '../../db/schema/identities'
 import { follows } from '../../db/schema/follows'
 import { getAccountIdByIdentity } from '../profile/service'
 import { getProfileByAccountId } from '../../lib/profile'
+import {
+  attachMediaFiles,
+  markEntityMediaDeleted,
+  reconcileEntityMedia,
+} from '../uploads/service'
 import type {
   CreatePostDTO,
   UpdatePostDTO,
   PinPostDTO,
   FeedQueryDTO,
   UserPostsQueryDTO,
+  SavedPostsQueryDTO,
   PostResponse,
   PostAuthorInfo,
   FeedResult,
   UserPostsResult,
-  LikeActionResult,
+  SavedPostsResult,
+  SaveActionResult,
   CommentResponse,
   CommentAuthorInfo,
   ReplyToUserInfo,
@@ -112,7 +119,8 @@ function mapReplyToUser(data: ReplyToUserSelectResult | null | undefined): Reply
 function formatPost(
   post: Post,
   author?: PostAuthorInfo | null,
-  isLiked?: boolean
+  isSaved?: boolean,
+  canViewSavesCount: boolean = false
 ): PostResponse {
   return {
     id: post.id,
@@ -124,9 +132,9 @@ function formatPost(
     genderScope: post.genderScope as GenderScope,
     accessLevel: post.accessLevel as AccessLevel,
     isPinned: post.isPinned,
-    likesCount: post.likesCount ?? 0,
+    ...(canViewSavesCount ? { savesCount: post.savesCount ?? 0 } : {}),
     commentsCount: post.commentsCount ?? 0,
-    ...(isLiked !== undefined ? { isLiked } : {}),
+    ...(isSaved !== undefined ? { isSaved } : {}),
     createdAt: post.createdAt,
     updatedAt: post.updatedAt,
     author: author ?? null,
@@ -263,6 +271,21 @@ export async function createPost(
       throw new HTTPException(500, { message: 'Failed to create post' })
     }
 
+    if (created.type === 'media') {
+      const mediaItems = Array.isArray((payload as any)?.media) ? (payload as any).media : []
+      const fileKeys = mediaItems
+        .map((m: any) => m.fileKey)
+        .filter((k: any): k is string => typeof k === 'string')
+      if (fileKeys.length > 0) {
+        await attachMediaFiles(tx, {
+          fileKeys,
+          userId: authorAccountId,
+          entityType: 'post',
+          entityId: created.id,
+        })
+      }
+    }
+
     const [authorData] = await tx
       .select(authorSelectFields)
       .from(accounts)
@@ -271,7 +294,7 @@ export async function createPost(
       .where(eq(accounts.id, authorAccountId))
       .limit(1)
 
-    return formatPost(created, authorData ? mapAuthor(authorData) : null, false)
+    return formatPost(created, authorData ? mapAuthor(authorData) : null, false, true)
   })
 }
 
@@ -332,6 +355,30 @@ export async function updatePost(
     }
     if (input.payload !== undefined) {
       updateData.payload = input.payload
+
+      const oldMediaItems = Array.isArray((existing.payload as any)?.media)
+        ? (existing.payload as any).media
+        : []
+      const oldFileKeys = oldMediaItems
+        .map((m: any) => m.fileKey)
+        .filter((k: any): k is string => typeof k === 'string')
+
+      const newMediaItems = Array.isArray((input.payload as any)?.media)
+        ? (input.payload as any).media
+        : []
+      const newFileKeys = newMediaItems
+        .map((m: any) => m.fileKey)
+        .filter((k: any): k is string => typeof k === 'string')
+
+      if (oldFileKeys.length > 0 || newFileKeys.length > 0) {
+        await reconcileEntityMedia(tx, {
+          entityType: 'post',
+          entityId: postId,
+          userId: authorAccountId,
+          newFileKeys,
+          oldFileKeys,
+        })
+      }
     }
 
     const [updated] = await tx
@@ -348,18 +395,18 @@ export async function updatePost(
       .where(eq(accounts.id, authorAccountId))
       .limit(1)
 
-    const [likedRecord] = await tx
-      .select({ postId: postLikes.postId })
-      .from(postLikes)
+    const [savedRecord] = await tx
+      .select({ postId: postSaves.postId })
+      .from(postSaves)
       .where(
         and(
-          eq(postLikes.postId, postId),
-          eq(postLikes.userId, authorAccountId)
+          eq(postSaves.postId, postId),
+          eq(postSaves.userId, authorAccountId)
         )
       )
       .limit(1)
 
-    return formatPost(updated, authorData ? mapAuthor(authorData) : null, Boolean(likedRecord))
+    return formatPost(updated, authorData ? mapAuthor(authorData) : null, Boolean(savedRecord), true)
   })
 }
 
@@ -367,30 +414,47 @@ export async function deletePost(
   authorAccountId: bigint,
   postId: bigint
 ): Promise<{ success: boolean; message: string }> {
-  const existing = await db.query.posts.findFirst({
-    where: and(eq(posts.id, postId), isNull(posts.deletedAt)),
-  })
-
-  if (!existing) {
-    throw new HTTPException(404, { message: 'Post not found' })
-  }
-
-  if (existing.authorId !== authorAccountId) {
-    throw new HTTPException(403, { message: 'You can only delete your own posts' })
-  }
-
-  await db
-    .update(posts)
-    .set({
-      deletedAt: new Date(),
-      isPinned: false,
+  return await db.transaction(async (tx) => {
+    const existing = await tx.query.posts.findFirst({
+      where: and(eq(posts.id, postId), isNull(posts.deletedAt)),
     })
-    .where(eq(posts.id, postId))
 
-  return {
-    success: true,
-    message: 'Post deleted successfully',
-  }
+    if (!existing) {
+      throw new HTTPException(404, { message: 'Post not found' })
+    }
+
+    if (existing.authorId !== authorAccountId) {
+      throw new HTTPException(403, { message: 'You can only delete your own posts' })
+    }
+
+    await tx
+      .update(posts)
+      .set({
+        deletedAt: new Date(),
+        isPinned: false,
+      })
+      .where(eq(posts.id, postId))
+
+    await markEntityMediaDeleted(tx, {
+      entityType: 'post',
+      entityId: postId,
+    })
+
+    await tx.execute(sql`
+      UPDATE media_uploads
+      SET status = 'deleted'
+      WHERE entity_type = 'comment'
+        AND status = 'attached'
+        AND entity_id IN (
+          SELECT id FROM comments WHERE post_id = ${postId}
+        )
+    `)
+
+    return {
+      success: true,
+      message: 'Post deleted successfully',
+    }
+  })
 }
 
 export async function pinPost(
@@ -441,30 +505,31 @@ export async function pinPost(
       .where(eq(accounts.id, authorAccountId))
       .limit(1)
 
-    const [likedRecord] = await tx
-      .select({ postId: postLikes.postId })
-      .from(postLikes)
+    const [savedRecord] = await tx
+      .select({ postId: postSaves.postId })
+      .from(postSaves)
       .where(
         and(
-          eq(postLikes.postId, postId),
-          eq(postLikes.userId, authorAccountId)
+          eq(postSaves.postId, postId),
+          eq(postSaves.userId, authorAccountId)
         )
       )
       .limit(1)
 
-    return formatPost(updated, authorData ? mapAuthor(authorData) : null, Boolean(likedRecord))
+    return formatPost(updated, authorData ? mapAuthor(authorData) : null, Boolean(savedRecord), true)
   })
 }
 
-export async function likePost(
+export async function savePost(
   postId: bigint,
   viewer: { accountId: bigint; isMale: boolean }
-): Promise<LikeActionResult> {
+): Promise<SaveActionResult> {
   return await db.transaction(async (tx) => {
     const post = await checkPostAccess(tx, postId, viewer)
+    const isAuthor = viewer.accountId === post.authorId
 
     const inserted = await tx
-      .insert(postLikes)
+      .insert(postSaves)
       .values({
         postId,
         userId: viewer.accountId,
@@ -472,67 +537,62 @@ export async function likePost(
       .onConflictDoNothing()
       .returning()
 
+    let currentSavesCount = post.savesCount
     if (inserted.length > 0) {
       const [updated] = await tx
         .update(posts)
         .set({
-          likesCount: sql`${posts.likesCount} + 1`,
+          savesCount: sql`${posts.savesCount} + 1`,
         })
         .where(eq(posts.id, postId))
-        .returning({ likesCount: posts.likesCount })
+        .returning({ savesCount: posts.savesCount })
 
-      return {
-        liked: true,
-        likesCount: updated?.likesCount ?? post.likesCount + 1,
-        message: 'Post liked successfully',
-      }
+      currentSavesCount = updated?.savesCount ?? post.savesCount + 1
     }
 
     return {
-      liked: true,
-      likesCount: post.likesCount,
-      message: 'Post liked successfully',
+      saved: true,
+      ...(isAuthor ? { savesCount: currentSavesCount } : {}),
+      message: 'Post saved successfully',
     }
   })
 }
 
-export async function unlikePost(
+export async function unsavePost(
   postId: bigint,
   viewer: { accountId: bigint; isMale: boolean }
-): Promise<LikeActionResult> {
+): Promise<SaveActionResult> {
   return await db.transaction(async (tx) => {
     const post = await checkPostAccess(tx, postId, viewer)
+    const isAuthor = viewer.accountId === post.authorId
 
     const deleted = await tx
-      .delete(postLikes)
+      .delete(postSaves)
       .where(
         and(
-          eq(postLikes.postId, postId),
-          eq(postLikes.userId, viewer.accountId)
+          eq(postSaves.postId, postId),
+          eq(postSaves.userId, viewer.accountId)
         )
       )
       .returning()
 
+    let currentSavesCount = post.savesCount
     if (deleted.length > 0) {
       const [updated] = await tx
         .update(posts)
         .set({
-          likesCount: sql`GREATEST(0, ${posts.likesCount} - 1)`,
+          savesCount: sql`GREATEST(0, ${posts.savesCount} - 1)`,
         })
         .where(eq(posts.id, postId))
-        .returning({ likesCount: posts.likesCount })
+        .returning({ savesCount: posts.savesCount })
 
-      return {
-        liked: false,
-        likesCount: updated?.likesCount ?? Math.max(0, post.likesCount - 1),
-        message: 'Post unliked successfully',
-      }
+      currentSavesCount = updated?.savesCount ?? Math.max(0, post.savesCount - 1)
     }
 
     return {
-      liked: false,
-      likesCount: post.likesCount,
-      message: 'Post unliked successfully',
+      saved: false,
+      ...(isAuthor ? { savesCount: currentSavesCount } : {}),
+      message: 'Post unsaved successfully',
     }
   })
 }
@@ -571,7 +631,7 @@ export async function getPostById(
     .select({
       post: posts,
       ...authorSelectFields,
-      isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
+      isSaved: sql<boolean>`CASE WHEN ${postSaves.userId} IS NOT NULL THEN true ELSE false END`,
       isFollowingAuthor: sql<boolean>`CASE WHEN ${viewerFollows.followingId} IS NOT NULL THEN true ELSE false END`,
     })
     .from(posts)
@@ -579,10 +639,10 @@ export async function getPostById(
     .leftJoin(profiles, eq(accounts.id, profiles.accountId))
     .leftJoin(identities, eq(profiles.identityId, identities.id))
     .leftJoin(
-      postLikes,
+      postSaves,
       and(
-        eq(postLikes.postId, posts.id),
-        eq(postLikes.userId, viewer.accountId)
+        eq(postSaves.postId, posts.id),
+        eq(postSaves.userId, viewer.accountId)
       )
     )
     .leftJoin(
@@ -602,7 +662,8 @@ export async function getPostById(
   return formatPost(
     result.post,
     mapAuthor(result, Boolean(result.isFollowingAuthor)),
-    Boolean(result.isLiked)
+    Boolean(result.isSaved),
+    viewer.accountId === result.post.authorId
   )
 }
 
@@ -653,7 +714,7 @@ export async function getFeed(
     .select({
       post: posts,
       ...authorSelectFields,
-      isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
+      isSaved: sql<boolean>`CASE WHEN ${postSaves.userId} IS NOT NULL THEN true ELSE false END`,
       isFollowingAuthor: sql<boolean>`CASE WHEN ${viewerFollows.followingId} IS NOT NULL THEN true ELSE false END`,
     })
     .from(posts)
@@ -661,10 +722,10 @@ export async function getFeed(
     .leftJoin(profiles, eq(accounts.id, profiles.accountId))
     .leftJoin(identities, eq(profiles.identityId, identities.id))
     .leftJoin(
-      postLikes,
+      postSaves,
       and(
-        eq(postLikes.postId, posts.id),
-        eq(postLikes.userId, viewer.accountId)
+        eq(postSaves.postId, posts.id),
+        eq(postSaves.userId, viewer.accountId)
       )
     )
     .leftJoin(
@@ -683,7 +744,8 @@ export async function getFeed(
     formatPost(
       item.post,
       mapAuthor(item, Boolean(item.isFollowingAuthor)),
-      Boolean(item.isLiked)
+      Boolean(item.isSaved),
+      viewer.accountId === item.post.authorId
     )
   )
 
@@ -780,17 +842,17 @@ export async function getUserPosts(
       .select({
         post: posts,
         ...authorSelectFields,
-        isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
+        isSaved: sql<boolean>`CASE WHEN ${postSaves.userId} IS NOT NULL THEN true ELSE false END`,
       })
       .from(posts)
       .innerJoin(accounts, eq(posts.authorId, accounts.id))
       .leftJoin(profiles, eq(accounts.id, profiles.accountId))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
       .leftJoin(
-        postLikes,
+        postSaves,
         and(
-          eq(postLikes.postId, posts.id),
-          eq(postLikes.userId, viewer.accountId)
+          eq(postSaves.postId, posts.id),
+          eq(postSaves.userId, viewer.accountId)
         )
       )
       .where(whereClause)
@@ -804,7 +866,87 @@ export async function getUserPosts(
   ])
 
   const formattedPosts = items.map((item) =>
-    formatPost(item.post, mapAuthor(item, isFollowing), Boolean(item.isLiked))
+    formatPost(
+      item.post,
+      mapAuthor(item, isFollowing),
+      Boolean(item.isSaved),
+      viewer.accountId === item.post.authorId
+    )
+  )
+
+  return {
+    posts: formattedPosts,
+    total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
+  }
+}
+
+export async function getSavedPosts(
+  viewer: { accountId: bigint; isMale: boolean },
+  query: SavedPostsQueryDTO
+): Promise<SavedPostsResult> {
+  const limit = Math.min(Math.max(query.limit ?? 20, 1), 100)
+  const offset = Math.max(query.offset ?? 0, 0)
+
+  const notBlockedCondition = sql`NOT EXISTS (
+    SELECT 1 FROM ${userBlocks}
+    WHERE (${userBlocks.blockerId} = ${viewer.accountId} AND ${userBlocks.blockedId} = ${posts.authorId})
+       OR (${userBlocks.blockerId} = ${posts.authorId} AND ${userBlocks.blockedId} = ${viewer.accountId})
+  )`
+
+  const whereCondition = and(
+    eq(postSaves.userId, viewer.accountId),
+    isNull(posts.deletedAt),
+    notBlockedCondition,
+    sql`(${posts.authorId} = ${viewer.accountId} OR (
+      (${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))
+      AND
+      (${posts.accessLevel} = 'public' OR EXISTS (
+        SELECT 1 FROM ${follows}
+        WHERE ${follows.followerId} = ${viewer.accountId}
+          AND ${follows.followingId} = ${posts.authorId}
+      ))
+    ))`
+  )!
+
+  const [items, totalResult] = await Promise.all([
+    db
+      .select({
+        post: posts,
+        ...authorSelectFields,
+        isFollowingAuthor: sql<boolean>`CASE WHEN ${viewerFollows.followingId} IS NOT NULL THEN true ELSE false END`,
+      })
+      .from(postSaves)
+      .innerJoin(posts, eq(postSaves.postId, posts.id))
+      .innerJoin(accounts, eq(posts.authorId, accounts.id))
+      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .leftJoin(
+        viewerFollows,
+        and(
+          eq(viewerFollows.followerId, viewer.accountId),
+          eq(viewerFollows.followingId, posts.authorId)
+        )
+      )
+      .where(whereCondition)
+      .orderBy(desc(postSaves.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(postSaves)
+      .innerJoin(posts, eq(postSaves.postId, posts.id))
+      .where(whereCondition),
+  ])
+
+  const formattedPosts = items.map((item) =>
+    formatPost(
+      item.post,
+      mapAuthor(item, Boolean(item.isFollowingAuthor)),
+      true,
+      viewer.accountId === item.post.authorId
+    )
   )
 
   return {
@@ -1215,6 +1357,21 @@ export async function createComment(
       throw new HTTPException(500, { message: 'Failed to create comment' })
     }
 
+    if (created.type === 'media') {
+      const mediaItems = Array.isArray((payload as any)?.media) ? (payload as any).media : []
+      const fileKeys = mediaItems
+        .map((m: any) => m.fileKey)
+        .filter((k: any): k is string => typeof k === 'string')
+      if (fileKeys.length > 0) {
+        await attachMediaFiles(tx, {
+          fileKeys,
+          userId: authorAccountId,
+          entityType: 'comment',
+          entityId: created.id,
+        })
+      }
+    }
+
     await tx
       .update(posts)
       .set({
@@ -1342,6 +1499,11 @@ export async function deleteComment(
         .where(eq(comments.id, existing.branchId))
     }
 
+    await markEntityMediaDeleted(tx, {
+      entityType: 'comment',
+      entityId: commentId,
+    })
+
     return {
       success: true,
       message: 'Comment deleted successfully',
@@ -1383,6 +1545,30 @@ export async function updateComment(
     }
     if (input.payload !== undefined) {
       updateData.payload = input.payload
+
+      const oldMediaItems = Array.isArray((existing.payload as any)?.media)
+        ? (existing.payload as any).media
+        : []
+      const oldFileKeys = oldMediaItems
+        .map((m: any) => m.fileKey)
+        .filter((k: any): k is string => typeof k === 'string')
+
+      const newMediaItems = Array.isArray((input.payload as any)?.media)
+        ? (input.payload as any).media
+        : []
+      const newFileKeys = newMediaItems
+        .map((m: any) => m.fileKey)
+        .filter((k: any): k is string => typeof k === 'string')
+
+      if (oldFileKeys.length > 0 || newFileKeys.length > 0) {
+        await reconcileEntityMedia(tx, {
+          entityType: 'comment',
+          entityId: commentId,
+          userId: authorAccountId,
+          newFileKeys,
+          oldFileKeys,
+        })
+      }
     }
 
     const [updated] = await tx

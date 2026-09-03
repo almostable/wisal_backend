@@ -1,4 +1,4 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test'
+import { describe, it, expect, mock, beforeEach, afterAll } from 'bun:test'
 import '../../../lib/snowflake'
 import { app } from '../../../index'
 import type { SafeAccount } from '../../../db/schema/accounts'
@@ -42,7 +42,11 @@ describe('Uploads Feature Route Tests', () => {
     },
   }
 
+  let insertedMediaRecord: any = null
+
   beforeEach(() => {
+    insertedMediaRecord = null
+
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async (token: string) => {
         if (token === 'valid_token') {
@@ -59,6 +63,21 @@ describe('Uploads Feature Route Tests', () => {
       getProfileByAccountId: async () => userProfile,
       isOnboardingCompleted: () => true,
     }))
+
+    mock.module('../../../db', () => ({
+      db: {
+        insert: () => ({
+          values: async (vals: any) => {
+            insertedMediaRecord = vals
+            return [vals]
+          },
+        }),
+      },
+    }))
+  })
+
+  afterAll(() => {
+    mock.restore()
   })
 
   it('rejects unauthenticated requests with 401', async () => {
@@ -76,7 +95,7 @@ describe('Uploads Feature Route Tests', () => {
     expect(res.status).toBe(401)
   })
 
-  it('POST /uploads/presign generates a valid presigned URL for jpg image', async () => {
+  it('POST /uploads/presign generates a valid presigned URL for jpg image with 15m TTL and creates pending DB record', async () => {
     const res = await app.request('/uploads/presign', {
       method: 'POST',
       headers: {
@@ -99,8 +118,14 @@ describe('Uploads Feature Route Tests', () => {
 
     expect(body.success).toBe(true)
     expect(body.uploadUrl).toBeString()
+    expect(body.uploadUrl).toContain('X-Amz-Signature')
     expect(body.fileKey).toMatch(/^media\/\d{4}-\d{2}-\d{2}\/\d{1,20}\.jpg$/)
-    expect(body.expiresIn).toBe(600)
+    expect(body.expiresIn).toBe(900)
+
+    expect(insertedMediaRecord).not.toBeNull()
+    expect(insertedMediaRecord.fileKey).toBe(body.fileKey)
+    expect(insertedMediaRecord.userId).toBe(userAccount.id)
+    expect(insertedMediaRecord.status).toBe('pending')
   })
 
   it('POST /uploads/presign supports png and webp images', async () => {
@@ -133,6 +158,59 @@ describe('Uploads Feature Route Tests', () => {
     expect(resWebp.status).toBe(200)
     const bodyWebp = (await resWebp.json()) as { fileKey: string }
     expect(bodyWebp.fileKey.endsWith('.webp')).toBe(true)
+  })
+
+  it('POST /uploads/presign accepts valid optional size parameter', async () => {
+    const res = await app.request('/uploads/presign', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_token',
+      },
+      body: JSON.stringify({
+        ext: 'jpg',
+        contentType: 'image/jpeg',
+        size: 5 * 1024 * 1024,
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; uploadUrl: string }
+    expect(body.success).toBe(true)
+  })
+
+  it('POST /uploads/presign rejects size exceeding 10MB with 400', async () => {
+    const res = await app.request('/uploads/presign', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_token',
+      },
+      body: JSON.stringify({
+        ext: 'jpg',
+        contentType: 'image/jpeg',
+        size: 15 * 1024 * 1024,
+      }),
+    })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /uploads/presign rejects non-positive size with 400', async () => {
+    const res = await app.request('/uploads/presign', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_token',
+      },
+      body: JSON.stringify({
+        ext: 'jpg',
+        contentType: 'image/jpeg',
+        size: 0,
+      }),
+    })
+
+    expect(res.status).toBe(400)
   })
 
   it('POST /uploads/presign rejects missing contentType with 400', async () => {

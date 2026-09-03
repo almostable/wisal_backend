@@ -9,8 +9,9 @@ export const uploadsRouter = new Hono()
 uploadsRouter.use('*', authMiddleware)
 
 uploadsRouter.post('/presign', zValidator('json', presignRequestSchema), async (c) => {
+  const account = c.get('account')
   const input = c.req.valid('json')
-  const result = await generateUploadPresignedUrl(input)
+  const result = await generateUploadPresignedUrl(input, account.id)
 
   return c.json(
     {

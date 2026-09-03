@@ -11,6 +11,7 @@ import {
   pinPostSchema,
   feedQuerySchema,
   userPostsQuerySchema,
+  savedPostsQuerySchema,
   createCommentSchema,
   replyCommentSchema,
   updateCommentSchema,
@@ -24,8 +25,9 @@ import {
   getPostById,
   getFeed,
   getUserPosts,
-  likePost,
-  unlikePost,
+  getSavedPosts,
+  savePost,
+  unsavePost,
   getPostComments,
   getCommentReplies,
   createComment,
@@ -92,6 +94,22 @@ postsRouter.get(
     })
   }
 )
+
+postsRouter.get('/saves', zValidator('query', savedPostsQuerySchema), async (c) => {
+  const account = c.get('account')
+  const profile = c.get('profile')
+  const query = c.req.valid('query')
+
+  const result = await getSavedPosts(
+    { accountId: account.id, isMale: profile.isMale! },
+    query
+  )
+
+  return c.json({
+    success: true,
+    ...result,
+  })
+})
 
 postsRouter.get(
   '/comments/:id/replies',
@@ -281,12 +299,12 @@ postsRouter.patch(
   }
 )
 
-postsRouter.post('/:id/like', zValidator('param', postIdParamSchema), async (c) => {
+postsRouter.post('/:id/save', zValidator('param', postIdParamSchema), async (c) => {
   const account = c.get('account')
   const profile = c.get('profile')
   const { id } = c.req.valid('param')
 
-  const result = await likePost(BigInt(id), {
+  const result = await savePost(BigInt(id), {
     accountId: account.id,
     isMale: profile.isMale!,
   })
@@ -297,12 +315,12 @@ postsRouter.post('/:id/like', zValidator('param', postIdParamSchema), async (c) 
   })
 })
 
-postsRouter.post('/:id/unlike', zValidator('param', postIdParamSchema), async (c) => {
+postsRouter.post('/:id/unsave', zValidator('param', postIdParamSchema), async (c) => {
   const account = c.get('account')
   const profile = c.get('profile')
   const { id } = c.req.valid('param')
 
-  const result = await unlikePost(BigInt(id), {
+  const result = await unsavePost(BigInt(id), {
     accountId: account.id,
     isMale: profile.isMale!,
   })

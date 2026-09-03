@@ -484,33 +484,44 @@ Header `Authorization: Bearer <token>`.
 
 ## Загрузка медиафайлов (`/uploads`)
 
-Двухшаговая загрузка медиафайлов (изображений) в Cloudflare R2 по Presigned URL с хранением `fileKey` в PostgreSQL.
+Двухшаговая загрузка медиафайлов (изображений) в Cloudflare R2 по Presigned URL с контролем жизненного цикла в PostgreSQL (`media_uploads`), IDOR-защитой и автоматическим сборщиком мусора (GC Worker).
+
+### Жизненный цикл медиафайлов
+- `pending`: Ссылка выдана (`POST /uploads/presign`), загрузка ожидается. Если файл не был привязан в течение 24 часов (`created_at < NOW() - INTERVAL '24 HOURS'`), ночной GC Worker удаляет его из R2 и переводит в `purged`.
+- `attached`: Файл успешно привязан к посту, комментарию или а profile avatar. Не обрабатывается сборщиком мусора.
+- `deleted`: Пост, комментарий или аватар удален/заменен пользователем. Файл отправляется на удаление из R2 в ближайшем цикле GC.
+- `purged`: Файл физически стерт из R2 через S3 API `DeleteObjects`, запись оставлена для аудита. Физически удаляется из базы данных через 90 дней.
 
 ### Архитектурный Flow
-1. iOS запрашивает ссылку: `POST /uploads/presign { "ext": "jpg", "contentType": "image/jpeg" }`.
-2. API валидирует расширение/MIME и возвращает `200 OK` с `uploadUrl` (TTL 10 минут) и `fileKey` (`media/YYYY-MM-DD/<snowflake>.jpg`).
-3. iOS загружает бинарный файл напрямую в Cloudflare R2 через HTTP `PUT <uploadUrl>` с заголовком `Content-Type: image/jpeg`.
-4. iOS использует `fileKey` в бизнес-логике:
+1. Клиент запрашивает ссылку: `POST /uploads/presign { "ext": "jpg", "contentType": "image/jpeg", "size": 1048576 }`.
+2. API валидирует расширение, MIME-тип и размер (до 10MB), создает запись в `media_uploads` со `status = 'pending'`, и возвращает `200 OK` с `uploadUrl` (строгий TTL 15 минут, 900с) и `fileKey` (`media/YYYY-MM-DD/<snowflake>.jpg`).
+3. Клиент загружает бинарный файл напрямую в Cloudflare R2 через HTTP `PUT <uploadUrl>` с заголовком `Content-Type: image/jpeg` (и `Content-Length`, если `size` был указан).
+4. Клиент использует `fileKey` в бизнес-логике:
    - Обновление аватара профиля: `PATCH /profile/me { "avatarKey": "media/..." }`
    - Создание публикации с фото: `POST /posts { "type": "media", "payload": { "media": [{ "fileKey": "media/...", "width": 1920, "height": 1080 }] }, "content": "..." }`
    - Добавление комментария с фото: `POST /posts/:id/comments { "type": "media", "payload": { "media": [{ "fileKey": "media/...", "width": 800, "height": 600 }] }, "content": "..." }`
+5. **Защита от подмены чужих файлов (IDOR):**
+   При привязке файлов к сущности сервер атомарно проверяет, что каждый `fileKey` принадлежит текущему пользователю и имеет `status = 'pending'`. Если хотя бы один файл чужой, уже привязанный или не существует, запрос отклоняется с ошибкой `400 Bad Request`.
+6. **Каскадное удаление:**
+   При soft-delete поста или комментария привязанные медиафайлы переводятся в `deleted`. При удалении поста медиафайлы его комментариев также переводятся в `deleted`. Ночной GC Worker пакетами до 1000 ключей очищает удаленные файлы из хранилища R2.
 
 ### `POST /uploads/presign`
 - **Доступ:** Авторизованный пользователь (`Authorization: Bearer <token>`)
 - **Тело запроса (JSON):**
   - `ext` *(string, обязательное, `"jpg" | "jpeg" | "png" | "webp"`)* — расширение файла
   - `contentType` *(string, обязательное)* — MIME-тип (`image/jpeg`, `image/png`, `image/webp`)
+  - `size` *(number, опционально, целое положительное число, до 10485760 байт (10MB))* — размер файла в байтах
 - **Ответ `200 OK`:**
   ```json
   {
     "success": true,
     "uploadUrl": "https://<account_id>.r2.cloudflarestorage.com/wisal-media/media/2026-08-30/723491823749128301.jpg?X-Amz-Algorithm=...",
     "fileKey": "media/2026-08-30/723491823749128301.jpg",
-    "expiresIn": 600
+    "expiresIn": 900
   }
   ```
 - **Ошибки:**
-  - `400 Bad Request` — неподдерживаемое расширение или несовпадающий MIME-тип.
+  - `400 Bad Request` — неподдерживаемое расширение, несовпадающий MIME-тип или недопустимый размер файла (>10MB или non-positive).
   - `401 Unauthorized` — отсутствие токена авторизации.
 
 ---
@@ -552,9 +563,9 @@ Header `Authorization: Bearer <token>`.
       "genderScope": "all",
       "accessLevel": "public",
       "isPinned": false,
-      "likesCount": 0,
+      "savesCount": 0,
       "commentsCount": 0,
-      "isLiked": false,
+      "isSaved": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -592,9 +603,9 @@ Header `Authorization: Bearer <token>`.
       "genderScope": "same_gender",
       "accessLevel": "public",
       "isPinned": false,
-      "likesCount": 0,
+      "savesCount": 0,
       "commentsCount": 0,
-      "isLiked": false,
+      "isSaved": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -640,9 +651,9 @@ Header `Authorization: Bearer <token>`.
       "genderScope": "all",
       "accessLevel": "public",
       "isPinned": true,
-      "likesCount": 0,
+      "savesCount": 0,
       "commentsCount": 0,
-      "isLiked": false,
+      "isSaved": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -656,7 +667,7 @@ Header `Authorization: Bearer <token>`.
   }
   ```
 
-### `POST /posts/:id/like`
+### `POST /posts/:id/save`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID поста
@@ -664,13 +675,14 @@ Header `Authorization: Bearer <token>`.
   ```json
   {
     "success": true,
-    "liked": true,
-    "likesCount": 1,
-    "message": "Post liked successfully"
+    "saved": true,
+    "savesCount": 1,
+    "message": "Post saved successfully"
   }
   ```
+  *Примечание:* Поле `savesCount` передается в ответе только если текущий пользователь является автором поста. Для сторонних пользователей поле опускается.
 
-### `POST /posts/:id/unlike`
+### `POST /posts/:id/unsave`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID поста
@@ -678,11 +690,53 @@ Header `Authorization: Bearer <token>`.
   ```json
   {
     "success": true,
-    "liked": false,
-    "likesCount": 0,
-    "message": "Post unliked successfully"
+    "saved": false,
+    "savesCount": 0,
+    "message": "Post unsaved successfully"
   }
   ```
+  *Примечание:* Поле `savesCount` передается в ответе только если текущий пользователь является автором поста. Для сторонних пользователей поле опускается.
+
+### `GET /posts/saves`
+- **Доступ:** Авторизованный пользователь с онбордингом
+- **Query-параметры:**
+  - `limit` *(number, опционально, по умолчанию: 20, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "posts": [
+      {
+        "id": "999999999999991",
+        "authorId": "111111111111111",
+        "authorGender": true,
+        "type": "text",
+        "payload": {},
+        "content": "Saved post content",
+        "genderScope": "all",
+        "accessLevel": "public",
+        "isPinned": false,
+        "commentsCount": 2,
+        "isSaved": true,
+        "createdAt": "2026-08-20T00:00:00.000Z",
+        "updatedAt": "2026-08-20T00:00:00.000Z",
+        "author": {
+          "id": "111111111111111",
+          "name": "John Doe",
+          "identity": "johndoe",
+          "avatarKey": null,
+          "isMale": true,
+          "isFollowing": true
+        }
+      }
+    ],
+    "total": 1,
+    "limit": 20,
+    "offset": 0
+  }
+  ```
+  *Примечание:* Посты упорядочены по времени сохранения (`desc`). Поле `savesCount` включается только для публикаций, автором которых является сам пользователь.
 
 ### `GET /posts/feed`
 - **Доступ:** Авторизованный пользователь с онбордингом
@@ -705,9 +759,8 @@ Header `Authorization: Bearer <token>`.
         "genderScope": "all",
         "accessLevel": "public",
         "isPinned": false,
-        "likesCount": 5,
         "commentsCount": 2,
-        "isLiked": true,
+        "isSaved": true,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
         "author": {
@@ -743,9 +796,9 @@ Header `Authorization: Bearer <token>`.
       "genderScope": "all",
       "accessLevel": "public",
       "isPinned": false,
-      "likesCount": 10,
+      "savesCount": 10,
       "commentsCount": 4,
-      "isLiked": true,
+      "isSaved": true,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -759,6 +812,7 @@ Header `Authorization: Bearer <token>`.
     }
   }
   ```
+  *Примечание:* Поле `savesCount` передается только если текущий пользователь является автором поста. Для других пользователей поле не отображается.
 
 ### `GET /posts/user/:identity`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
@@ -782,9 +836,8 @@ Header `Authorization: Bearer <token>`.
         "genderScope": "all",
         "accessLevel": "public",
         "isPinned": true,
-        "likesCount": 3,
         "commentsCount": 1,
-        "isLiked": false,
+        "isSaved": false,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
         "author": {

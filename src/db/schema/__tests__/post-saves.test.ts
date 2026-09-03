@@ -1,21 +1,21 @@
 import { describe, it, expect } from 'bun:test'
 import { getTableConfig } from 'drizzle-orm/pg-core'
-import { postLikes, insertPostLikeSchema, selectPostLikeSchema } from '../post-likes'
+import { postSaves, insertPostSaveSchema, selectPostSaveSchema } from '../post-saves'
 
-describe('Post Likes Schema Tests', () => {
-  it('validates a valid post like insertion payload', () => {
+describe('Post Saves Schema Tests', () => {
+  it('validates a valid post save insertion payload', () => {
     const validData = {
       postId: 100000000000001n,
       userId: 200000000000002n,
     }
 
-    const parsed = insertPostLikeSchema.parse(validData)
+    const parsed = insertPostSaveSchema.parse(validData)
     expect(parsed.postId).toBe(100000000000001n)
     expect(parsed.userId).toBe(200000000000002n)
     expect(parsed.createdAt).toBeUndefined()
   })
 
-  it('validates selectPostLikeSchema with all fields', () => {
+  it('validates selectPostSaveSchema with all fields', () => {
     const now = new Date()
     const record = {
       postId: 100000000000001n,
@@ -23,23 +23,23 @@ describe('Post Likes Schema Tests', () => {
       createdAt: now,
     }
 
-    const parsed = selectPostLikeSchema.parse(record)
+    const parsed = selectPostSaveSchema.parse(record)
     expect(parsed.postId).toBe(100000000000001n)
     expect(parsed.userId).toBe(200000000000002n)
     expect(parsed.createdAt).toEqual(now)
   })
 
   it('has composite primary key on post_id and user_id', () => {
-    const config = getTableConfig(postLikes)
+    const config = getTableConfig(postSaves)
     expect(config.primaryKeys.length).toBe(1)
     const pk = config.primaryKeys[0]
     expect(pk.columns.map((c) => c.name)).toEqual(['post_id', 'user_id'])
   })
 
   it('has indexes on user_id and created_at', () => {
-    const config = getTableConfig(postLikes)
+    const config = getTableConfig(postSaves)
     const indexNames = config.indexes.map((idx) => idx.config.name)
-    expect(indexNames).toContain('post_likes_user_id_idx')
-    expect(indexNames).toContain('post_likes_created_at_idx')
+    expect(indexNames).toContain('post_saves_user_id_idx')
+    expect(indexNames).toContain('post_saves_created_at_idx')
   })
 })

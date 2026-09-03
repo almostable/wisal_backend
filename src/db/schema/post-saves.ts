@@ -5,8 +5,8 @@ import { snowflakeId } from './common'
 import { accounts } from './accounts'
 import { posts } from './posts'
 
-export const postLikes = pgTable(
-  'post_likes',
+export const postSaves = pgTable(
+  'post_saves',
   {
     postId: snowflakeId('post_id')
       .notNull()
@@ -20,27 +20,27 @@ export const postLikes = pgTable(
   },
   (table) => [
     primaryKey({
-      name: 'post_likes_post_id_user_id_pk',
+      name: 'post_saves_post_id_user_id_pk',
       columns: [table.postId, table.userId],
     }),
-    index('post_likes_user_id_idx').on(table.userId),
-    index('post_likes_created_at_idx').on(table.createdAt),
+    index('post_saves_user_id_idx').on(table.userId),
+    index('post_saves_created_at_idx').on(table.createdAt),
   ]
 )
 
-export const postLikesRelations = relations(postLikes, ({ one }) => ({
+export const postSavesRelations = relations(postSaves, ({ one }) => ({
   post: one(posts, {
-    fields: [postLikes.postId],
+    fields: [postSaves.postId],
     references: [posts.id],
   }),
   user: one(accounts, {
-    fields: [postLikes.userId],
+    fields: [postSaves.userId],
     references: [accounts.id],
   }),
 }))
 
-export const insertPostLikeSchema = createInsertSchema(postLikes)
-export const selectPostLikeSchema = createSelectSchema(postLikes)
+export const insertPostSaveSchema = createInsertSchema(postSaves)
+export const selectPostSaveSchema = createSelectSchema(postSaves)
 
-export type PostLike = typeof postLikes.$inferSelect
-export type NewPostLike = typeof postLikes.$inferInsert
+export type PostSave = typeof postSaves.$inferSelect
+export type NewPostSave = typeof postSaves.$inferInsert

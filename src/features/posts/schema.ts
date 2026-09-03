@@ -124,6 +124,8 @@ export const feedQuerySchema = createPaginationSchema(20, 100).extend({
 
 export const userPostsQuerySchema = createPaginationSchema(20, 100)
 
+export const savedPostsQuerySchema = createPaginationSchema(20, 100)
+
 export const createCommentSchema = z
   .object({
     type: z.enum(COMMENT_TYPES).default('text').optional(),
@@ -235,6 +237,7 @@ export type UpdatePostInput = z.infer<typeof updatePostSchema>
 export type PinPostInput = z.infer<typeof pinPostSchema>
 export type FeedQueryInput = z.infer<typeof feedQuerySchema>
 export type UserPostsQueryInput = z.infer<typeof userPostsQuerySchema>
+export type SavedPostsQueryInput = z.infer<typeof savedPostsQuerySchema>
 export type CreateCommentInput = z.infer<typeof createCommentSchema>
 export type ReplyCommentInput = z.infer<typeof replyCommentSchema>
 export type UpdateCommentInput = z.infer<typeof updateCommentSchema>

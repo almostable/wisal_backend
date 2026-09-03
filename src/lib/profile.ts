@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception'
 import { db } from '../db'
 import { profiles, type Profile, type ProfileWithIdentity, type OnboardingInput, type UpdateProfileInput, type Contacts } from '../db/schema/profiles'
 import { identities, identityFormatSchema, type Identity } from '../db/schema/identities'
+import { attachMediaFiles, reconcileEntityMedia } from '../features/uploads/service'
 
 export interface SafeProfile {
   id: bigint
@@ -195,6 +196,15 @@ export async function completeOnboarding(
       finalProfile = inserted
     }
 
+    if (input.avatarKey) {
+      await attachMediaFiles(tx, {
+        fileKeys: [input.avatarKey],
+        userId: accountId,
+        entityType: 'avatar',
+        entityId: accountId,
+      })
+    }
+
     return {
       ...finalProfile,
       identity: createdIdentity,
@@ -273,6 +283,17 @@ export async function updateProfile(
     }
     if (input.avatarKey !== undefined) {
       updateData.avatarKey = input.avatarKey
+      const oldAvatarKeys = existingProfile.avatarKey ? [existingProfile.avatarKey] : []
+      const newAvatarKeys = input.avatarKey ? [input.avatarKey] : []
+      if (oldAvatarKeys.length > 0 || newAvatarKeys.length > 0) {
+        await reconcileEntityMedia(tx, {
+          entityType: 'avatar',
+          entityId: accountId,
+          userId: accountId,
+          newFileKeys: newAvatarKeys,
+          oldFileKeys: oldAvatarKeys,
+        })
+      }
     }
     if (input.description !== undefined) {
       updateData.description = input.description?.trim() ?? null

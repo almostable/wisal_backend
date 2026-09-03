@@ -90,9 +90,9 @@ describe('Posts Feature Route Tests', () => {
     genderScope: 'all',
     accessLevel: 'public',
     isPinned: false,
-    likesCount: 0,
+    savesCount: 0,
     commentsCount: 0,
-    isLiked: false,
+    isSaved: false,
     createdAt: new Date(),
     updatedAt: new Date(),
     author: {
@@ -133,6 +133,9 @@ describe('Posts Feature Route Tests', () => {
     const resFeed = await app.request('/posts/feed', { method: 'GET' })
     expect(resFeed.status).toBe(401)
 
+    const resSaves = await app.request('/posts/saves', { method: 'GET' })
+    expect(resSaves.status).toBe(401)
+
     const resCreate = await app.request('/posts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -146,11 +149,11 @@ describe('Posts Feature Route Tests', () => {
     const resUser = await app.request('/posts/user/male_user', { method: 'GET' })
     expect(resUser.status).toBe(401)
 
-    const resLike = await app.request('/posts/999999999999991/like', { method: 'POST' })
-    expect(resLike.status).toBe(401)
+    const resSave = await app.request('/posts/999999999999991/save', { method: 'POST' })
+    expect(resSave.status).toBe(401)
 
-    const resUnlike = await app.request('/posts/999999999999991/unlike', { method: 'POST' })
-    expect(resUnlike.status).toBe(401)
+    const resUnsave = await app.request('/posts/999999999999991/unsave', { method: 'POST' })
+    expect(resUnsave.status).toBe(401)
 
     const resComments = await app.request('/posts/999999999999991/comments', { method: 'GET' })
     expect(resComments.status).toBe(401)
@@ -840,7 +843,7 @@ describe('Posts Feature Route Tests', () => {
     expect(body.total).toBe(2)
   })
 
-  it('POST /posts/:id/like likes a post and increments likes count', async () => {
+  it('POST /posts/:id/save saves a post and returns savesCount for author', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -854,18 +857,18 @@ describe('Posts Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      likePost: async (_postId: bigint, viewer: { accountId: bigint; isMale: boolean }) => {
+      savePost: async (_postId: bigint, viewer: { accountId: bigint; isMale: boolean }) => {
         expect(viewer.accountId).toBe(maleAccount.id)
         expect(viewer.isMale).toBe(true)
         return {
-          liked: true,
-          likesCount: 1,
-          message: 'Post liked successfully',
+          saved: true,
+          savesCount: 1,
+          message: 'Post saved successfully',
         }
       },
     }))
 
-    const res = await app.request('/posts/999999999999991/like', {
+    const res = await app.request('/posts/999999999999991/save', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_male_token',
@@ -875,48 +878,17 @@ describe('Posts Feature Route Tests', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       success: boolean
-      liked: boolean
-      likesCount: number
+      saved: boolean
+      savesCount?: number
       message: string
     }
     expect(body.success).toBe(true)
-    expect(body.liked).toBe(true)
-    expect(body.likesCount).toBe(1)
-    expect(body.message).toBe('Post liked successfully')
+    expect(body.saved).toBe(true)
+    expect(body.savesCount).toBe(1)
+    expect(body.message).toBe('Post saved successfully')
   })
 
-  it('POST /posts/:id/like returns 404 when post does not exist or gender scope check fails', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: femaleAccount,
-        session: femaleSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => femaleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    mock.module('../service', () => ({
-      likePost: async () => {
-        throw new HTTPException(404, { message: 'Post not found' })
-      },
-    }))
-
-    const res = await app.request('/posts/999999999999991/like', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer valid_female_token',
-      },
-    })
-
-    expect(res.status).toBe(404)
-    const body = (await res.json()) as { error: string }
-    expect(body.error).toBe('Post not found')
-  })
-
-  it('POST /posts/:id/unlike unlikes a post and decrements likes count', async () => {
+  it('POST /posts/:id/save saves a post and omits savesCount for non-author', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -930,18 +902,15 @@ describe('Posts Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      unlikePost: async (_postId: bigint, viewer: { accountId: bigint; isMale: boolean }) => {
-        expect(viewer.accountId).toBe(maleAccount.id)
-        expect(viewer.isMale).toBe(true)
+      savePost: async () => {
         return {
-          liked: false,
-          likesCount: 0,
-          message: 'Post unliked successfully',
+          saved: true,
+          message: 'Post saved successfully',
         }
       },
     }))
 
-    const res = await app.request('/posts/999999999999991/unlike', {
+    const res = await app.request('/posts/999999999999991/save', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_male_token',
@@ -951,17 +920,17 @@ describe('Posts Feature Route Tests', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       success: boolean
-      liked: boolean
-      likesCount: number
+      saved: boolean
+      savesCount?: number
       message: string
     }
     expect(body.success).toBe(true)
-    expect(body.liked).toBe(false)
-    expect(body.likesCount).toBe(0)
-    expect(body.message).toBe('Post unliked successfully')
+    expect(body.saved).toBe(true)
+    expect(body.savesCount).toBeUndefined()
+    expect(body.message).toBe('Post saved successfully')
   })
 
-  it('POST /posts/:id/unlike returns 404 when post does not exist or gender scope check fails', async () => {
+  it('POST /posts/:id/save returns 404 when post does not exist or gender scope check fails', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: femaleAccount,
@@ -975,12 +944,12 @@ describe('Posts Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      unlikePost: async () => {
+      savePost: async () => {
         throw new HTTPException(404, { message: 'Post not found' })
       },
     }))
 
-    const res = await app.request('/posts/999999999999991/unlike', {
+    const res = await app.request('/posts/999999999999991/save', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_female_token',
@@ -990,6 +959,193 @@ describe('Posts Feature Route Tests', () => {
     expect(res.status).toBe(404)
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe('Post not found')
+  })
+
+  it('POST /posts/:id/unsave unsaves a post and returns savesCount for author', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      unsavePost: async (_postId: bigint, viewer: { accountId: bigint; isMale: boolean }) => {
+        expect(viewer.accountId).toBe(maleAccount.id)
+        expect(viewer.isMale).toBe(true)
+        return {
+          saved: false,
+          savesCount: 0,
+          message: 'Post unsaved successfully',
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991/unsave', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      saved: boolean
+      savesCount?: number
+      message: string
+    }
+    expect(body.success).toBe(true)
+    expect(body.saved).toBe(false)
+    expect(body.savesCount).toBe(0)
+    expect(body.message).toBe('Post unsaved successfully')
+  })
+
+  it('POST /posts/:id/unsave unsaves a post and omits savesCount for non-author', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      unsavePost: async () => {
+        return {
+          saved: false,
+          message: 'Post unsaved successfully',
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991/unsave', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      saved: boolean
+      savesCount?: number
+      message: string
+    }
+    expect(body.success).toBe(true)
+    expect(body.saved).toBe(false)
+    expect(body.savesCount).toBeUndefined()
+    expect(body.message).toBe('Post unsaved successfully')
+  })
+
+  it('POST /posts/:id/unsave returns 404 when post does not exist or gender scope check fails', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: femaleAccount,
+        session: femaleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => femaleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      unsavePost: async () => {
+        throw new HTTPException(404, { message: 'Post not found' })
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991/unsave', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_female_token',
+      },
+    })
+
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Post not found')
+  })
+
+  it('GET /posts/saves returns paginated list of saved posts', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const savedPost1: PostResponse = {
+      ...samplePost,
+      id: 999999999999991n,
+      isSaved: true,
+      savesCount: 5, // Author can see savesCount
+    }
+    const savedPost2: PostResponse = {
+      ...samplePost,
+      id: 999999999999992n,
+      authorId: femaleAccount.id,
+      isSaved: true,
+      // Non-author: savesCount is undefined
+    }
+    delete (savedPost2 as any).savesCount
+
+    mock.module('../service', () => ({
+      getSavedPosts: async (
+        viewer: { accountId: bigint; isMale: boolean },
+        query: { limit?: number; offset?: number }
+      ) => {
+        expect(viewer.accountId).toBe(maleAccount.id)
+        expect(query.limit).toBe(10)
+        expect(query.offset).toBe(0)
+        return {
+          posts: [savedPost1, savedPost2],
+          total: 2,
+          limit: 10,
+          offset: 0,
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/saves?limit=10&offset=0', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      posts: PostResponse[]
+      total: number
+      limit: number
+      offset: number
+    }
+    expect(body.success).toBe(true)
+    expect(body.posts.length).toBe(2)
+    expect(body.posts[0].isSaved).toBe(true)
+    expect(body.posts[0].savesCount).toBe(5)
+    expect(body.posts[1].isSaved).toBe(true)
+    expect(body.posts[1].savesCount).toBeUndefined()
+    expect(body.total).toBe(2)
   })
 
   it('GET /posts/:id/comments returns post comments list with pagination', async () => {
@@ -1799,7 +1955,7 @@ describe('Posts Feature Route Tests', () => {
     expect(body2.error).toBe('Cannot reply to a blocked user')
   })
 
-  it('GET /posts/:id, POST /posts/:id/like, POST /posts/:id/unlike return 404 for blocked or restricted post access', async () => {
+  it('GET /posts/:id, POST /posts/:id/save, POST /posts/:id/unsave return 404 for blocked or restricted post access', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -1816,10 +1972,10 @@ describe('Posts Feature Route Tests', () => {
       getPostById: async () => {
         throw new HTTPException(404, { message: 'Post not found' })
       },
-      likePost: async () => {
+      savePost: async () => {
         throw new HTTPException(404, { message: 'Post not found' })
       },
-      unlikePost: async () => {
+      unsavePost: async () => {
         throw new HTTPException(404, { message: 'Post not found' })
       },
     }))
@@ -1830,17 +1986,17 @@ describe('Posts Feature Route Tests', () => {
     })
     expect(resGet.status).toBe(404)
 
-    const resLike = await app.request('/posts/999999999999991/like', {
+    const resSave = await app.request('/posts/999999999999991/save', {
       method: 'POST',
       headers: { Authorization: 'Bearer valid_male_token' },
     })
-    expect(resLike.status).toBe(404)
+    expect(resSave.status).toBe(404)
 
-    const resUnlike = await app.request('/posts/999999999999991/unlike', {
+    const resUnsave = await app.request('/posts/999999999999991/unsave', {
       method: 'POST',
       headers: { Authorization: 'Bearer valid_male_token' },
     })
-    expect(resUnlike.status).toBe(404)
+    expect(resUnsave.status).toBe(404)
   })
 
   it('GET /posts/:id/comments only returns root comments and excludes replies', async () => {

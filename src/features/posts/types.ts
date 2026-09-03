@@ -22,9 +22,9 @@ export interface PostResponse {
   genderScope: GenderScope
   accessLevel: AccessLevel
   isPinned: boolean
-  likesCount: number
+  savesCount?: number
   commentsCount: number
-  isLiked?: boolean
+  isSaved?: boolean
   createdAt: Date
   updatedAt: Date
   author?: PostAuthorInfo | null
@@ -67,9 +67,9 @@ export interface CommentResponse {
   isHidden?: boolean
 }
 
-export interface LikeActionResult {
-  liked: boolean
-  likesCount: number
+export interface SaveActionResult {
+  saved: boolean
+  savesCount?: number
   message: string
 }
 
@@ -114,6 +114,18 @@ export interface FeedResult {
 }
 
 export interface UserPostsResult {
+  posts: PostResponse[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface SavedPostsQueryDTO {
+  limit?: number
+  offset?: number
+}
+
+export interface SavedPostsResult {
   posts: PostResponse[]
   total: number
   limit: number
