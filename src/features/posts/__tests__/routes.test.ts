@@ -33,6 +33,7 @@ describe('Posts Feature Route Tests', () => {
     description: 'Male bio',
     contacts: null,
     identityId: 444444444444444n,
+    regularFollowersCount: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     identity: {
@@ -68,6 +69,7 @@ describe('Posts Feature Route Tests', () => {
     description: 'Female bio',
     contacts: null,
     identityId: 888888888888888n,
+    regularFollowersCount: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     identity: {

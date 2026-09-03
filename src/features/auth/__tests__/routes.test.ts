@@ -31,6 +31,7 @@ describe('Auth Feature Route Tests', () => {
     description: 'Test description',
     contacts: null,
     identity: 'wisaluser',
+    regularFollowersCount: 0,
   }
 
   it('POST /auth/register registers a new user with valid invite code and returns session token', async () => {

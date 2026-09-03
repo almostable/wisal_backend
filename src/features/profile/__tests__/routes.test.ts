@@ -38,6 +38,7 @@ describe('Profile Feature Route Tests', () => {
       email: null,
     },
     identity: 'wisaluser',
+    regularFollowersCount: 0,
   }
 
   const mockPublicProfile: PublicProfile = {
@@ -480,6 +481,7 @@ describe('Profile Feature Route Tests', () => {
             description: 'Fan of Wisal',
             identity: 'follower1',
             followedAt: new Date(),
+            lastReadAt: new Date(),
           },
         ],
         total: 1,
@@ -574,6 +576,7 @@ describe('Profile Feature Route Tests', () => {
                 description: null,
                 identity: 'publicfan',
                 followedAt: new Date(),
+                lastReadAt: new Date(),
               },
             ],
             total: 1,

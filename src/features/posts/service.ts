@@ -6,6 +6,7 @@ import {
   desc,
   asc,
   isNull,
+  lt,
   count,
   inArray,
   sql,
@@ -536,11 +537,35 @@ export async function unlikePost(
   })
 }
 
+export async function recordAuthorPostRead(
+  readerAccountId: bigint,
+  authorAccountId: bigint,
+  executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0] = db
+): Promise<void> {
+  await executor
+    .update(follows)
+    .set({ lastReadAt: sql`NOW()` })
+    .where(
+      and(
+        eq(follows.followingId, authorAccountId),
+        eq(follows.followerId, readerAccountId),
+        or(
+          lt(follows.lastReadAt, sql`NOW() - INTERVAL '1 day'`),
+          isNull(follows.lastReadAt)
+        )
+      )
+    )
+}
+
 export async function getPostById(
   postId: bigint,
   viewer: { accountId: bigint; isMale: boolean }
 ): Promise<PostResponse> {
-  await checkPostAccess(db, postId, viewer)
+  const post = await checkPostAccess(db, postId, viewer)
+
+  if (viewer.accountId !== post.authorId) {
+    await recordAuthorPostRead(viewer.accountId, post.authorId, db)
+  }
 
   const [result] = await db
     .select({

@@ -7,6 +7,7 @@ import {
   isNull,
   isNotNull,
   gt,
+  gte,
   lte,
   sql,
   type SQL,
@@ -266,8 +267,20 @@ async function fetchFollowList(
 ): Promise<ListFollowsResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
-  const targetCol = type === 'followers' ? follows.followingId : follows.followerId
   const joinCol = type === 'followers' ? follows.followerId : follows.followingId
+
+  const whereClause =
+    type === 'followers'
+      ? and(
+          eq(follows.followingId, targetAccountId),
+          gte(follows.lastReadAt, sql`NOW() - INTERVAL '30 days'`)
+        )
+      : eq(follows.followerId, targetAccountId)
+
+  const orderClause =
+    type === 'followers'
+      ? desc(follows.lastReadAt)
+      : desc(follows.createdAt)
 
   const [items, totalResult] = await Promise.all([
     db
@@ -278,19 +291,20 @@ async function fetchFollowList(
         description: profiles.description,
         identity: identities.identity,
         followedAt: follows.createdAt,
+        lastReadAt: follows.lastReadAt,
       })
       .from(follows)
       .innerJoin(accounts, eq(joinCol, accounts.id))
       .leftJoin(profiles, eq(accounts.id, profiles.accountId))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
-      .where(eq(targetCol, targetAccountId))
-      .orderBy(desc(follows.createdAt))
+      .where(whereClause)
+      .orderBy(orderClause)
       .limit(limit)
       .offset(offset),
     db
       .select({ count: count() })
       .from(follows)
-      .where(eq(targetCol, targetAccountId)),
+      .where(whereClause),
   ])
 
   return {
@@ -301,6 +315,7 @@ async function fetchFollowList(
       description: item.description,
       identity: item.identity,
       followedAt: item.followedAt,
+      lastReadAt: item.lastReadAt,
     })),
     total: totalResult[0]?.count ?? 0,
     limit,

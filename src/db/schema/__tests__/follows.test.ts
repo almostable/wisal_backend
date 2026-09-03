@@ -30,12 +30,27 @@ describe('Follows Schema Tests', () => {
       followerId: 100000000000001n,
       followingId: 200000000000002n,
       createdAt: now,
+      lastReadAt: now,
     }
 
     const parsed = selectFollowSchema.parse(record)
     expect(parsed.followerId).toBe(100000000000001n)
     expect(parsed.followingId).toBe(200000000000002n)
     expect(parsed.createdAt).toEqual(now)
+    expect(parsed.lastReadAt).toEqual(now)
+  })
+
+  it('validates selectFollowSchema with null lastReadAt', () => {
+    const now = new Date()
+    const record = {
+      followerId: 100000000000001n,
+      followingId: 200000000000002n,
+      createdAt: now,
+      lastReadAt: null,
+    }
+
+    const parsed = selectFollowSchema.parse(record)
+    expect(parsed.lastReadAt).toBeNull()
   })
 
   it('has composite primary key on follower_id and following_id', () => {
@@ -54,10 +69,11 @@ describe('Follows Schema Tests', () => {
     expect(checkConstraint).toBeDefined()
   })
 
-  it('has indexes on following_id and created_at', () => {
+  it('has indexes on following_id, created_at, and regular_readers', () => {
     const config = getTableConfig(follows)
     const indexNames = config.indexes.map((idx) => idx.config.name)
     expect(indexNames).toContain('follows_following_id_idx')
     expect(indexNames).toContain('follows_created_at_idx')
+    expect(indexNames).toContain('idx_follows_regular_readers')
   })
 })

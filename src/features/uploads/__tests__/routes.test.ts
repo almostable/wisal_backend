@@ -31,6 +31,7 @@ describe('Uploads Feature Route Tests', () => {
     description: 'Bio',
     contacts: null,
     identityId: 444444444444444n,
+    regularFollowersCount: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     identity: {

@@ -13,6 +13,7 @@ describe('Profile Utility Tests', () => {
       description: null,
       contacts: null,
       identityId: 100n,
+      regularFollowersCount: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: {
@@ -41,6 +42,7 @@ describe('Profile Utility Tests', () => {
       description: null,
       contacts: null,
       identityId: 100n,
+      regularFollowersCount: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: {
@@ -64,6 +66,7 @@ describe('Profile Utility Tests', () => {
       description: null,
       contacts: null,
       identityId: 100n,
+      regularFollowersCount: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: {
@@ -87,6 +90,7 @@ describe('Profile Utility Tests', () => {
       description: null,
       contacts: null,
       identityId: 100n,
+      regularFollowersCount: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: null,
@@ -119,6 +123,7 @@ describe('Profile Utility Tests', () => {
       description: 'bio',
       contacts: null,
       identityId: 100n,
+      regularFollowersCount: 42,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: {
@@ -135,6 +140,35 @@ describe('Profile Utility Tests', () => {
     expect((formatted as any).identityId).toBeUndefined()
     expect((formatted as any).accountId).toBeUndefined()
     expect(formatted!.identity).toBe('alice')
+    expect(formatted!.regularFollowersCount).toBe(42)
+  })
+
+  it('formatRestrictedProfileResponse sets regularFollowersCount to 0', async () => {
+    const { formatRestrictedProfileResponse } = await import('../profile')
+    const fullProfile: ProfileWithIdentity = {
+      id: 1n,
+      accountId: 10n,
+      name: 'Alice',
+      isMale: true,
+      avatarKey: 'avatar.png',
+      description: 'bio',
+      contacts: null,
+      identityId: 100n,
+      regularFollowersCount: 42,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      identity: {
+        id: 100n,
+        identity: 'alice',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    }
+
+    const restricted = formatRestrictedProfileResponse(fullProfile, { isBlocked: true })
+    expect(restricted).not.toBeNull()
+    expect(restricted!.regularFollowersCount).toBe(0)
+    expect(restricted!.isBlocked).toBe(true)
   })
 
   it('checkIdentityAvailable returns false for invalid format or reserved names', async () => {

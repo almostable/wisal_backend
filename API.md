@@ -134,7 +134,8 @@ Header `Authorization: Bearer <token>`.
       "avatarKey": null,
       "description": "Bio text",
       "contacts": null,
-      "identity": "johndoe"
+      "identity": "johndoe",
+      "regularFollowersCount": 0
     },
     "isOnboardingCompleted": true
   }
@@ -236,6 +237,7 @@ Header `Authorization: Bearer <token>`.
 
 ### `GET /profile/followers`
 - **Доступ:** Авторизованный пользователь
+- **Описание:** Возвращает список и количество регулярных читателей (подписчиков, открывавших хотя бы один пост автора за последние 30 дней).
 - **Query-параметры:**
   - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
   - `offset` *(number, опционально, по умолчанию: 0)*
@@ -250,7 +252,8 @@ Header `Authorization: Bearer <token>`.
         "avatarKey": null,
         "description": "User bio",
         "identity": "follower_handle",
-        "followedAt": "2026-08-20T00:00:00.000Z"
+        "followedAt": "2026-08-20T00:00:00.000Z",
+        "lastReadAt": "2026-09-01T12:00:00.000Z"
       }
     ],
     "total": 1,
@@ -275,7 +278,8 @@ Header `Authorization: Bearer <token>`.
         "avatarKey": "avatars/user.png",
         "description": "User bio",
         "identity": "following_handle",
-        "followedAt": "2026-08-20T00:00:00.000Z"
+        "followedAt": "2026-08-20T00:00:00.000Z",
+        "lastReadAt": null
       }
     ],
     "total": 1,
@@ -286,6 +290,7 @@ Header `Authorization: Bearer <token>`.
 
 ### `GET /profile/:identity/followers`
 - **Доступ:** Авторизованный пользователь
+- **Описание:** Возвращает список и количество регулярных читателей автора (подписчиков с активными чтениями за последние 30 дней).
 - **URL-параметры:**
   - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
 - **Query-параметры:**
@@ -302,7 +307,8 @@ Header `Authorization: Bearer <token>`.
         "avatarKey": null,
         "description": "User bio",
         "identity": "follower_handle",
-        "followedAt": "2026-08-20T00:00:00.000Z"
+        "followedAt": "2026-08-20T00:00:00.000Z",
+        "lastReadAt": "2026-09-01T12:00:00.000Z"
       }
     ],
     "total": 1,

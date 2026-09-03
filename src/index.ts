@@ -16,6 +16,11 @@ import { profileRouter } from './features/profile'
 import { postsRouter } from './features/posts'
 import { reportsRouter } from './features/reports'
 import { uploadsRouter } from './features/uploads'
+import { initRegularFollowersCron } from './jobs/recalculate-regular-followers'
+
+if (env.NODE_ENV !== 'test') {
+  initRegularFollowersCron()
+}
 
 const app = new Hono()
 

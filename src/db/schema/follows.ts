@@ -16,6 +16,7 @@ export const follows = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .defaultNow()
       .notNull(),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     primaryKey({
@@ -25,6 +26,7 @@ export const follows = pgTable(
     check('follows_prevent_self_follow_check', sql`${table.followerId} != ${table.followingId}`),
     index('follows_following_id_idx').on(table.followingId),
     index('follows_created_at_idx').on(table.createdAt),
+    index('idx_follows_regular_readers').on(table.followingId, table.lastReadAt),
   ]
 )
 

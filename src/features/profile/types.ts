@@ -52,6 +52,7 @@ export interface FollowUserItem {
   description: string | null
   identity: string | null
   followedAt: Date
+  lastReadAt?: Date | null
 }
 
 export interface ListFollowsResult {

@@ -124,11 +124,13 @@ describe('Profiles Schema Tests', () => {
       description: null,
       contacts: null,
       identityId: null,
+      regularFollowersCount: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     }
 
     const parsedSelect = selectProfileSchema.parse(selectData)
     expect(parsedSelect.contacts).toBeNull()
+    expect(parsedSelect.regularFollowersCount).toBe(0)
   })
 })
