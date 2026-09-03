@@ -813,7 +813,7 @@ Header `Authorization: Bearer <token>`.
 
 ### `GET /posts/:id/comments`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)
-- **Описание:** Возвращает только комментарии первого уровня (ответы непосредственно на сам пост). Реплаи на комментарии запрашиваются отдельно через `GET /posts/comments/:id/replies`.
+- **Описание:** Возвращает только комментарии нулевого уровня (Level 0, корневые комментарии к посту). Реплаи Level 1 запрашиваются отдельно через `GET /posts/comments/:id/replies`.
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID поста
 - **Query-параметры:**
@@ -828,8 +828,10 @@ Header `Authorization: Bearer <token>`.
         "id": "888888888888881",
         "postId": "999999999999991",
         "authorId": "111111111111111",
+        "rootId": null,
+        "branchId": null,
         "parentId": null,
-        "replyToCommentId": null,
+        "replyToUserId": null,
         "replyToUser": null,
         "type": "text",
         "payload": {},
@@ -837,6 +839,7 @@ Header `Authorization: Bearer <token>`.
         "repliesCount": 2,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
+        "editedAt": null,
         "author": {
           "id": "111111111111111",
           "name": "John Doe",
@@ -854,7 +857,10 @@ Header `Authorization: Bearer <token>`.
 
 ### `GET /posts/comments/:id/replies`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту комментария)
-- **Описание:** Возвращает плоский хронологический список всех ответов (реплаев) ветки указанного комментария (`createdAt ASC`). Принимает ID как корневого комментария, так и любого реплая ветки.
+- **Описание:** Унифицированный эндпоинт получения ответов следующего уровня:
+  - Если передан ID комментария **Level 0 (Root)**: возвращает список комментариев **Level 1 (ветки/branches)**.
+  - Если передан ID комментария **Level 1 (Branch)**: возвращает список комментариев **Level 2 (ответы внутри ветки)**.
+  - Если передан ID комментария **Level 2**: возвращает пустой список (`comments: []`, так как дальнейшей вложенности нет).
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID комментария
 - **Query-параметры:**
@@ -869,8 +875,10 @@ Header `Authorization: Bearer <token>`.
         "id": "888888888888882",
         "postId": "999999999999991",
         "authorId": "222222222222222",
+        "rootId": "888888888888881",
+        "branchId": null,
         "parentId": "888888888888881",
-        "replyToCommentId": "888888888888881",
+        "replyToUserId": "111111111111111",
         "replyToUser": {
           "id": "111111111111111",
           "name": "John Doe",
@@ -878,10 +886,11 @@ Header `Authorization: Bearer <token>`.
         },
         "type": "text",
         "payload": {},
-        "content": "Reply to first comment",
-        "repliesCount": 0,
+        "content": "Reply to first comment (Level 1 branch)",
+        "repliesCount": 1,
         "createdAt": "2026-08-20T00:01:00.000Z",
         "updatedAt": "2026-08-20T00:01:00.000Z",
+        "editedAt": null,
         "author": {
           "id": "222222222222222",
           "name": "Jane Smith",
@@ -889,34 +898,9 @@ Header `Authorization: Bearer <token>`.
           "avatarKey": null,
           "isMale": false
         }
-      },
-      {
-        "id": "888888888888883",
-        "postId": "999999999999991",
-        "authorId": "333333333333333",
-        "parentId": "888888888888881",
-        "replyToCommentId": "888888888888882",
-        "replyToUser": {
-          "id": "222222222222222",
-          "name": "Jane Smith",
-          "identity": "janesmith"
-        },
-        "type": "text",
-        "payload": {},
-        "content": "Reply to Jane inside same thread",
-        "repliesCount": 0,
-        "createdAt": "2026-08-20T00:02:00.000Z",
-        "updatedAt": "2026-08-20T00:02:00.000Z",
-        "author": {
-          "id": "333333333333333",
-          "name": "Alex Brown",
-          "identity": "alexbrown",
-          "avatarKey": null,
-          "isMale": true
-        }
       }
     ],
-    "total": 2,
+    "total": 1,
     "limit": 50,
     "offset": 0
   }
@@ -929,10 +913,11 @@ Header `Authorization: Bearer <token>`.
 - **Тело запроса (JSON):**
   - `type` *(string, опционально, `"text" | "media"`, по умолчанию: `"text"`)*
   - `content` *(string, обязательное для `type: "text"`, опционально для `type: "media"`, макс. 5000 симв.)* — текст комментария
-  - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*:
-    - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (от 1 до 10 файлов)
-    - Для `type: "text"`: `{}`
-  - `parentId` *(string | null, опционально)* — Snowflake ID родительского комментария (если ответ)
+  - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*
+  - `parentId` *(string | null, опционально)* — Snowflake ID родительского комментария:
+    - если `null` или не передан — создается комментарий **Level 0 (Root)**;
+    - если указан ID Level 0 — создается ветка **Level 1 (Branch)**;
+    - если указан ID Level 1 или Level 2 — создается ответ **Level 2**.
 - **Ответ `201 Created`:**
   ```json
   {
@@ -941,8 +926,10 @@ Header `Authorization: Bearer <token>`.
       "id": "888888888888881",
       "postId": "999999999999991",
       "authorId": "111111111111111",
+      "rootId": null,
+      "branchId": null,
       "parentId": null,
-      "replyToCommentId": null,
+      "replyToUserId": null,
       "replyToUser": null,
       "type": "text",
       "payload": {},
@@ -950,6 +937,7 @@ Header `Authorization: Bearer <token>`.
       "repliesCount": 0,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
+      "editedAt": null,
       "author": {
         "id": "111111111111111",
         "name": "John Doe",
@@ -964,7 +952,7 @@ Header `Authorization: Bearer <token>`.
 ### `POST /posts/comments/:id/reply`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)
 - **URL-параметры:**
-  - `id` *(string, обязательное)* — Snowflake ID родительского комментария (корневого или реплая)
+  - `id` *(string, обязательное)* — Snowflake ID комментария, на который дается ответ
 - **Тело запроса (JSON):**
   - `type` *(string, опционально, `"text" | "media"`, по умолчанию: `"text"`)*
   - `content` *(string, обязательное для `type: "text"`, опционально для `type: "media"`, макс. 5000 симв.)* — текст ответа
@@ -977,8 +965,10 @@ Header `Authorization: Bearer <token>`.
       "id": "888888888888882",
       "postId": "999999999999991",
       "authorId": "222222222222222",
+      "rootId": "888888888888881",
+      "branchId": null,
       "parentId": "888888888888881",
-      "replyToCommentId": "888888888888881",
+      "replyToUserId": "111111111111111",
       "replyToUser": {
         "id": "111111111111111",
         "name": "John Doe",
@@ -990,6 +980,7 @@ Header `Authorization: Bearer <token>`.
       "repliesCount": 0,
       "createdAt": "2026-08-20T00:01:00.000Z",
       "updatedAt": "2026-08-20T00:01:00.000Z",
+      "editedAt": null,
       "author": {
         "id": "222222222222222",
         "name": "Jane Smith",
@@ -1017,8 +1008,10 @@ Header `Authorization: Bearer <token>`.
       "id": "888888888888881",
       "postId": "999999999999991",
       "authorId": "111111111111111",
+      "rootId": null,
+      "branchId": null,
       "parentId": null,
-      "replyToCommentId": null,
+      "replyToUserId": null,
       "replyToUser": null,
       "type": "text",
       "payload": {},
@@ -1026,6 +1019,7 @@ Header `Authorization: Bearer <token>`.
       "repliesCount": 2,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:05:00.000Z",
+      "editedAt": "2026-08-20T00:05:00.000Z",
       "author": {
         "id": "111111111111111",
         "name": "John Doe",

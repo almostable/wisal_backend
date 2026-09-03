@@ -50,8 +50,10 @@ export interface CommentResponse {
   id: bigint
   postId: bigint
   authorId: bigint
+  rootId: bigint | null
+  branchId: bigint | null
   parentId: bigint | null
-  replyToCommentId?: bigint | null
+  replyToUserId?: bigint | null
   replyToUser?: ReplyToUserInfo | null
   type: CommentType
   payload: Record<string, unknown>
@@ -59,6 +61,7 @@ export interface CommentResponse {
   repliesCount: number
   createdAt: Date
   updatedAt: Date
+  editedAt: Date | null
   author?: CommentAuthorInfo | null
   isBlocked?: boolean
   isHidden?: boolean

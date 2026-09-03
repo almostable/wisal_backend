@@ -53,14 +53,15 @@ describe('Comments Schema Tests', () => {
     expect(() => insertCommentSchema.parse(invalidData)).toThrow('Content cannot be empty')
   })
 
-  it('validates selectCommentSchema with all fields including soft delete', () => {
+  it('validates selectCommentSchema with all fields including soft delete and editedAt', () => {
     const now = new Date()
     const record = {
       id: 800000000000001n,
       postId: 900000000000001n,
       authorId: 100000000000001n,
+      rootId: null,
+      branchId: null,
       parentId: null,
-      replyToCommentId: null,
       replyToUserId: null,
       type: 'text',
       payload: {},
@@ -69,18 +70,21 @@ describe('Comments Schema Tests', () => {
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
+      editedAt: null,
     }
 
     const parsed = selectCommentSchema.parse(record)
     expect(parsed.id).toBe(800000000000001n)
     expect(parsed.postId).toBe(900000000000001n)
     expect(parsed.authorId).toBe(100000000000001n)
+    expect(parsed.rootId).toBeNull()
+    expect(parsed.branchId).toBeNull()
     expect(parsed.parentId).toBeNull()
-    expect(parsed.replyToCommentId).toBeNull()
     expect(parsed.replyToUserId).toBeNull()
     expect(parsed.content).toBe('Sample comment')
     expect(parsed.repliesCount).toBe(3)
     expect(parsed.deletedAt).toBeNull()
+    expect(parsed.editedAt).toBeNull()
   })
 
   it('has correct indexes configured on comments table', () => {
@@ -88,8 +92,9 @@ describe('Comments Schema Tests', () => {
     const indexNames = config.indexes.map((idx) => idx.config.name)
     expect(indexNames).toContain('comments_post_id_idx')
     expect(indexNames).toContain('comments_author_id_idx')
+    expect(indexNames).toContain('comments_root_id_idx')
+    expect(indexNames).toContain('comments_branch_id_idx')
     expect(indexNames).toContain('comments_parent_id_idx')
-    expect(indexNames).toContain('comments_reply_to_comment_id_idx')
     expect(indexNames).toContain('comments_reply_to_user_id_idx')
     expect(indexNames).toContain('comments_replies_count_idx')
     expect(indexNames).toContain('comments_created_at_idx')

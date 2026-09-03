@@ -141,8 +141,10 @@ function formatComment(
     id: comment.id,
     postId: comment.postId,
     authorId: comment.authorId,
+    rootId: comment.rootId ?? null,
+    branchId: comment.branchId ?? null,
     parentId: comment.parentId ?? null,
-    replyToCommentId: comment.replyToCommentId ?? null,
+    replyToUserId: comment.replyToUserId ?? null,
     replyToUser: replyToUser ?? null,
     type: comment.type as CommentType,
     payload: (comment.payload as Record<string, unknown>) ?? {},
@@ -150,6 +152,7 @@ function formatComment(
     repliesCount: comment.repliesCount ?? 0,
     createdAt: comment.createdAt,
     updatedAt: comment.updatedAt,
+    editedAt: comment.editedAt ?? null,
     author: author ?? null,
   }
 }
@@ -799,7 +802,7 @@ export async function getPostComments(
 
   const whereClause = and(
     eq(comments.postId, postId),
-    isNull(comments.parentId),
+    isNull(comments.rootId),
     isNull(comments.deletedAt)
   )
 
@@ -872,8 +875,10 @@ export async function getPostComments(
         id: item.comment.id,
         postId: item.comment.postId,
         authorId: item.comment.authorId,
+        rootId: item.comment.rootId ?? null,
+        branchId: item.comment.branchId ?? null,
         parentId: item.comment.parentId ?? null,
-        replyToCommentId: null,
+        replyToUserId: null,
         replyToUser: null,
         type: item.comment.type as CommentType,
         payload: (item.comment.payload as Record<string, unknown>) ?? {},
@@ -881,6 +886,7 @@ export async function getPostComments(
         repliesCount: item.comment.repliesCount ?? 0,
         createdAt: item.comment.createdAt,
         updatedAt: item.comment.updatedAt,
+        editedAt: item.comment.editedAt ?? null,
         author: {
           id: item.authorAccount.id,
           name: item.authorProfile?.name ?? null,
@@ -921,15 +927,28 @@ export async function getCommentReplies(
 
   await checkPostAccess(db, targetComment.postId, viewer)
 
-  const threadRootId = targetComment.parentId ?? targetComment.id
-
   const limit = Math.min(Math.max(query.limit ?? 50, 1), 100)
   const offset = Math.max(query.offset ?? 0, 0)
 
-  const whereClause = and(
-    eq(comments.parentId, threadRootId),
-    isNull(comments.deletedAt)
-  )
+  if (targetComment.branchId !== null) {
+    return {
+      comments: [],
+      total: 0,
+      limit,
+      offset,
+    }
+  }
+
+  const whereClause = targetComment.rootId === null
+    ? and(
+        eq(comments.rootId, targetComment.id),
+        isNull(comments.branchId),
+        isNull(comments.deletedAt)
+      )
+    : and(
+        eq(comments.branchId, targetComment.id),
+        isNull(comments.deletedAt)
+      )
 
   const [items, totalResult] = await Promise.all([
     db
@@ -1005,8 +1024,10 @@ export async function getCommentReplies(
         id: item.comment.id,
         postId: item.comment.postId,
         authorId: item.comment.authorId,
+        rootId: item.comment.rootId ?? null,
+        branchId: item.comment.branchId ?? null,
         parentId: item.comment.parentId ?? null,
-        replyToCommentId: item.comment.replyToCommentId ?? null,
+        replyToUserId: item.comment.replyToUserId ?? null,
         replyToUser: mappedReplyToUser,
         type: item.comment.type as CommentType,
         payload: (item.comment.payload as Record<string, unknown>) ?? {},
@@ -1014,6 +1035,7 @@ export async function getCommentReplies(
         repliesCount: item.comment.repliesCount ?? 0,
         createdAt: item.comment.createdAt,
         updatedAt: item.comment.updatedAt,
+        editedAt: item.comment.editedAt ?? null,
         author: {
           id: item.authorAccount.id,
           name: item.authorProfile?.name ?? null,
@@ -1048,8 +1070,9 @@ export async function createComment(
   return await db.transaction(async (tx) => {
     await checkPostAccess(tx, postId, viewer)
 
-    let threadRootId: bigint | null = null
-    let replyToCommentId: bigint | null = null
+    let rootId: bigint | null = null
+    let branchId: bigint | null = null
+    let parentId: bigint | null = null
     let replyToUserId: bigint | null = null
 
     if (input.parentId) {
@@ -1064,20 +1087,41 @@ export async function createComment(
         throw new HTTPException(404, { message: 'Parent comment not found' })
       }
 
-      threadRootId = targetComment.parentId ?? targetComment.id
-      replyToCommentId = targetComment.id
+      parentId = targetComment.id
       replyToUserId = targetComment.authorId
 
+      if (targetComment.rootId === null) {
+        rootId = targetComment.id
+        branchId = null
+      } else if (targetComment.branchId === null) {
+        rootId = targetComment.rootId
+        branchId = targetComment.id
+      } else {
+        rootId = targetComment.rootId
+        branchId = targetComment.branchId
+      }
+
       const targetAuthorIds: bigint[] = [targetComment.authorId]
-      if (threadRootId !== targetComment.id) {
+      if (rootId && rootId !== targetComment.id) {
         const rootComment = await tx.query.comments.findFirst({
           where: and(
-            eq(comments.id, threadRootId),
+            eq(comments.id, rootId),
             isNull(comments.deletedAt)
           ),
         })
         if (rootComment && !targetAuthorIds.includes(rootComment.authorId)) {
           targetAuthorIds.push(rootComment.authorId)
+        }
+      }
+      if (branchId && branchId !== targetComment.id && branchId !== rootId) {
+        const branchComment = await tx.query.comments.findFirst({
+          where: and(
+            eq(comments.id, branchId),
+            isNull(comments.deletedAt)
+          ),
+        })
+        if (branchComment && !targetAuthorIds.includes(branchComment.authorId)) {
+          targetAuthorIds.push(branchComment.authorId)
         }
       }
 
@@ -1111,7 +1155,16 @@ export async function createComment(
         .set({
           repliesCount: sql`${comments.repliesCount} + 1`,
         })
-        .where(eq(comments.id, threadRootId))
+        .where(eq(comments.id, rootId))
+
+      if (branchId) {
+        await tx
+          .update(comments)
+          .set({
+            repliesCount: sql`${comments.repliesCount} + 1`,
+          })
+          .where(eq(comments.id, branchId))
+      }
     }
 
     const content = input.content ? input.content.trim() : ''
@@ -1123,8 +1176,9 @@ export async function createComment(
       .values({
         postId,
         authorId: authorAccountId,
-        parentId: threadRootId,
-        replyToCommentId,
+        rootId,
+        branchId,
+        parentId,
         replyToUserId,
         type: commentType,
         payload,
@@ -1245,13 +1299,22 @@ export async function deleteComment(
       })
       .where(eq(posts.id, existing.postId))
 
-    if (existing.parentId) {
+    if (existing.rootId) {
       await tx
         .update(comments)
         .set({
           repliesCount: sql`GREATEST(0, ${comments.repliesCount} - 1)`,
         })
-        .where(eq(comments.id, existing.parentId))
+        .where(eq(comments.id, existing.rootId))
+    }
+
+    if (existing.branchId) {
+      await tx
+        .update(comments)
+        .set({
+          repliesCount: sql`GREATEST(0, ${comments.repliesCount} - 1)`,
+        })
+        .where(eq(comments.id, existing.branchId))
     }
 
     return {
@@ -1287,6 +1350,7 @@ export async function updateComment(
 
     const updateData: Partial<typeof comments.$inferInsert> = {
       updatedAt: new Date(),
+      editedAt: new Date(),
     }
 
     if (input.content !== undefined) {

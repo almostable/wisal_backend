@@ -106,8 +106,10 @@ describe('Posts Feature Route Tests', () => {
     id: 888888888888881n,
     postId: samplePost.id,
     authorId: maleAccount.id,
+    rootId: null,
+    branchId: null,
     parentId: null,
-    replyToCommentId: null,
+    replyToUserId: null,
     replyToUser: null,
     type: 'text',
     payload: {},
@@ -115,6 +117,7 @@ describe('Posts Feature Route Tests', () => {
     repliesCount: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
+    editedAt: null,
     author: {
       id: maleAccount.id,
       name: 'Male User',
@@ -1917,29 +1920,33 @@ describe('Posts Feature Route Tests', () => {
     const reply1: CommentResponse = {
       ...sampleComment,
       id: 888888888888882n,
+      rootId: 888888888888881n,
+      branchId: null,
       parentId: 888888888888881n,
-      replyToCommentId: 888888888888881n,
+      replyToUserId: maleAccount.id,
       replyToUser: {
         id: maleAccount.id,
         name: 'Male User',
         identity: 'male_user',
       },
-      content: 'First reply to root',
-      repliesCount: 0,
+      content: 'First reply to root (Level 1 branch)',
+      repliesCount: 1,
     }
 
     const reply2: CommentResponse = {
       ...sampleComment,
       id: 888888888888883n,
       authorId: femaleAccount.id,
-      parentId: 888888888888881n,
-      replyToCommentId: 888888888888882n,
+      rootId: 888888888888881n,
+      branchId: 888888888888882n,
+      parentId: 888888888888882n,
+      replyToUserId: maleAccount.id,
       replyToUser: {
         id: maleAccount.id,
         name: 'Male User',
         identity: 'male_user',
       },
-      content: 'Reply to reply1 in flat thread',
+      content: 'Reply to reply1 inside branch (Level 2)',
       repliesCount: 0,
       author: {
         id: femaleAccount.id,
@@ -1977,12 +1984,14 @@ describe('Posts Feature Route Tests', () => {
     }
     expect(body.success).toBe(true)
     expect(body.comments.length).toBe(2)
-    // Both belong to root parentId
+    expect(body.comments[0].rootId).toBe('888888888888881')
+    expect(body.comments[0].branchId).toBeNull()
     expect(body.comments[0].parentId).toBe('888888888888881')
-    expect(body.comments[1].parentId).toBe('888888888888881')
-    // replyToUser is present
     expect(body.comments[0].replyToUser?.identity).toBe('male_user')
-    expect(body.comments[1].replyToCommentId).toBe('888888888888882')
+    expect(body.comments[1].rootId).toBe('888888888888881')
+    expect(body.comments[1].branchId).toBe('888888888888882')
+    expect(body.comments[1].parentId).toBe('888888888888882')
+    expect(body.comments[1].replyToUserId).toBe(maleAccount.id.toString())
     expect(body.comments[1].replyToUser?.name).toBe('Male User')
   })
 
@@ -2259,6 +2268,183 @@ describe('Posts Feature Route Tests', () => {
     const bodyUser = (await resUser.json()) as { success: boolean; posts: PostResponse[] }
     expect(bodyUser.success).toBe(true)
     expect(bodyUser.posts[0].author?.isFollowing).toBe(false)
+  })
+
+  it('GET /posts/comments/:id/replies returns Level 1 comments for Level 0 root', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const level1Branch: CommentResponse = {
+      ...sampleComment,
+      id: 888888888888882n,
+      rootId: sampleComment.id,
+      branchId: null,
+      parentId: sampleComment.id,
+      replyToUserId: maleAccount.id,
+      content: 'Branch Level 1',
+      repliesCount: 3,
+    }
+
+    mock.module('../service', () => ({
+      getCommentReplies: async (commentId: bigint) => {
+        expect(commentId).toBe(sampleComment.id)
+        return {
+          comments: [level1Branch],
+          total: 1,
+          limit: 50,
+          offset: 0,
+        }
+      },
+    }))
+
+    const res = await app.request(`/posts/comments/${sampleComment.id}/replies`, {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_male_token' },
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; comments: any[] }
+    expect(body.success).toBe(true)
+    expect(body.comments[0].rootId).toBe(sampleComment.id.toString())
+    expect(body.comments[0].branchId).toBeNull()
+    expect(body.comments[0].parentId).toBe(sampleComment.id.toString())
+    expect(body.comments[0].repliesCount).toBe(3)
+  })
+
+  it('GET /posts/comments/:id/replies returns Level 2 comments for Level 1 branch', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const branchId = 888888888888882n
+    const level2Reply: CommentResponse = {
+      ...sampleComment,
+      id: 888888888888883n,
+      rootId: sampleComment.id,
+      branchId: branchId,
+      parentId: branchId,
+      replyToUserId: maleAccount.id,
+      content: 'Reply inside branch Level 2',
+      repliesCount: 0,
+    }
+
+    mock.module('../service', () => ({
+      getCommentReplies: async (commentId: bigint) => {
+        expect(commentId).toBe(branchId)
+        return {
+          comments: [level2Reply],
+          total: 1,
+          limit: 50,
+          offset: 0,
+        }
+      },
+    }))
+
+    const res = await app.request(`/posts/comments/${branchId}/replies`, {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_male_token' },
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; comments: any[] }
+    expect(body.success).toBe(true)
+    expect(body.comments[0].rootId).toBe(sampleComment.id.toString())
+    expect(body.comments[0].branchId).toBe(branchId.toString())
+    expect(body.comments[0].parentId).toBe(branchId.toString())
+    expect(body.comments[0].repliesCount).toBe(0)
+  })
+
+  it('GET /posts/comments/:id/replies returns empty array for Level 2 leaf', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const leafId = 888888888888883n
+
+    mock.module('../service', () => ({
+      getCommentReplies: async (commentId: bigint) => {
+        expect(commentId).toBe(leafId)
+        return {
+          comments: [],
+          total: 0,
+          limit: 50,
+          offset: 0,
+        }
+      },
+    }))
+
+    const res = await app.request(`/posts/comments/${leafId}/replies`, {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_male_token' },
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; comments: any[]; total: number }
+    expect(body.success).toBe(true)
+    expect(body.comments.length).toBe(0)
+    expect(body.total).toBe(0)
+  })
+
+  it('PATCH /posts/comments/:id returns editedAt timestamp when comment is edited', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const editedDate = new Date()
+    const editedComment: CommentResponse = {
+      ...sampleComment,
+      content: 'Updated comment content',
+      editedAt: editedDate,
+    }
+
+    mock.module('../service', () => ({
+      updateComment: async () => editedComment,
+    }))
+
+    const res = await app.request('/posts/comments/888888888888881', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content: 'Updated comment content' }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; comment: any }
+    expect(body.success).toBe(true)
+    expect(body.comment.content).toBe('Updated comment content')
+    expect(body.comment.editedAt).toBe(editedDate.toISOString())
   })
 })
 

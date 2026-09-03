@@ -19,11 +19,14 @@ export const comments = pgTable(
     authorId: snowflakeId('author_id')
       .notNull()
       .references(() => accounts.id, { onDelete: 'cascade' }),
-    parentId: snowflakeId('parent_id').references((): any => comments.id, {
+    rootId: snowflakeId('root_id').references((): any => comments.id, {
       onDelete: 'cascade',
     }),
-    replyToCommentId: snowflakeId('reply_to_comment_id').references((): any => comments.id, {
-      onDelete: 'set null',
+    branchId: snowflakeId('branch_id').references((): any => comments.id, {
+      onDelete: 'cascade',
+    }),
+    parentId: snowflakeId('parent_id').references((): any => comments.id, {
+      onDelete: 'cascade',
     }),
     replyToUserId: snowflakeId('reply_to_user_id').references(() => accounts.id, {
       onDelete: 'set null',
@@ -34,12 +37,14 @@ export const comments = pgTable(
     repliesCount: integer('replies_count').notNull().default(0),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
     ...timestamps,
+    editedAt: timestamp('edited_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     index('comments_post_id_idx').on(table.postId),
     index('comments_author_id_idx').on(table.authorId),
+    index('comments_root_id_idx').on(table.rootId),
+    index('comments_branch_id_idx').on(table.branchId),
     index('comments_parent_id_idx').on(table.parentId),
-    index('comments_reply_to_comment_id_idx').on(table.replyToCommentId),
     index('comments_reply_to_user_id_idx').on(table.replyToUserId),
     index('comments_replies_count_idx').on(table.repliesCount),
     index('comments_created_at_idx').on(table.createdAt),
@@ -56,6 +61,16 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
     fields: [comments.authorId],
     references: [accounts.id],
   }),
+  root: one(comments, {
+    fields: [comments.rootId],
+    references: [comments.id],
+    relationName: 'comment_root',
+  }),
+  branch: one(comments, {
+    fields: [comments.branchId],
+    references: [comments.id],
+    relationName: 'comment_branch',
+  }),
   parent: one(comments, {
     fields: [comments.parentId],
     references: [comments.id],
@@ -63,11 +78,6 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
   }),
   replies: many(comments, {
     relationName: 'comment_replies',
-  }),
-  replyToComment: one(comments, {
-    fields: [comments.replyToCommentId],
-    references: [comments.id],
-    relationName: 'comment_target',
   }),
   replyToUser: one(accounts, {
     fields: [comments.replyToUserId],

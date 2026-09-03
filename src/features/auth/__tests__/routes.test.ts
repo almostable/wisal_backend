@@ -30,8 +30,6 @@ describe('Auth Feature Route Tests', () => {
     avatarKey: null,
     description: 'Test description',
     contacts: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
     identity: 'wisaluser',
   }
 
