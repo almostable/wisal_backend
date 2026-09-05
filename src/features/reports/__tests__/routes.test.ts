@@ -11,6 +11,7 @@ describe('Reports Feature Route Tests', () => {
   const userAccount: SafeAccount = {
     id: 111111111111111n,
     email: 'reporter@wisal.dev',
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   }

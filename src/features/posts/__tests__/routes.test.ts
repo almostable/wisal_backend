@@ -11,6 +11,7 @@ describe('Posts Feature Route Tests', () => {
   const maleAccount: SafeAccount = {
     id: 111111111111111n,
     email: 'male@wisal.dev',
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   }
@@ -52,6 +53,7 @@ describe('Posts Feature Route Tests', () => {
   const femaleAccount: SafeAccount = {
     id: 555555555555555n,
     email: 'female@wisal.dev',
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   }

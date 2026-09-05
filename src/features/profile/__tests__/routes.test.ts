@@ -11,6 +11,7 @@ describe('Profile Feature Route Tests', () => {
   const mockAccount: SafeAccount = {
     id: 111111111111111n,
     email: 'user@wisal.dev',
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   }

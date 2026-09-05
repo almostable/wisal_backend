@@ -14,5 +14,11 @@ export const loginInputSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 })
 
+export const deleteAccountInputSchema = z.object({
+  password: z.string().min(1, 'Password is required'),
+})
+
 export type RegisterInput = z.infer<typeof registerInputSchema>
 export type LoginInput = z.infer<typeof loginInputSchema>
+export type DeleteAccountInput = z.infer<typeof deleteAccountInputSchema>
+

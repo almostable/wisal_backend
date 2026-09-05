@@ -10,6 +10,7 @@ export interface PostAuthorInfo {
   avatarKey: string | null
   isMale: boolean | null
   isFollowing?: boolean
+  isDeleted?: boolean
 }
 
 export interface PostResponse {
@@ -39,12 +40,14 @@ export interface CommentAuthorInfo {
   isMale: boolean | null
   isBlocked?: boolean
   isHidden?: boolean
+  isDeleted?: boolean
 }
 
 export interface ReplyToUserInfo {
   id: bigint
   name: string | null
   identity: string | null
+  isDeleted?: boolean
 }
 
 export interface CommentResponse {

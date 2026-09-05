@@ -447,6 +447,7 @@ export async function listUsers(options: ListUsersOptions = {}): Promise<ListUse
         account: {
           id: accounts.id,
           email: accounts.email,
+          deletedAt: accounts.deletedAt,
           createdAt: accounts.createdAt,
           updatedAt: accounts.updatedAt,
         },
@@ -497,6 +498,7 @@ export async function getUserById(accountId: bigint): Promise<UserListItem> {
       account: {
         id: accounts.id,
         email: accounts.email,
+        deletedAt: accounts.deletedAt,
         createdAt: accounts.createdAt,
         updatedAt: accounts.updatedAt,
       },
@@ -537,6 +539,7 @@ export async function updateUserProfileByAdmin(
         account: {
           id: accounts.id,
           email: accounts.email,
+          deletedAt: accounts.deletedAt,
           createdAt: accounts.createdAt,
           updatedAt: accounts.updatedAt,
         },

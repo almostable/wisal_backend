@@ -96,6 +96,7 @@ Header `Authorization: Bearer <token>`.
 
 ### `GET /auth/me`
 - **Доступ:** Авторизованный пользователь
+- **Описание:** Возвращает системные данные учетной записи (аккаунта) и статус завершения онбординга.
 - **Тело запроса:** Нет
 - **Ответ `200 OK`:**
   ```json
@@ -107,21 +108,36 @@ Header `Authorization: Bearer <token>`.
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z"
     },
-    "profile": {
-      "id": "222222222222222",
-      "name": "John Doe",
-      "isMale": true,
-      "avatarKey": null,
-      "description": "Bio text",
-      "shortDescription": null,
-      "countryCode": null,
-      "cityId": null,
-      "contacts": null,
-      "identity": "johndoe"
-    },
     "isOnboardingCompleted": true
   }
   ```
+
+### `DELETE /auth/me`
+- **Доступ:** Авторизованный пользователь
+- **Описание:** Soft delete учетной записи пользователя с анонимизацией (PII Scrubbing). Выполняет следующие действия:
+  - Устанавливает `deleted_at = NOW()`.
+  - Заменяет email на `<accountId>@deleted.invalid`, освобождая исходный email.
+  - Очищает пароль на заведомо невалидное значение (`!ACCOUNT_DELETED!`).
+  - Полностью удаляет все активные сессии пользователя.
+  - Зануляет все поля профиля в `profiles` и удаляет хэндл из таблицы `identities`.
+  - Переводит аватар пользователя в статус `deleted` в `media_uploads`.
+  - Выполняет soft-delete всех постов пользователя (`deleted_at = NOW()`, `is_pinned = false`) и переводит медиа постов и комментариев под ними в статус `deleted`.
+  - Удаляет закладки пользователя (`post_saves`) и связи подписок (`follows`, с декрементом счетчиков `followers_count` у авторов) и блокировок (`user_blocks`).
+  - Комментарии пользователя в чужих ветках сохраняются, но полностью обезличиваются (`name: null`, `identity: null`, `avatarKey: null`, `isMale: null`, `isDeleted: true`).
+- **Тело запроса (JSON):**
+  - `password` *(string, обязательное)* — текущий пароль пользователя для подтверждения удаления
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "message": "Account deleted successfully"
+  }
+  ```
+- **Ошибки:**
+  - `400 Bad Request` — не передан пароль
+  - `401 Unauthorized` — не передан токен авторизации или указан неверный пароль (`"Invalid password"`)
+  - `404 Not Found` — аккаунт не найден или уже удален
+
 
 ---
 
@@ -1048,6 +1064,11 @@ Header `Authorization: Bearer <token>`.
 > - **Поведение при блокировке:**
 >   - Если комментарий или реплай написан пользователем, с которым есть взаимная блокировка (заблокирован зрителем или заблокировал зрителя), текст комментария (`content`) и вложения (`payload`) остаются доступными, но `author.avatarKey` скрыт (`null`), и проставляется флаг `isBlocked: true` (если заблокирован зрителем) или `isHidden: true` (если зритель заблокирован автором).
 >   - Попытка ответить (`createComment` с `parentId` или `replyToComment`) на комментарий заблокированного пользователя или пользователя, который вас заблокировал, отклоняется с ошибкой `400 Bad Request` (`"Cannot reply to a blocked user"`).
+> - **Поведение при удалении аккаунта автора (PII Scrubbing):**
+>   - Комментарии удаленных пользователей сохраняются в ветках для сохранения контекста диалога.
+>   - Поля авторства в объекте `author` возвращаются пустыми (`name: null`, `identity: null`, `avatarKey: null`, `isMale: null`), и проставляется флаг `isDeleted: true`.
+>   - Если адресат ответа (`replyToUser`) был удален, объект содержит `{ id, name: null, identity: null, isDeleted: true }`.
+>   - Для активных пользователей флаг `isDeleted` опускается (отсутствует в JSON).
 
 ### `GET /posts/:id/comments`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)

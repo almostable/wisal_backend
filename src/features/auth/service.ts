@@ -1,10 +1,17 @@
-import { eq, sql } from 'drizzle-orm'
+import { eq, and, or, sql, isNull, inArray } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../../db'
 import { accounts, safeAccountSchema, type Account } from '../../db/schema/accounts'
 import { invites } from '../../db/schema/invites'
 import { profiles } from '../../db/schema/profiles'
+import { identities } from '../../db/schema/identities'
 import { sessions } from '../../db/schema/sessions'
+import { posts } from '../../db/schema/posts'
+import { postSaves } from '../../db/schema/post-saves'
+import { follows } from '../../db/schema/follows'
+import { userBlocks } from '../../db/schema/user-blocks'
+import { mediaUploads } from '../../db/schema/media-uploads'
+import { markEntityMediaDeleted } from '../uploads/service'
 import { hashPassword, verifyPassword } from '../../lib/password'
 import {
   createSession,
@@ -20,7 +27,14 @@ import {
   formatProfileResponse,
 } from '../../lib/profile'
 import { generateRandomInviteCode } from '../../lib/invite'
-import type { RegisterInput, LoginInput, AuthSessionResult, AuthMeResult } from './types'
+import type {
+  RegisterInput,
+  LoginInput,
+  DeleteAccountInput,
+  AuthSessionResult,
+  AuthMeResult,
+  DeleteAccountResult,
+} from './types'
 
 export async function registerUser(input: RegisterInput): Promise<AuthSessionResult> {
   const normalizedEmail = input.email.trim().toLowerCase()
@@ -140,7 +154,7 @@ export async function loginUser(input: LoginInput): Promise<AuthSessionResult> {
   const normalizedEmail = input.email.trim().toLowerCase()
 
   const account = await db.query.accounts.findFirst({
-    where: eq(sql`lower(${accounts.email})`, normalizedEmail),
+    where: and(eq(sql`lower(${accounts.email})`, normalizedEmail), isNull(accounts.deletedAt)),
   })
 
   if (!account) {
@@ -176,7 +190,7 @@ export async function logoutAllSessions(accountId: bigint): Promise<void> {
 
 export async function getAuthMe(accountId: bigint): Promise<AuthMeResult> {
   const account = await db.query.accounts.findFirst({
-    where: eq(accounts.id, accountId),
+    where: and(eq(accounts.id, accountId), isNull(accounts.deletedAt)),
   })
 
   if (!account) {
@@ -187,7 +201,156 @@ export async function getAuthMe(accountId: bigint): Promise<AuthMeResult> {
 
   return {
     account: safeAccountSchema.parse(account),
-    profile: formatProfileResponse(profile),
     isOnboardingCompleted: isOnboardingCompleted(profile),
   }
 }
+
+export async function deleteAccount(
+  accountId: bigint,
+  input: DeleteAccountInput,
+  executor: typeof db = db
+): Promise<DeleteAccountResult> {
+  return await executor.transaction(async (tx) => {
+    const account = await tx.query.accounts.findFirst({
+      where: and(eq(accounts.id, accountId), isNull(accounts.deletedAt)),
+    })
+
+    if (!account) {
+      throw new HTTPException(404, { message: 'Account not found' })
+    }
+
+    const isPasswordValid = await verifyPassword(account.password, input.password)
+    if (!isPasswordValid) {
+      throw new HTTPException(401, { message: 'Invalid password' })
+    }
+
+    await tx
+      .update(accounts)
+      .set({
+        deletedAt: new Date(),
+        email: `${accountId}@deleted.invalid`,
+        password: '!ACCOUNT_DELETED!',
+      })
+      .where(eq(accounts.id, accountId))
+
+    const existingProfile = await tx.query.profiles.findFirst({
+      where: eq(profiles.accountId, accountId),
+    })
+
+    if (existingProfile) {
+      await tx
+        .update(profiles)
+        .set({
+          name: null,
+          identity: null,
+          identityId: null,
+          isMale: null,
+          avatarKey: null,
+          description: null,
+          shortDescription: null,
+          countryCode: null,
+          cityId: null,
+          contacts: null,
+          verifiedAt: null,
+          regularFollowersCount: 0,
+          followersCount: 0,
+        })
+        .where(eq(profiles.id, existingProfile.id))
+
+      if (existingProfile.identityId) {
+        await tx
+          .delete(identities)
+          .where(eq(identities.id, existingProfile.identityId))
+      }
+
+      if (existingProfile.avatarKey) {
+        await markEntityMediaDeleted(tx, {
+          entityType: 'avatar',
+          entityId: accountId,
+        })
+      }
+    }
+
+    await tx.delete(sessions).where(eq(sessions.accountId, accountId))
+
+    const userPosts = await tx
+      .select({ id: posts.id })
+      .from(posts)
+      .where(and(eq(posts.authorId, accountId), isNull(posts.deletedAt)))
+
+    if (userPosts.length > 0) {
+      const postIds = userPosts.map((p) => p.id)
+
+      await tx
+        .update(posts)
+        .set({
+          deletedAt: new Date(),
+          isPinned: false,
+        })
+        .where(and(eq(posts.authorId, accountId), isNull(posts.deletedAt)))
+
+      await tx
+        .update(mediaUploads)
+        .set({ status: 'deleted' })
+        .where(
+          and(
+            eq(mediaUploads.entityType, 'post'),
+            inArray(mediaUploads.entityId, postIds),
+            eq(mediaUploads.status, 'attached')
+          )
+        )
+
+      await tx.execute(sql`
+        UPDATE media_uploads
+        SET status = 'deleted'
+        WHERE entity_type = 'comment'
+          AND status = 'attached'
+          AND entity_id IN (
+            SELECT id FROM comments WHERE post_id IN (${sql.join(postIds, sql`, `)})
+          )
+      `)
+    }
+
+    const userSaves = await tx
+      .delete(postSaves)
+      .where(eq(postSaves.userId, accountId))
+      .returning({ postId: postSaves.postId })
+
+    for (const save of userSaves) {
+      await tx
+        .update(posts)
+        .set({
+          savesCount: sql`GREATEST(0, ${posts.savesCount} - 1)`,
+        })
+        .where(eq(posts.id, save.postId))
+    }
+
+    const userFollowing = await tx
+      .select({ followingId: follows.followingId })
+      .from(follows)
+      .where(eq(follows.followerId, accountId))
+
+    for (const item of userFollowing) {
+      await tx
+        .update(profiles)
+        .set({
+          followersCount: sql`GREATEST(0, ${profiles.followersCount} - 1)`,
+        })
+        .where(eq(profiles.accountId, item.followingId))
+    }
+
+    await tx
+      .delete(follows)
+      .where(or(eq(follows.followerId, accountId), eq(follows.followingId, accountId)))
+
+    await tx
+      .delete(userBlocks)
+      .where(or(eq(userBlocks.blockerId, accountId), eq(userBlocks.blockedId, accountId)))
+
+    return {
+      success: true,
+      message: 'Account deleted successfully',
+    }
+  })
+}
+

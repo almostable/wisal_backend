@@ -58,7 +58,7 @@ import type {
 const EDIT_TIME_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
 
 const authorSelectFields = {
-  authorAccount: { id: accounts.id },
+  authorAccount: { id: accounts.id, deletedAt: accounts.deletedAt },
   authorProfile: {
     name: profiles.name,
     avatarKey: profiles.avatarKey,
@@ -68,7 +68,7 @@ const authorSelectFields = {
 }
 
 type AuthorSelectResult = {
-  authorAccount: { id: bigint }
+  authorAccount: { id: bigint; deletedAt?: Date | null }
   authorProfile: {
     name: string | null
     avatarKey: string | null
@@ -84,18 +84,30 @@ const replyToProfiles = alias(profiles, 'reply_to_profiles')
 const replyToIdentities = alias(identities, 'reply_to_identities')
 
 const replyToUserSelectFields = {
-  replyToAccount: { id: replyToAccounts.id },
+  replyToAccount: { id: replyToAccounts.id, deletedAt: replyToAccounts.deletedAt },
   replyToProfile: { name: replyToProfiles.name },
   replyToIdentity: { identity: replyToIdentities.identity },
 }
 
 type ReplyToUserSelectResult = {
-  replyToAccount: { id: bigint | null } | null
+  replyToAccount: { id: bigint | null; deletedAt?: Date | null } | null
   replyToProfile: { name: string | null } | null
   replyToIdentity: { identity: string | null } | null
 }
 
 function mapAuthor(data: AuthorSelectResult, isFollowing?: boolean): PostAuthorInfo {
+  const isDeleted = Boolean(data.authorAccount.deletedAt)
+  if (isDeleted) {
+    return {
+      id: data.authorAccount.id,
+      name: null,
+      identity: null,
+      avatarKey: null,
+      isMale: null,
+      isDeleted: true,
+    }
+  }
+
   return {
     id: data.authorAccount.id,
     name: data.authorProfile?.name ?? null,
@@ -109,6 +121,15 @@ function mapAuthor(data: AuthorSelectResult, isFollowing?: boolean): PostAuthorI
 function mapReplyToUser(data: ReplyToUserSelectResult | null | undefined): ReplyToUserInfo | null {
   if (!data || !data.replyToAccount || !data.replyToAccount.id) {
     return null
+  }
+  const isDeleted = Boolean(data.replyToAccount.deletedAt)
+  if (isDeleted) {
+    return {
+      id: data.replyToAccount.id,
+      name: null,
+      identity: null,
+      isDeleted: true,
+    }
   }
   return {
     id: data.replyToAccount.id,
@@ -1017,6 +1038,35 @@ export async function getPostComments(
   }
 
   const formattedComments = items.map((item) => {
+    const isDeleted = Boolean(item.authorAccount.deletedAt)
+    if (isDeleted) {
+      return {
+        id: item.comment.id,
+        postId: item.comment.postId,
+        authorId: item.comment.authorId,
+        rootId: item.comment.rootId ?? null,
+        branchId: item.comment.branchId ?? null,
+        parentId: item.comment.parentId ?? null,
+        replyToUserId: null,
+        replyToUser: null,
+        type: item.comment.type as CommentType,
+        payload: (item.comment.payload as Record<string, unknown>) ?? {},
+        content: item.comment.content,
+        repliesCount: item.comment.repliesCount ?? 0,
+        createdAt: item.comment.createdAt,
+        updatedAt: item.comment.updatedAt,
+        editedAt: item.comment.editedAt ?? null,
+        author: {
+          id: item.authorAccount.id,
+          name: null,
+          identity: null,
+          avatarKey: null,
+          isMale: null,
+          isDeleted: true,
+        },
+      }
+    }
+
     const isBlocked = blockedByViewer.has(item.authorAccount.id)
     const isHidden = blockedViewer.has(item.authorAccount.id)
 
@@ -1165,9 +1215,39 @@ export async function getCommentReplies(
   }
 
   const formattedReplies = items.map((item) => {
+    const isDeleted = Boolean(item.authorAccount.deletedAt)
+    const mappedReplyToUser = mapReplyToUser(item)
+
+    if (isDeleted) {
+      return {
+        id: item.comment.id,
+        postId: item.comment.postId,
+        authorId: item.comment.authorId,
+        rootId: item.comment.rootId ?? null,
+        branchId: item.comment.branchId ?? null,
+        parentId: item.comment.parentId ?? null,
+        replyToUserId: item.comment.replyToUserId ?? null,
+        replyToUser: mappedReplyToUser,
+        type: item.comment.type as CommentType,
+        payload: (item.comment.payload as Record<string, unknown>) ?? {},
+        content: item.comment.content,
+        repliesCount: item.comment.repliesCount ?? 0,
+        createdAt: item.comment.createdAt,
+        updatedAt: item.comment.updatedAt,
+        editedAt: item.comment.editedAt ?? null,
+        author: {
+          id: item.authorAccount.id,
+          name: null,
+          identity: null,
+          avatarKey: null,
+          isMale: null,
+          isDeleted: true,
+        },
+      }
+    }
+
     const isBlocked = blockedByViewer.has(item.authorAccount.id)
     const isHidden = blockedViewer.has(item.authorAccount.id)
-    const mappedReplyToUser = mapReplyToUser(item)
 
     if (isBlocked || isHidden) {
       return {

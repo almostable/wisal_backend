@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, and, isNull } from 'drizzle-orm'
 import { db } from '../db'
 import { sessions, type Session } from '../db/schema/sessions'
 import { accounts, safeAccountSchema, type SafeAccount } from '../db/schema/accounts'
@@ -54,7 +54,7 @@ export async function validateSessionToken(
     })
     .from(sessions)
     .innerJoin(accounts, eq(sessions.accountId, accounts.id))
-    .where(eq(sessions.tokenHash, tokenHash))
+    .where(and(eq(sessions.tokenHash, tokenHash), isNull(accounts.deletedAt)))
     .limit(1)
 
   if (!result || !result.account) {

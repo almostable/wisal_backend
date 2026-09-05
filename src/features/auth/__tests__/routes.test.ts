@@ -1,15 +1,169 @@
 import { describe, it, expect, mock } from 'bun:test'
 import '../../../lib/snowflake'
+import * as actualAuthService from '../service'
 import { app } from '../../../index'
 import { HTTPException } from 'hono/http-exception'
+import { hashPassword } from '../../../lib/password'
 import type { SafeAccount } from '../../../db/schema/accounts'
 import type { Session } from '../../../db/schema/sessions'
 import type { SafeProfile } from '../../../lib/profile'
 
+describe('deleteAccount Service Tests', () => {
+  const accountId = 111111111111111n
+  const rawPassword = 'ValidPassword123!'
+
+  it('throws 404 when account does not exist or already deleted', async () => {
+    const mockDb: any = {
+      transaction: async (cb: any) => {
+        const mockTx = {
+          query: {
+            accounts: {
+              findFirst: async () => null,
+            },
+          },
+        }
+        return await cb(mockTx)
+      },
+    }
+
+    await expect(
+      actualAuthService.deleteAccount(accountId, { password: rawPassword }, mockDb)
+    ).rejects.toThrow(new HTTPException(404, { message: 'Account not found' }))
+  })
+
+  it('throws 401 when password is wrong', async () => {
+    const hashedPassword = await hashPassword(rawPassword)
+
+    const mockDb: any = {
+      transaction: async (cb: any) => {
+        const mockTx = {
+          query: {
+            accounts: {
+              findFirst: async () => ({
+                id: accountId,
+                email: 'test@wisal.dev',
+                password: hashedPassword,
+                deletedAt: null,
+              }),
+            },
+          },
+        }
+        return await cb(mockTx)
+      },
+    }
+
+    await expect(
+      actualAuthService.deleteAccount(accountId, { password: 'WrongPassword123!' }, mockDb)
+    ).rejects.toThrow(new HTTPException(401, { message: 'Invalid password' }))
+  })
+
+  it('successfully executes soft delete and PII scrubbing', async () => {
+    const hashedPassword = await hashPassword(rawPassword)
+    let accountUpdatedSet: any = null
+    let profileUpdatedSet: any = null
+    let postsUpdatedSet: any = null
+    let postMediaMarked = false
+    let commentMediaMarked = false
+    let followersDecremented = false
+
+    const mockDb: any = {
+      transaction: async (cb: any) => {
+        const mockTx = {
+          query: {
+            accounts: {
+              findFirst: async () => ({
+                id: accountId,
+                email: 'user@wisal.dev',
+                password: hashedPassword,
+                deletedAt: null,
+              }),
+            },
+            profiles: {
+              findFirst: async () => ({
+                id: 222222222222222n,
+                accountId,
+                name: 'John Doe',
+                identity: 'johndoe',
+                identityId: 333333333333333n,
+                avatarKey: 'media/avatars/user.jpg',
+                isMale: true,
+              }),
+            },
+          },
+          update: (_table: any) => ({
+            set: (setData: any) => {
+              if (setData.email !== undefined) {
+                accountUpdatedSet = setData
+              } else if (setData.name === null) {
+                profileUpdatedSet = setData
+              } else if (setData.deletedAt !== undefined) {
+                postsUpdatedSet = setData
+              } else if (setData.status === 'deleted') {
+                postMediaMarked = true
+              } else if (setData.followersCount !== undefined) {
+                followersDecremented = true
+              }
+              return {
+                where: () => ({
+                  returning: async () => [],
+                }),
+              }
+            },
+          }),
+          delete: (_table: any) => ({
+            where: () => ({
+              returning: async () => [{ postId: 999999999999991n }],
+            }),
+          }),
+          select: (_fields: any) => ({
+            from: () => ({
+              where: () => [
+                { id: 999999999999991n },
+                { followingId: 555555555555555n },
+              ],
+            }),
+          }),
+          execute: async () => {
+            commentMediaMarked = true
+          },
+        }
+
+        return await cb(mockTx)
+      },
+    }
+
+    const result = await actualAuthService.deleteAccount(accountId, { password: rawPassword }, mockDb)
+
+    expect(result.success).toBe(true)
+    expect(result.message).toBe('Account deleted successfully')
+
+    expect(accountUpdatedSet).toBeDefined()
+    expect(accountUpdatedSet.deletedAt).toBeInstanceOf(Date)
+    expect(accountUpdatedSet.email).toBe(`${accountId}@deleted.invalid`)
+    expect(accountUpdatedSet.password).toBe('!ACCOUNT_DELETED!')
+
+    expect(profileUpdatedSet).toBeDefined()
+    expect(profileUpdatedSet.name).toBeNull()
+    expect(profileUpdatedSet.identity).toBeNull()
+    expect(profileUpdatedSet.identityId).toBeNull()
+    expect(profileUpdatedSet.isMale).toBeNull()
+    expect(profileUpdatedSet.avatarKey).toBeNull()
+
+    expect(postsUpdatedSet).toBeDefined()
+    expect(postsUpdatedSet.deletedAt).toBeInstanceOf(Date)
+    expect(postsUpdatedSet.isPinned).toBe(false)
+    expect(postMediaMarked).toBe(true)
+    expect(commentMediaMarked).toBe(true)
+    expect(followersDecremented).toBe(true)
+  })
+})
+
 describe('Auth Feature Route Tests', () => {
+
   const mockAccount: SafeAccount = {
     id: 111111111111111n,
     email: 'user@wisal.dev',
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   }
@@ -254,7 +408,7 @@ describe('Auth Feature Route Tests', () => {
     expect(logoutAllCalled).toBe(true)
   })
 
-  it('GET /auth/me returns current account and profile', async () => {
+  it('GET /auth/me returns current account and onboarding status', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -265,7 +419,6 @@ describe('Auth Feature Route Tests', () => {
     mock.module('../service', () => ({
       getAuthMe: async () => ({
         account: mockAccount,
-        profile: mockProfile,
         isOnboardingCompleted: true,
       }),
     }))
@@ -281,13 +434,11 @@ describe('Auth Feature Route Tests', () => {
     const body = (await res.json()) as {
        success: boolean
        account: SafeAccount
-       profile: SafeProfile
        isOnboardingCompleted: boolean
      }
     expect(body.success).toBe(true)
     expect(body.account.email).toBe('user@wisal.dev')
-    expect(body.profile.identity).toBe('wisaluser')
-    expect((body.profile as any).identityId).toBeUndefined()
+    expect((body as any).profile).toBeUndefined()
     expect(body.isOnboardingCompleted).toBe(true)
   })
 
@@ -299,5 +450,111 @@ describe('Auth Feature Route Tests', () => {
     expect(res.status).toBe(401)
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe('Missing or malformed Authorization header')
+  })
+
+  it('DELETE /auth/me deletes account with valid password', async () => {
+    let deleteCalled = false
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      deleteAccount: async (_accountId: bigint, input: { password: string }) => {
+        if (input.password !== 'ValidPassword123!') {
+          throw new HTTPException(401, { message: 'Invalid password' })
+        }
+        deleteCalled = true
+        return {
+          success: true,
+          message: 'Account deleted successfully',
+        }
+      },
+    }))
+
+    const res = await app.request('/auth/me', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        password: 'ValidPassword123!',
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; message: string }
+    expect(body.success).toBe(true)
+    expect(body.message).toBe('Account deleted successfully')
+    expect(deleteCalled).toBe(true)
+  })
+
+  it('DELETE /auth/me rejects invalid password', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      deleteAccount: async () => {
+        throw new HTTPException(401, { message: 'Invalid password' })
+      },
+    }))
+
+    const res = await app.request('/auth/me', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        password: 'WrongPassword',
+      }),
+    })
+
+    expect(res.status).toBe(401)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Invalid password')
+  })
+
+  it('DELETE /auth/me returns 400 when password is empty', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    const res = await app.request('/auth/me', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        password: '',
+      }),
+    })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('DELETE /auth/me returns 401 when token is missing', async () => {
+    const res = await app.request('/auth/me', {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        password: 'SomePassword123!',
+      }),
+    })
+
+    expect(res.status).toBe(401)
   })
 })

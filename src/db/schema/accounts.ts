@@ -1,4 +1,4 @@
-import { pgTable, varchar, uniqueIndex, index } from 'drizzle-orm/pg-core'
+import { pgTable, varchar, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core'
 import { sql, relations } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
@@ -18,11 +18,13 @@ export const accounts = pgTable(
     id: snowflakePrimaryKey(),
     email: varchar('email', { length: 255 }).notNull(),
     password: varchar('password', { length: 255 }).notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
     ...timestamps,
   },
   (table) => [
     uniqueIndex('accounts_email_unique_idx').on(sql`lower(${table.email})`),
     index('accounts_created_at_idx').on(table.createdAt),
+    index('accounts_deleted_at_idx').on(table.deletedAt),
   ]
 )
 

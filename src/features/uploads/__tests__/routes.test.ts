@@ -9,6 +9,7 @@ describe('Uploads Feature Route Tests', () => {
   const userAccount: SafeAccount = {
     id: 111111111111111n,
     email: 'uploader@wisal.dev',
+    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   }

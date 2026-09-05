@@ -1,13 +1,14 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { authMiddleware } from '../../middleware/auth'
-import { registerInputSchema, loginInputSchema } from './schema'
+import { registerInputSchema, loginInputSchema, deleteAccountInputSchema } from './schema'
 import {
   registerUser,
   loginUser,
   logoutUser,
   logoutAllSessions,
   getAuthMe,
+  deleteAccount,
 } from './service'
 
 export const authRouter = new Hono()
@@ -70,3 +71,17 @@ authRouter.get('/me', authMiddleware, async (c) => {
     ...result,
   })
 })
+
+authRouter.delete(
+  '/me',
+  authMiddleware,
+  zValidator('json', deleteAccountInputSchema),
+  async (c) => {
+    const account = c.get('account')
+    const data = c.req.valid('json')
+    const result = await deleteAccount(account.id, data)
+
+    return c.json(result)
+  }
+)
+

@@ -1,8 +1,8 @@
 import type { SafeAccount } from '../../db/schema/accounts'
 import type { SafeProfile } from '../../lib/profile'
-import type { RegisterInput, LoginInput } from './schema'
+import type { RegisterInput, LoginInput, DeleteAccountInput } from './schema'
 
-export type { RegisterInput, LoginInput }
+export type { RegisterInput, LoginInput, DeleteAccountInput }
 
 export interface AuthSessionResult {
   account: SafeAccount
@@ -13,6 +13,11 @@ export interface AuthSessionResult {
 
 export interface AuthMeResult {
   account: SafeAccount
-  profile: SafeProfile | null
   isOnboardingCompleted: boolean
 }
+
+export interface DeleteAccountResult {
+  success: boolean
+  message: string
+}
+
