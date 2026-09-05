@@ -24,8 +24,13 @@ export interface SafeProfile {
   isHidden?: boolean
 }
 
+export type ProfileRecord = Omit<Profile, 'identity' | 'searchText'> & {
+  identity?: Identity | null | string
+  searchText?: string | null
+}
+
 export function formatProfileResponse(
-  profile: (Profile & { identity?: Identity | null | string }) | null,
+  profile: ProfileRecord | null,
   flags?: { isFollowing?: boolean; includeFollowersCount?: boolean }
 ): SafeProfile | null {
   if (!profile) return null
@@ -62,7 +67,7 @@ export function formatProfileResponse(
 }
 
 export function formatRestrictedProfileResponse(
-  profile: (Profile & { identity?: Identity | null | string }) | null,
+  profile: ProfileRecord | null,
   flags: { isBlocked?: boolean; isHidden?: boolean; isFollowing?: boolean }
 ): SafeProfile | null {
   if (!profile) return null
@@ -101,7 +106,7 @@ export function formatRestrictedProfileResponse(
 }
 
 export function isOnboardingCompleted(
-  profile: (Profile & { identity?: Identity | null | string }) | null | undefined
+  profile: ProfileRecord | null | undefined
 ): boolean {
   if (!profile) return false
   const hasIdentity =
@@ -194,6 +199,7 @@ export async function completeOnboarding(
         .update(profiles)
         .set({
           name: input.name.trim(),
+          identity: normalizedIdentity,
           isMale: input.isMale,
           avatarKey: input.avatarKey ?? null,
           description: input.description?.trim() ?? null,
@@ -213,6 +219,7 @@ export async function completeOnboarding(
         .values({
           accountId,
           name: input.name.trim(),
+          identity: normalizedIdentity,
           isMale: input.isMale,
           avatarKey: input.avatarKey ?? null,
           description: input.description?.trim() ?? null,
@@ -305,6 +312,7 @@ export async function updateProfile(
             .where(eq(identities.id, existingProfile.identityId))
             .returning()
           updatedIdentity = updated
+          updateData.identity = normalizedIdentity
         } else {
           const [created] = await tx
             .insert(identities)
@@ -312,6 +320,7 @@ export async function updateProfile(
             .returning()
           updatedIdentity = created
           updateData.identityId = created.id
+          updateData.identity = normalizedIdentity
         }
       }
     }
@@ -352,7 +361,7 @@ export async function updateProfile(
       updateData.isMale = input.isMale
     }
 
-    let finalProfile: Profile = existingProfile
+    let updatedProfile: Profile | null = null
 
     if (Object.keys(updateData).length > 0) {
       const [updated] = await tx
@@ -360,11 +369,12 @@ export async function updateProfile(
         .set(updateData)
         .where(eq(profiles.id, existingProfile.id))
         .returning()
-      finalProfile = updated
+      updatedProfile = updated
     }
 
     return {
-      ...finalProfile,
+      ...existingProfile,
+      ...(updatedProfile ?? {}),
       identity: updatedIdentity,
     }
   })

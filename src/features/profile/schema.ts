@@ -64,6 +64,16 @@ export const profileFeedQuerySchema = createPaginationSchema(20, 100)
 
 export type ProfileFeedQuery = z.infer<typeof profileFeedQuerySchema>
 
+export const profileSearchQuerySchema = createPaginationSchema(20, 100).extend({
+  q: z
+    .string()
+    .trim()
+    .min(1, 'Search query must not be empty')
+    .max(100, 'Search query is too long'),
+})
+
+export type ProfileSearchQuery = z.infer<typeof profileSearchQuerySchema>
+
 export {
   onboardingInputSchema,
   updateProfileInputSchema,

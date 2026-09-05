@@ -12,6 +12,8 @@ import type {
   AdminReportStatusFilter,
   AdminReportTargetTypeFilter,
   AdminReportReasonFilter,
+  AdminRoleFilter,
+  AdminUserStatusFilter,
 } from './schema'
 
 export interface AdminLoginInput {
@@ -34,6 +36,9 @@ export interface CreateAdminInput {
 export interface ListAdminsOptions {
   limit?: number
   offset?: number
+  q?: string
+  search?: string
+  role?: AdminRoleFilter
 }
 
 export interface ListAdminsResult {
@@ -101,6 +106,9 @@ export interface ListInvitesResult {
 export interface ListUsersOptions {
   limit?: number
   offset?: number
+  q?: string
+  search?: string
+  status?: AdminUserStatusFilter
 }
 
 export interface UserListItem extends SafeAccount {

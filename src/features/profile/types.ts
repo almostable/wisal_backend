@@ -109,3 +109,22 @@ export interface ProfileFeedResult {
   offset: number
 }
 
+export interface ProfileSearchItem {
+  name: string
+  isMale: boolean
+  avatarKey: string | null
+  identity: string
+  shortDescription: string | null
+  regularFollowersCount: number
+  countryCode: string | null
+  cityId: string | null
+  isVerified: boolean
+}
+
+export interface ProfileSearchResult {
+  profiles: ProfileSearchItem[]
+  total: number
+  limit: number
+  offset: number
+}
+

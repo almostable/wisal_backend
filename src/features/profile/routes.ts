@@ -10,6 +10,7 @@ import {
   listFollowsQuerySchema,
   listBlocksQuerySchema,
   profileFeedQuerySchema,
+  profileSearchQuerySchema,
 } from './schema'
 import {
   getMyProfile,
@@ -28,6 +29,7 @@ import {
   unblockUser,
   getBlockedUsers,
   getProfileFeed,
+  searchProfiles,
 } from './service'
 
 export const profileRouter = new Hono()
@@ -247,6 +249,22 @@ profileRouter.get(
     const account = c.get('account')
     const query = c.req.valid('query')
     const result = await getProfileFeed(account.id, query)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+profileRouter.get(
+  '/search',
+  onboardingMiddleware,
+  zValidator('query', profileSearchQuerySchema),
+  async (c) => {
+    const account = c.get('account')
+    const query = c.req.valid('query')
+    const result = await searchProfiles(account.id, query)
 
     return c.json({
       success: true,

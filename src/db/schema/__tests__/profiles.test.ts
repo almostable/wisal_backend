@@ -224,10 +224,12 @@ describe('Profiles Schema Tests', () => {
       countryCode: 'US',
       cityId: 'city_nyc',
       contacts: null,
+      identity: null,
       identityId: null,
       regularFollowersCount: 0,
       followersCount: 0,
       verifiedAt: null,
+      searchText: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     }
@@ -240,6 +242,19 @@ describe('Profiles Schema Tests', () => {
     expect(parsedSelect.regularFollowersCount).toBe(0)
     expect(parsedSelect.followersCount).toBe(0)
     expect(parsedSelect.verifiedAt).toBeNull()
+    expect(parsedSelect.identity).toBeNull()
+    expect(parsedSelect.searchText).toBeNull()
+  })
+
+  it('has trigram GIN index on searchText for fast profile search', () => {
+    const { getTableConfig } = require('drizzle-orm/pg-core')
+    const { profiles } = require('../profiles')
+    const config = getTableConfig(profiles)
+    const searchIndex = config.indexes.find(
+      (idx: any) => idx.config?.name === 'profiles_search_text_trgm_idx'
+    )
+    expect(searchIndex).toBeDefined()
+    expect(searchIndex.config.method).toBe('gin')
   })
 })
 

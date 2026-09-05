@@ -5,6 +5,7 @@ import {
   or,
   count,
   desc,
+  asc,
   isNull,
   isNotNull,
   gt,
@@ -37,7 +38,13 @@ import type {
   OnboardingInput,
   UpdateProfileInput,
 } from '../../db/schema/profiles'
-import type { ListMyInvitesQuery, ListFollowsQuery, ListBlocksQuery, ProfileFeedQuery } from './schema'
+import type {
+  ListMyInvitesQuery,
+  ListFollowsQuery,
+  ListBlocksQuery,
+  ProfileFeedQuery,
+  ProfileSearchQuery,
+} from './schema'
 import type {
   PublicProfile,
   MyProfileResult,
@@ -54,6 +61,8 @@ import type {
   ProfileFeedResult,
   ProfileFeedItem,
   ProfileFeedType,
+  ProfileSearchItem,
+  ProfileSearchResult,
 } from './types'
 
 export async function getMyProfile(accountId: bigint): Promise<MyProfileResult> {
@@ -719,6 +728,111 @@ export async function getProfileFeed(
     profiles: formattedProfiles,
     type,
     ...(type === 'random' ? { seed: activeSeed } : {}),
+    limit,
+    offset,
+  }
+}
+
+export async function searchProfiles(
+  viewerAccountId: bigint,
+  query: ProfileSearchQuery
+): Promise<ProfileSearchResult> {
+  const limit = Math.min(Math.max(query.limit ?? 20, 1), 100)
+  const offset = Math.max(query.offset ?? 0, 0)
+  const cleanQuery = (query.q ?? '').replace(/^@+/, '').trim().toLowerCase()
+
+  if (!cleanQuery) {
+    return {
+      profiles: [],
+      total: 0,
+      limit,
+      offset,
+    }
+  }
+
+  const escapedQuery = cleanQuery.replace(/[%_\\]/g, '\\$&')
+  const prefixPattern = `${escapedQuery}%`
+  const wordPrefixPattern = `% ${escapedQuery}%`
+  const subPattern = `%${escapedQuery}%`
+
+  const notBlockedCondition = sql`NOT EXISTS (
+    SELECT 1 FROM ${userBlocks}
+    WHERE (${userBlocks.blockerId} = ${viewerAccountId} AND ${userBlocks.blockedId} = ${profiles.accountId})
+       OR (${userBlocks.blockerId} = ${profiles.accountId} AND ${userBlocks.blockedId} = ${viewerAccountId})
+  )`
+
+  // Primary filtering: GIN-indexed searchText or identities.identity substring
+  const primarySearchFilter = sql`(${profiles.searchText} LIKE ${subPattern} OR lower(${identities.identity}) LIKE ${subPattern})`
+
+  const whereCondition = and(
+    ne(profiles.accountId, viewerAccountId),
+    isNotNull(profiles.name),
+    sql`trim(${profiles.name}) != ''`,
+    isNotNull(profiles.isMale),
+    isNotNull(profiles.identityId),
+    primarySearchFilter,
+    notBlockedCondition
+  )!
+
+  // 5-level compressed relevance ranking
+  const relevanceRank = sql<number>`
+    CASE
+      WHEN lower(${identities.identity}) = ${cleanQuery} THEN 1
+      WHEN lower(${identities.identity}) LIKE ${prefixPattern} THEN 2
+      WHEN lower(${profiles.name}) LIKE ${prefixPattern} OR lower(${profiles.name}) LIKE ${wordPrefixPattern} THEN 3
+      WHEN lower(${identities.identity}) LIKE ${subPattern} OR lower(${profiles.name}) LIKE ${subPattern} THEN 4
+      ELSE 5
+    END
+  `
+
+  const orderByClause = [
+    asc(relevanceRank),
+    sql`CASE WHEN ${profiles.verifiedAt} IS NOT NULL THEN 1 ELSE 0 END DESC`,
+    desc(profiles.regularFollowersCount),
+    desc(profiles.id),
+  ]
+
+  const [items, totalResult] = await Promise.all([
+    db
+      .select({
+        name: profiles.name,
+        isMale: profiles.isMale,
+        avatarKey: profiles.avatarKey,
+        identity: identities.identity,
+        shortDescription: profiles.shortDescription,
+        regularFollowersCount: profiles.regularFollowersCount,
+        countryCode: profiles.countryCode,
+        cityId: profiles.cityId,
+        verifiedAt: profiles.verifiedAt,
+      })
+      .from(profiles)
+      .innerJoin(identities, eq(profiles.identityId, identities.id))
+      .where(whereCondition)
+      .orderBy(...orderByClause)
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(profiles)
+      .innerJoin(identities, eq(profiles.identityId, identities.id))
+      .where(whereCondition),
+  ])
+
+  const formattedProfiles: ProfileSearchItem[] = items.map((item) => ({
+    name: item.name!,
+    isMale: item.isMale!,
+    avatarKey: item.avatarKey,
+    identity: item.identity,
+    shortDescription: item.shortDescription,
+    regularFollowersCount: item.regularFollowersCount,
+    countryCode: item.countryCode,
+    cityId: item.cityId,
+    isVerified: Boolean(item.verifiedAt),
+  }))
+
+  return {
+    profiles: formattedProfiles,
+    total: totalResult[0]?.count ?? 0,
     limit,
     offset,
   }

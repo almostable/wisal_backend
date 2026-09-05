@@ -1,5 +1,5 @@
-import { pgTable, varchar, boolean, text, jsonb, integer, timestamp } from 'drizzle-orm/pg-core'
-import { relations } from 'drizzle-orm'
+import { pgTable, varchar, boolean, text, jsonb, integer, timestamp, index } from 'drizzle-orm/pg-core'
+import { relations, sql } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
 import { snowflakePrimaryKey, snowflakeId, timestamps, emailSchema } from './common'
@@ -30,28 +30,38 @@ export const contactsSchema = z.object({
 
 export type Contacts = z.infer<typeof contactsSchema>
 
-export const profiles = pgTable('profiles', {
-  id: snowflakePrimaryKey(),
-  accountId: snowflakeId('account_id')
-    .notNull()
-    .unique()
-    .references(() => accounts.id, { onDelete: 'cascade' }),
-  name: varchar('name', { length: 100 }),
-  isMale: boolean('is_male'),
-  avatarKey: text('avatar_key'),
-  description: text('description'),
-  shortDescription: text('short_description'),
-  countryCode: varchar('country_code', { length: 2 }),
-  cityId: varchar('city_id', { length: 64 }),
-  contacts: jsonb('contacts').$type<Contacts>(),
-  identityId: snowflakeId('identity_id')
-    .unique()
-    .references(() => identities.id, { onDelete: 'restrict' }),
-  regularFollowersCount: integer('regular_followers_count').notNull().default(0),
-  followersCount: integer('followers_count').notNull().default(0),
-  verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
-  ...timestamps,
-})
+export const profiles = pgTable(
+  'profiles',
+  {
+    id: snowflakePrimaryKey(),
+    accountId: snowflakeId('account_id')
+      .notNull()
+      .unique()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 100 }),
+    identity: varchar('identity', { length: 32 }),
+    isMale: boolean('is_male'),
+    avatarKey: text('avatar_key'),
+    description: text('description'),
+    shortDescription: text('short_description'),
+    countryCode: varchar('country_code', { length: 2 }),
+    cityId: varchar('city_id', { length: 64 }),
+    contacts: jsonb('contacts').$type<Contacts>(),
+    identityId: snowflakeId('identity_id')
+      .unique()
+      .references(() => identities.id, { onDelete: 'restrict' }),
+    regularFollowersCount: integer('regular_followers_count').notNull().default(0),
+    followersCount: integer('followers_count').notNull().default(0),
+    verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
+    searchText: text('search_text').generatedAlwaysAs(
+      sql`lower(coalesce(identity, '') || ' ' || coalesce(name, '') || ' ' || coalesce(short_description, ''))`
+    ),
+    ...timestamps,
+  },
+  (table) => [
+    index('profiles_search_text_trgm_idx').using('gin', sql`${table.searchText} gin_trgm_ops`),
+  ]
+)
 
 export const profilesRelations = relations(profiles, ({ one }) => ({
   account: one(accounts, {
@@ -127,6 +137,7 @@ export type NewProfile = typeof profiles.$inferInsert
 export type OnboardingInput = z.infer<typeof onboardingInputSchema>
 export type UpdateProfileInput = z.infer<typeof updateProfileInputSchema>
 
-export interface ProfileWithIdentity extends Profile {
+export type ProfileWithIdentity = Omit<Profile, 'identity' | 'searchText'> & {
   identity: Identity | null
+  searchText?: string | null
 }

@@ -222,6 +222,58 @@ describe('Admin Feature Route Tests', () => {
     expect(body.error).toBe('Insufficient permissions')
   })
 
+  it('GET /admin/admins parses role and search/q query parameters correctly', async () => {
+    let capturedOptions: any = null
+
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    mock.module('../service', () => ({
+      listAdmins: async (options: any) => {
+        capturedOptions = options
+        return {
+          admins: [],
+          total: 0,
+          limit: options.limit ?? 50,
+          offset: options.offset ?? 0,
+        }
+      },
+    }))
+
+    const res = await app.request('/admin/admins?role=moderator&q=mod@wisal.dev&limit=10&offset=5', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_token' },
+    })
+
+    expect(res.status).toBe(200)
+    expect(capturedOptions.role).toBe('moderator')
+    expect(capturedOptions.q).toBe('mod@wisal.dev')
+    expect(capturedOptions.limit).toBe(10)
+    expect(capturedOptions.offset).toBe(5)
+  })
+
+  it('GET /admin/admins rejects invalid role with 400', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    const res = await app.request('/admin/admins?role=superadmin', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_token' },
+    })
+
+    expect(res.status).toBe(400)
+  })
+
   it('POST /admin/admins creates a new admin account when called by admin', async () => {
     const createdAdmin: SafeAdmin = {
       id: 444444444444444n,
@@ -655,6 +707,67 @@ describe('Admin Feature Route Tests', () => {
     expect(body.users[0].email).toBe('user@wisal.dev')
     expect(body.users[0].profile.identity).toBe('johndoe')
     expect(body.users[0].profile.identityId).toBeUndefined()
+  })
+
+  it('GET /admin/users parses status and search/q query parameters correctly', async () => {
+    let capturedOptions: any = null
+
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    mock.module('../service', () => ({
+      listUsers: async (options: any) => {
+        capturedOptions = options
+        return {
+          users: [],
+          total: 0,
+          limit: options.limit ?? 50,
+          offset: options.offset ?? 0,
+        }
+      },
+    }))
+
+    const res1 = await app.request('/admin/users?status=verified&q=johndoe&limit=25&offset=10', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_token' },
+    })
+
+    expect(res1.status).toBe(200)
+    expect(capturedOptions.status).toBe('verified')
+    expect(capturedOptions.q).toBe('johndoe')
+    expect(capturedOptions.limit).toBe(25)
+    expect(capturedOptions.offset).toBe(10)
+
+    const res2 = await app.request('/admin/users?status=pending&search=user@wisal.dev', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_token' },
+    })
+
+    expect(res2.status).toBe(200)
+    expect(capturedOptions.status).toBe('pending')
+    expect(capturedOptions.search).toBe('user@wisal.dev')
+  })
+
+  it('GET /admin/users rejects invalid status with 400', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    const res = await app.request('/admin/users?status=banned', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_token' },
+    })
+
+    expect(res.status).toBe(400)
   })
 
   it('GET /admin/reports returns list of reports with stats', async () => {

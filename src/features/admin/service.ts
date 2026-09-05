@@ -96,14 +96,39 @@ export async function logoutAdminByToken(token: string): Promise<void> {
 export async function listAdmins(options: ListAdminsOptions = {}): Promise<ListAdminsResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
+  const searchQuery = (options.q ?? options.search)?.trim()
+
+  const conditions: (SQL | undefined)[] = []
+
+  if (searchQuery) {
+    const isNumericId = /^\d{1,20}$/.test(searchQuery)
+    const searchPattern = `%${searchQuery}%`
+    const searchCondition = isNumericId
+      ? or(eq(admins.id, BigInt(searchQuery)), ilike(admins.email, searchPattern))
+      : ilike(admins.email, searchPattern)
+    if (searchCondition) {
+      conditions.push(searchCondition)
+    }
+  }
+
+  if (options.role && options.role !== 'all') {
+    conditions.push(eq(admins.role, options.role))
+  }
+
+  const whereCondition = conditions.length > 0 ? and(...conditions) : undefined
 
   const [adminRecords, totalResult] = await Promise.all([
-    db.query.admins.findMany({
-      limit,
-      offset,
-      orderBy: [desc(admins.createdAt)],
-    }),
-    db.select({ count: count() }).from(admins),
+    db
+      .select()
+      .from(admins)
+      .where(whereCondition)
+      .orderBy(desc(admins.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(admins)
+      .where(whereCondition),
   ])
 
   const safeAdmins: SafeAdmin[] = adminRecords.map((admin) => safeAdminSchema.parse(admin))
@@ -256,13 +281,25 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
   }
 
   if (searchQuery) {
+    const isNumericId = /^\d{1,20}$/.test(searchQuery)
     const searchPattern = `%${searchQuery}%`
-    const searchCondition = or(
-      ilike(invites.code, searchPattern),
-      ilike(admins.email, searchPattern),
-      ilike(accounts.email, searchPattern),
-      ilike(inviterAccounts.email, searchPattern)
-    )
+    const searchCondition = isNumericId
+      ? or(
+          eq(invites.id, BigInt(searchQuery)),
+          eq(invites.createdById, BigInt(searchQuery)),
+          eq(invites.usedById, BigInt(searchQuery)),
+          eq(invites.inviterId, BigInt(searchQuery)),
+          ilike(invites.code, searchPattern),
+          ilike(admins.email, searchPattern),
+          ilike(accounts.email, searchPattern),
+          ilike(inviterAccounts.email, searchPattern)
+        )
+      : or(
+          ilike(invites.code, searchPattern),
+          ilike(admins.email, searchPattern),
+          ilike(accounts.email, searchPattern),
+          ilike(inviterAccounts.email, searchPattern)
+        )
     if (searchCondition) {
       conditions.push(searchCondition)
     }
@@ -361,6 +398,48 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
 export async function listUsers(options: ListUsersOptions = {}): Promise<ListUsersResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
+  const searchQuery = (options.q ?? options.search)?.trim()
+
+  const conditions: (SQL | undefined)[] = []
+
+  if (searchQuery) {
+    const isNumericId = /^\d{1,20}$/.test(searchQuery)
+    const searchPattern = `%${searchQuery}%`
+    const searchCondition = isNumericId
+      ? or(
+          eq(accounts.id, BigInt(searchQuery)),
+          ilike(accounts.email, searchPattern),
+          ilike(profiles.name, searchPattern),
+          ilike(identities.identity, searchPattern)
+        )
+      : or(
+          ilike(accounts.email, searchPattern),
+          ilike(profiles.name, searchPattern),
+          ilike(identities.identity, searchPattern)
+        )
+    if (searchCondition) {
+      conditions.push(searchCondition)
+    }
+  }
+
+  if (options.status && options.status !== 'all') {
+    switch (options.status) {
+      case 'onboarded':
+        conditions.push(and(isNotNull(profiles.name), isNotNull(profiles.identityId)))
+        break
+      case 'pending':
+        conditions.push(or(isNull(profiles.name), isNull(profiles.identityId)))
+        break
+      case 'verified':
+        conditions.push(isNotNull(profiles.verifiedAt))
+        break
+      case 'unverified':
+        conditions.push(isNull(profiles.verifiedAt))
+        break
+    }
+  }
+
+  const whereCondition = conditions.length > 0 ? and(...conditions) : undefined
 
   const [accountRecords, totalResult] = await Promise.all([
     db
@@ -377,10 +456,16 @@ export async function listUsers(options: ListUsersOptions = {}): Promise<ListUse
       .from(accounts)
       .leftJoin(profiles, eq(accounts.id, profiles.accountId))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(whereCondition)
       .orderBy(desc(accounts.createdAt))
       .limit(limit)
       .offset(offset),
-    db.select({ count: count() }).from(accounts),
+    db
+      .select({ count: count() })
+      .from(accounts)
+      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(whereCondition),
   ])
 
   const users: UserListItem[] = accountRecords.map(({ account, profile, identity }) => {
@@ -562,6 +647,7 @@ export async function updateUserProfileByAdmin(
       }
       if (newIdentityId !== null && newIdentityId !== existingProfile.identityId) {
         updateData.identityId = newIdentityId
+        updateData.identity = updatedIdentity?.identity ?? null
       }
 
       if (Object.keys(updateData).length > 0) {
@@ -650,17 +736,32 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
   }
 
   if (searchQuery) {
+    const isNumericId = /^\d{1,20}$/.test(searchQuery)
     const searchPattern = `%${searchQuery}%`
-    const searchCondition = or(
-      ilike(reports.details, searchPattern),
-      ilike(reports.modNote, searchPattern),
-      ilike(reporterAccounts.email, searchPattern),
-      ilike(reportedAccounts.email, searchPattern),
-      ilike(reporterProfiles.name, searchPattern),
-      ilike(reportedProfiles.name, searchPattern),
-      ilike(reporterIdentities.identity, searchPattern),
-      ilike(reportedIdentities.identity, searchPattern)
-    )
+    const searchCondition = isNumericId
+      ? or(
+          eq(reports.id, BigInt(searchQuery)),
+          eq(reports.targetId, BigInt(searchQuery)),
+          eq(reports.reporterId, BigInt(searchQuery)),
+          ilike(reports.details, searchPattern),
+          ilike(reports.modNote, searchPattern),
+          ilike(reporterAccounts.email, searchPattern),
+          ilike(reportedAccounts.email, searchPattern),
+          ilike(reporterProfiles.name, searchPattern),
+          ilike(reportedProfiles.name, searchPattern),
+          ilike(reporterIdentities.identity, searchPattern),
+          ilike(reportedIdentities.identity, searchPattern)
+        )
+      : or(
+          ilike(reports.details, searchPattern),
+          ilike(reports.modNote, searchPattern),
+          ilike(reporterAccounts.email, searchPattern),
+          ilike(reportedAccounts.email, searchPattern),
+          ilike(reporterProfiles.name, searchPattern),
+          ilike(reportedProfiles.name, searchPattern),
+          ilike(reporterIdentities.identity, searchPattern),
+          ilike(reportedIdentities.identity, searchPattern)
+        )
     if (searchCondition) {
       conditions.push(searchCondition)
     }

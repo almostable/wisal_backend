@@ -8,6 +8,7 @@ async function runMigrations() {
   const db = drizzle(migrationClient)
 
   try {
+    await migrationClient`CREATE EXTENSION IF NOT EXISTS pg_trgm;`
     await migrate(db, { migrationsFolder: './drizzle' })
   } catch (error) {
     console.error('Migration failed:', error)

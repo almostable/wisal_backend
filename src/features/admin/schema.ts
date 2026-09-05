@@ -41,13 +41,33 @@ export const createInviteInputSchema = z.object({
     }),
 })
 
+export const baseAdminSearchQuerySchema = paginationQuerySchema.extend({
+  q: z.string().trim().optional(),
+  search: z.string().trim().optional(),
+})
+export type BaseAdminSearchQuery = z.infer<typeof baseAdminSearchQuerySchema>
+
+export const adminUserStatusEnum = z.enum(['all', 'onboarded', 'pending', 'verified', 'unverified'])
+export type AdminUserStatusFilter = z.infer<typeof adminUserStatusEnum>
+
+export const listUsersQuerySchema = baseAdminSearchQuerySchema.extend({
+  status: adminUserStatusEnum.default('all'),
+})
+export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>
+
+export const adminRoleFilterEnum = z.enum(['all', 'admin', 'moderator'])
+export type AdminRoleFilter = z.infer<typeof adminRoleFilterEnum>
+
+export const listAdminsQuerySchema = baseAdminSearchQuerySchema.extend({
+  role: adminRoleFilterEnum.default('all'),
+})
+export type ListAdminsQuery = z.infer<typeof listAdminsQuerySchema>
+
 export const inviteStatusEnum = z.enum(['all', 'active', 'used', 'expired'])
 export type InviteStatus = z.infer<typeof inviteStatusEnum>
 
-export const listInvitesQuerySchema = paginationQuerySchema.extend({
+export const listInvitesQuerySchema = baseAdminSearchQuerySchema.extend({
   status: inviteStatusEnum.default('all'),
-  q: z.string().trim().optional(),
-  search: z.string().trim().optional(),
 })
 
 export const adminReportStatusEnum = z.enum(['all', ...REPORT_STATUSES])
@@ -59,12 +79,10 @@ export type AdminReportTargetTypeFilter = z.infer<typeof adminReportTargetTypeEn
 export const adminReportReasonEnum = z.enum(['all', ...REPORT_REASONS])
 export type AdminReportReasonFilter = z.infer<typeof adminReportReasonEnum>
 
-export const listReportsQuerySchema = paginationQuerySchema.extend({
+export const listReportsQuerySchema = baseAdminSearchQuerySchema.extend({
   status: adminReportStatusEnum.default('all'),
   targetType: adminReportTargetTypeEnum.default('all'),
   reason: adminReportReasonEnum.default('all'),
-  q: z.string().trim().optional(),
-  search: z.string().trim().optional(),
 })
 
 export const updateReportResolutionSchema = z.object({

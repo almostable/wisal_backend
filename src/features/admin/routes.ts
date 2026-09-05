@@ -10,6 +10,8 @@ import {
   createAdminInputSchema,
   createInviteInputSchema,
   paginationQuerySchema,
+  listAdminsQuerySchema,
+  listUsersQuerySchema,
   listInvitesQuerySchema,
   listReportsQuerySchema,
   updateReportResolutionSchema,
@@ -83,7 +85,7 @@ adminRouter.get(
   '/admins',
   adminAuthMiddleware,
   requireAdminRole('admin'),
-  zValidator('query', paginationQuerySchema),
+  zValidator('query', listAdminsQuerySchema),
   async (c) => {
     const query = c.req.valid('query')
     const result = await listAdmins(query)
@@ -187,7 +189,7 @@ adminRouter.delete(
 adminRouter.get(
   '/users',
   adminAuthMiddleware,
-  zValidator('query', paginationQuerySchema),
+  zValidator('query', listUsersQuerySchema),
   async (c) => {
     const query = c.req.valid('query')
     const result = await listUsers(query)
