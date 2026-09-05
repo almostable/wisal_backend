@@ -38,6 +38,21 @@ app.onError((err, c) => {
     return c.json({ error: err.message }, err.status)
   }
 
+  const pgError = (err as any)?.cause ?? err
+  if (pgError && typeof pgError === 'object' && pgError.code === '23505') {
+    const constraint = String(pgError.constraint ?? '')
+    if (constraint.includes('accounts_email')) {
+      return c.json({ error: 'Email is already registered' }, 409)
+    }
+    if (constraint.includes('identities_identity')) {
+      return c.json({ error: 'Identity handle is already taken' }, 409)
+    }
+    if (constraint.includes('posts_author_pinned')) {
+      return c.json({ error: 'Another post is already pinned' }, 409)
+    }
+    return c.json({ error: 'Conflict: A resource with this identifier already exists' }, 409)
+  }
+
   console.error('Unhandled server error:', err)
   return c.json({ error: 'Internal Server Error' }, 500)
 })

@@ -14,8 +14,10 @@ export const ALLOWED_TYPES: Record<string, string[]> = {
   webp: ['image/webp'],
 }
 
-export const MAX_UPLOAD_FILE_SIZE = 10 * 1024 * 1024 // 10MB
-export const DEFAULT_PRESIGN_TTL_SECONDS = 900 // 15 minutes
+import { MAX_UPLOAD_FILE_SIZE_BYTES, DEFAULT_PRESIGN_TTL_SECONDS } from '../config/constants'
+
+export const MAX_UPLOAD_FILE_SIZE = MAX_UPLOAD_FILE_SIZE_BYTES
+export { DEFAULT_PRESIGN_TTL_SECONDS }
 
 export const FILE_KEY_REGEX = /^media\/\d{4}-\d{2}-\d{2}\/\d{1,20}\.[a-zA-Z0-9]+$/
 

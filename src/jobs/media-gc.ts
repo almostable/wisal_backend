@@ -3,6 +3,8 @@ import { Cron } from 'croner'
 import { db } from '../db'
 import { mediaUploads } from '../db/schema/media-uploads'
 import { deleteObjectsFromR2 } from '../lib/s3'
+import { cleanupExpiredSessions } from '../lib/session'
+import { cleanupExpiredAdminSessions } from '../lib/admin-session'
 
 export interface MediaGcOptions {
   batchSize?: number
@@ -92,11 +94,15 @@ export async function runMediaGc(
 export function initMediaGcCron(): Cron {
   // Run daily at 04:00 UTC
   const job = new Cron('0 4 * * *', { timezone: 'UTC' }, async () => {
-    console.log(`[CRON] [${new Date().toISOString()}] Starting daily media garbage collection...`)
+    console.log(`[CRON] [${new Date().toISOString()}] Starting daily media garbage collection and session cleanup...`)
     try {
       const result = await runMediaGc()
+      const [purgedUserSessions, purgedAdminSessions] = await Promise.all([
+        cleanupExpiredSessions(),
+        cleanupExpiredAdminSessions(),
+      ])
       console.log(
-        `[CRON] [${result.timestamp}] Finished media GC: ${result.purgedKeysCount} purged from R2, ${result.databaseCleanedCount} deleted from DB.`
+        `[CRON] [${result.timestamp}] Finished media GC: ${result.purgedKeysCount} purged from R2, ${result.databaseCleanedCount} deleted from DB. Cleaned ${purgedUserSessions} user sessions, ${purgedAdminSessions} admin sessions.`
       )
     } catch (error) {
       console.error(`[CRON] [${new Date().toISOString()}] Error during media garbage collection:`, error)
@@ -107,11 +113,15 @@ export function initMediaGcCron(): Cron {
 }
 
 if (import.meta.main) {
-  console.log(`[CLI] Starting media garbage collection...`)
+  console.log(`[CLI] Starting media garbage collection and session cleanup...`)
   try {
     const result = await runMediaGc()
+    const [purgedUserSessions, purgedAdminSessions] = await Promise.all([
+      cleanupExpiredSessions(),
+      cleanupExpiredAdminSessions(),
+    ])
     console.log(
-      `[CLI] Finished media GC at ${result.timestamp}: ${result.purgedKeysCount} purged from R2, ${result.databaseCleanedCount} records deleted from DB.`
+      `[CLI] Finished media GC at ${result.timestamp}: ${result.purgedKeysCount} purged from R2, ${result.databaseCleanedCount} records deleted from DB. Cleaned ${purgedUserSessions} user sessions, ${purgedAdminSessions} admin sessions.`
     )
     process.exit(0)
   } catch (error) {

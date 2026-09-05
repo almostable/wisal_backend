@@ -1,10 +1,11 @@
-import { pgTable, varchar, boolean, text, jsonb, timestamp, integer, index } from 'drizzle-orm/pg-core'
-import { relations } from 'drizzle-orm'
+import { pgTable, varchar, boolean, text, jsonb, timestamp, integer, index, uniqueIndex } from 'drizzle-orm/pg-core'
+import { relations, sql } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
 import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
 import { accounts } from './accounts'
 import { postSaves } from './post-saves'
+import { postViews } from './post-views'
 
 export const POST_TYPES = ['text', 'media'] as const
 export type PostType = (typeof POST_TYPES)[number]
@@ -55,6 +56,9 @@ export const posts = pgTable(
     index('posts_saves_count_idx').on(table.savesCount),
     index('posts_comments_count_idx').on(table.commentsCount),
     index('posts_views_count_idx').on(table.viewsCount),
+    uniqueIndex('posts_author_pinned_unique_idx')
+      .on(table.authorId)
+      .where(sql`${table.isPinned} = true AND ${table.deletedAt} IS NULL`),
   ]
 )
 
@@ -64,6 +68,7 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
     references: [accounts.id],
   }),
   saves: many(postSaves),
+  views: many(postViews),
 }))
 
 export const postContentSchema = z

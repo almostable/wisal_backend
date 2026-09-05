@@ -14,6 +14,10 @@ import { mediaUploads } from '../../db/schema/media-uploads'
 import { markEntityMediaDeleted } from '../uploads/service'
 import { hashPassword, verifyPassword } from '../../lib/password'
 import {
+  INITIAL_USER_INVITES_COUNT,
+  INITIAL_USER_INVITES_TTL_MS,
+} from '../../config/constants'
+import {
   createSession,
   generateSessionToken,
   hashSessionToken,
@@ -101,11 +105,11 @@ export async function registerUser(input: RegisterInput): Promise<AuthSessionRes
       })
       .where(eq(invites.id, invite.id))
 
-    const initialUserInvites = Array.from({ length: 5 }, () => ({
+    const initialUserInvites = Array.from({ length: INITIAL_USER_INVITES_COUNT }, () => ({
       code: generateRandomInviteCode(),
       inviterId: createdAccount.id,
       createdById: null,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + INITIAL_USER_INVITES_TTL_MS),
     }))
 
     await tx.insert(invites).values(initialUserInvites)
@@ -316,13 +320,14 @@ export async function deleteAccount(
       .where(eq(postSaves.userId, accountId))
       .returning({ postId: postSaves.postId })
 
-    for (const save of userSaves) {
+    if (userSaves.length > 0) {
+      const postIds = Array.from(new Set(userSaves.map((s) => s.postId)))
       await tx
         .update(posts)
         .set({
           savesCount: sql`GREATEST(0, ${posts.savesCount} - 1)`,
         })
-        .where(eq(posts.id, save.postId))
+        .where(inArray(posts.id, postIds))
     }
 
     const userFollowing = await tx
@@ -330,13 +335,14 @@ export async function deleteAccount(
       .from(follows)
       .where(eq(follows.followerId, accountId))
 
-    for (const item of userFollowing) {
+    if (userFollowing.length > 0) {
+      const followingIds = Array.from(new Set(userFollowing.map((item) => item.followingId)))
       await tx
         .update(profiles)
         .set({
           followersCount: sql`GREATEST(0, ${profiles.followersCount} - 1)`,
         })
-        .where(eq(profiles.accountId, item.followingId))
+        .where(inArray(profiles.accountId, followingIds))
     }
 
     await tx

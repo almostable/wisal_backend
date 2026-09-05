@@ -34,6 +34,15 @@ export const RESERVED_IDENTITIES = [
   'search',
   'null',
   'undefined',
+  'me',
+  'onboarding',
+  'invites',
+  'blocks',
+  'followers',
+  'following',
+  'check',
+  'views',
+  'saves',
 ] as const
 
 export const createIdentityFormatSchema = (isVerified: boolean = false) => {

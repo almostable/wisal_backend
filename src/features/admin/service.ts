@@ -782,7 +782,7 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
         .leftJoin(reportedAccounts, eq(reports.reportedUserId, reportedAccounts.id))
         .leftJoin(reportedProfiles, eq(reports.reportedUserId, reportedProfiles.accountId))
         .leftJoin(reportedIdentities, eq(reportedProfiles.identityId, reportedIdentities.id))
-        .leftJoin(resolverAdmins, eq(reports.resolveById, resolverAdmins.id))
+        .leftJoin(resolverAdmins, eq(reports.resolvedById, resolverAdmins.id))
         .where(whereClause)
     : db
         .select({ count: count() })
@@ -828,7 +828,7 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
       .leftJoin(reportedAccounts, eq(reports.reportedUserId, reportedAccounts.id))
       .leftJoin(reportedProfiles, eq(reports.reportedUserId, reportedProfiles.accountId))
       .leftJoin(reportedIdentities, eq(reportedProfiles.identityId, reportedIdentities.id))
-      .leftJoin(resolverAdmins, eq(reports.resolveById, resolverAdmins.id))
+      .leftJoin(resolverAdmins, eq(reports.resolvedById, resolverAdmins.id))
       .where(whereClause)
       .orderBy(desc(reports.createdAt))
       .limit(limit)
@@ -956,7 +956,7 @@ export async function getReportById(reportId: bigint): Promise<AdminReportItem> 
     .leftJoin(reportedAccounts, eq(reports.reportedUserId, reportedAccounts.id))
     .leftJoin(reportedProfiles, eq(reports.reportedUserId, reportedProfiles.accountId))
     .leftJoin(reportedIdentities, eq(reportedProfiles.identityId, reportedIdentities.id))
-    .leftJoin(resolverAdmins, eq(reports.resolveById, resolverAdmins.id))
+    .leftJoin(resolverAdmins, eq(reports.resolvedById, resolverAdmins.id))
     .where(eq(reports.id, reportId))
 
   if (!item) {
@@ -1027,14 +1027,14 @@ export async function updateReportResolution(
   const { status, modNote } = input
   const isResolving = status !== 'pending'
   const resolvedAt = isResolving ? new Date() : null
-  const resolveById = isResolving ? admin.id : null
+  const resolvedById = isResolving ? admin.id : null
 
   const [updated] = await db
     .update(reports)
     .set({
       status,
       modNote: modNote !== undefined ? (modNote && modNote.trim().length > 0 ? modNote.trim() : null) : existing.modNote,
-      resolveById,
+      resolvedById,
       resolvedAt,
       updatedAt: new Date(),
     })

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { createPaginationSchema } from '../../db/schema/common'
+import { createPaginationSchema, snowflakeParamSchema } from '../../db/schema/common'
 import {
   POST_TYPES,
   GENDER_SCOPES,
@@ -10,17 +10,57 @@ import {
 } from '../../db/schema/comments'
 import { mediaPayloadSchema } from '../uploads/schema'
 
-export const postIdParamSchema = z.object({
-  id: z.string().regex(/^\d{1,20}$/, 'Invalid post ID format'),
-})
-
-export const commentIdParamSchema = z.object({
-  id: z.string().regex(/^\d{1,20}$/, 'Invalid comment ID format'),
-})
+export const postIdParamSchema = snowflakeParamSchema
+export const commentIdParamSchema = snowflakeParamSchema
 
 export const userPostsParamSchema = z.object({
   identity: z.string().min(1, 'Identity handle is required'),
 })
+
+export function validateMediaOrText(
+  data: { type?: string; content?: string | null; payload?: Record<string, unknown> },
+  ctx: z.RefinementCtx
+) {
+  const itemType = data.type ?? 'text'
+  if (itemType === 'text') {
+    if (!data.content || data.content.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Content cannot be empty',
+        path: ['content'],
+      })
+    }
+  } else if (itemType === 'media') {
+    const parsedPayload = mediaPayloadSchema.safeParse(data.payload)
+    if (!parsedPayload.success) {
+      for (const issue of parsedPayload.error.issues) {
+        ctx.addIssue({
+          ...issue,
+          path: ['payload', ...issue.path],
+        })
+      }
+    }
+  }
+}
+
+export function transformMediaOrText<T extends { type?: string; content?: string | null; payload?: Record<string, unknown> }>(data: T) {
+  const itemType = data.type ?? 'text'
+  if (itemType === 'media') {
+    const parsedPayload = mediaPayloadSchema.parse(data.payload)
+    return {
+      ...data,
+      type: 'media' as const,
+      content: data.content ? data.content.trim() : '',
+      payload: parsedPayload,
+    }
+  }
+  return {
+    ...data,
+    type: 'text' as const,
+    content: data.content ? data.content.trim() : '',
+    payload: data.payload ?? {},
+  }
+}
 
 export const createPostSchema = z
   .object({
@@ -31,46 +71,8 @@ export const createPostSchema = z
     accessLevel: z.enum(ACCESS_LEVELS).default('public').optional(),
     isPinned: z.boolean().default(false).optional(),
   })
-  .superRefine((data, ctx) => {
-    const postType = data.type ?? 'text'
-    if (postType === 'text') {
-      if (!data.content || data.content.trim().length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Content cannot be empty',
-          path: ['content'],
-        })
-      }
-    } else if (postType === 'media') {
-      const parsedPayload = mediaPayloadSchema.safeParse(data.payload)
-      if (!parsedPayload.success) {
-        for (const issue of parsedPayload.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            path: ['payload', ...issue.path],
-          })
-        }
-      }
-    }
-  })
-  .transform((data) => {
-    const postType = data.type ?? 'text'
-    if (postType === 'media') {
-      const parsedPayload = mediaPayloadSchema.parse(data.payload)
-      return {
-        ...data,
-        type: 'media' as const,
-        content: data.content ? data.content.trim() : '',
-        payload: parsedPayload,
-      }
-    }
-    return {
-      ...data,
-      type: 'text' as const,
-      content: data.content ? data.content.trim() : '',
-      payload: data.payload ?? {},
-    }
-  })
+  .superRefine(validateMediaOrText)
+  .transform(transformMediaOrText)
 
 export const updatePostSchema = z
   .object({
@@ -130,46 +132,8 @@ export const createCommentSchema = z
     payload: z.record(z.string(), z.unknown()).default({}).optional(),
     parentId: z.string().regex(/^\d{1,20}$/, 'Invalid parent ID format').nullable().optional(),
   })
-  .superRefine((data, ctx) => {
-    const commentType = data.type ?? 'text'
-    if (commentType === 'text') {
-      if (!data.content || data.content.trim().length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Content cannot be empty',
-          path: ['content'],
-        })
-      }
-    } else if (commentType === 'media') {
-      const parsedPayload = mediaPayloadSchema.safeParse(data.payload)
-      if (!parsedPayload.success) {
-        for (const issue of parsedPayload.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            path: ['payload', ...issue.path],
-          })
-        }
-      }
-    }
-  })
-  .transform((data) => {
-    const commentType = data.type ?? 'text'
-    if (commentType === 'media') {
-      const parsedPayload = mediaPayloadSchema.parse(data.payload)
-      return {
-        ...data,
-        type: 'media' as const,
-        content: data.content ? data.content.trim() : '',
-        payload: parsedPayload,
-      }
-    }
-    return {
-      ...data,
-      type: 'text' as const,
-      content: data.content ? data.content.trim() : '',
-      payload: data.payload ?? {},
-    }
-  })
+  .superRefine(validateMediaOrText)
+  .transform(transformMediaOrText)
 
 export const replyCommentSchema = z
   .object({
@@ -177,46 +141,8 @@ export const replyCommentSchema = z
     content: z.string().trim().max(5000, 'Content must be at most 5000 characters').nullable().optional(),
     payload: z.record(z.string(), z.unknown()).default({}).optional(),
   })
-  .superRefine((data, ctx) => {
-    const commentType = data.type ?? 'text'
-    if (commentType === 'text') {
-      if (!data.content || data.content.trim().length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Content cannot be empty',
-          path: ['content'],
-        })
-      }
-    } else if (commentType === 'media') {
-      const parsedPayload = mediaPayloadSchema.safeParse(data.payload)
-      if (!parsedPayload.success) {
-        for (const issue of parsedPayload.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            path: ['payload', ...issue.path],
-          })
-        }
-      }
-    }
-  })
-  .transform((data) => {
-    const commentType = data.type ?? 'text'
-    if (commentType === 'media') {
-      const parsedPayload = mediaPayloadSchema.parse(data.payload)
-      return {
-        ...data,
-        type: 'media' as const,
-        content: data.content ? data.content.trim() : '',
-        payload: parsedPayload,
-      }
-    }
-    return {
-      ...data,
-      type: 'text' as const,
-      content: data.content ? data.content.trim() : '',
-      payload: data.payload ?? {},
-    }
-  })
+  .superRefine(validateMediaOrText)
+  .transform(transformMediaOrText)
 
 export const updateCommentSchema = z
   .object({
@@ -228,7 +154,12 @@ export const listCommentsQuerySchema = createPaginationSchema(50, 100)
 
 export const recordViewsSchema = z.object({
   postIds: z
-    .array(z.string().regex(/^\d{1,20}$/, 'Invalid post ID format'))
+    .array(
+      z
+        .string()
+        .regex(/^\d{1,20}$/, 'Invalid post ID format')
+        .transform((val) => BigInt(val))
+    )
     .min(1, 'At least 1 post ID is required')
     .max(100, 'Maximum 100 post IDs allowed'),
 })

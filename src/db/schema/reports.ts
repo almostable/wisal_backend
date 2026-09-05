@@ -38,7 +38,7 @@ export const reports = pgTable(
     reason: varchar('reason', { length: 64 }).notNull(),
     details: text('details'),
     status: varchar('status', { length: 32 }).notNull().default('pending'),
-    resolveById: snowflakeId('resolve_by_id')
+    resolvedById: snowflakeId('resolved_by_id')
       .references(() => admins.id, { onDelete: 'set null' }),
     modNote: text('mod_note'),
     resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
@@ -71,7 +71,7 @@ export const reportsRelations = relations(reports, ({ one }) => ({
     relationName: 'reportedUser',
   }),
   resolvedBy: one(admins, {
-    fields: [reports.resolveById],
+    fields: [reports.resolvedById],
     references: [admins.id],
     relationName: 'resolvedBy',
   }),

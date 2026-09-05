@@ -468,6 +468,7 @@ export async function followUser(
       .values({
         followerId: followerAccountId,
         followingId: targetAccountId,
+        lastReadAt: new Date(),
       })
       .onConflictDoNothing()
       .returning({ followerId: follows.followerId })
@@ -691,7 +692,7 @@ export async function getProfileFeed(
   const orderByClause =
     type === 'recommended'
       ? [desc(profiles.regularFollowersCount), desc(profiles.id)]
-      : [sql`hashtext(concat(${profiles.id}::text, ${activeSeed}))`]
+      : [sql`hashtext(concat(${profiles.id}::text, ${activeSeed}))`, asc(profiles.id)]
 
   const items = await db
     .select({

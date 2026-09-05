@@ -125,28 +125,23 @@ export function isOnboardingCompleted(
 export async function getProfileByAccountId(
   accountId: bigint
 ): Promise<ProfileWithIdentity | null> {
-  try {
-    const [result] = await db
-      .select({
-        profile: profiles,
-        identity: identities,
-      })
-      .from(profiles)
-      .leftJoin(identities, eq(profiles.identityId, identities.id))
-      .where(eq(profiles.accountId, accountId))
-      .limit(1)
+  const [result] = await db
+    .select({
+      profile: profiles,
+      identity: identities,
+    })
+    .from(profiles)
+    .leftJoin(identities, eq(profiles.identityId, identities.id))
+    .where(eq(profiles.accountId, accountId))
+    .limit(1)
 
-    if (!result || !result.profile) {
-      return null
-    }
-
-    return {
-      ...result.profile,
-      identity: result.identity && result.identity.id ? result.identity : null,
-    }
-  } catch (error) {
-    console.error('Error fetching profile for account:', error)
+  if (!result || !result.profile) {
     return null
+  }
+
+  return {
+    ...result.profile,
+    identity: result.identity && result.identity.id ? result.identity : null,
   }
 }
 
@@ -385,28 +380,23 @@ export async function getProfileByIdentity(
 ): Promise<ProfileWithIdentity | null> {
   const normalized = identityHandle.trim().toLowerCase()
 
-  try {
-    const [result] = await db
-      .select({
-        profile: profiles,
-        identity: identities,
-      })
-      .from(identities)
-      .innerJoin(profiles, eq(identities.id, profiles.identityId))
-      .where(eq(sql`lower(${identities.identity})`, normalized))
-      .limit(1)
+  const [result] = await db
+    .select({
+      profile: profiles,
+      identity: identities,
+    })
+    .from(identities)
+    .innerJoin(profiles, eq(identities.id, profiles.identityId))
+    .where(eq(sql`lower(${identities.identity})`, normalized))
+    .limit(1)
 
-    if (!result || !result.profile) {
-      return null
-    }
-
-    return {
-      ...result.profile,
-      identity: result.identity,
-    }
-  } catch (error) {
-    console.error('Error fetching profile by identity:', error)
+  if (!result || !result.profile) {
     return null
+  }
+
+  return {
+    ...result.profile,
+    identity: result.identity,
   }
 }
 

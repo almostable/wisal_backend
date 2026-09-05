@@ -23,6 +23,7 @@ import { accounts } from '../../db/schema/accounts'
 import { profiles } from '../../db/schema/profiles'
 import { identities } from '../../db/schema/identities'
 import { follows } from '../../db/schema/follows'
+import { postViews } from '../../db/schema/post-views'
 import { getAccountIdByIdentity } from '../profile/service'
 import { getProfileByAccountId } from '../../lib/profile'
 import {
@@ -30,6 +31,7 @@ import {
   markEntityMediaDeleted,
   reconcileEntityMedia,
 } from '../uploads/service'
+import { CONTENT_EDIT_WINDOW_MS } from '../../config/constants'
 import type {
   CreatePostDTO,
   UpdatePostDTO,
@@ -54,8 +56,6 @@ import type {
   DeleteCommentResult,
   RecordViewsResult,
 } from './types'
-
-const EDIT_TIME_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
 
 const authorSelectFields = {
   authorAccount: { id: accounts.id, deletedAt: accounts.deletedAt },
@@ -339,7 +339,7 @@ export async function updatePost(
       throw new HTTPException(403, { message: 'You can only edit your own posts' })
     }
 
-    if (Date.now() - existing.createdAt.getTime() > EDIT_TIME_WINDOW_MS) {
+    if (Date.now() - existing.createdAt.getTime() > CONTENT_EDIT_WINDOW_MS) {
       throw new HTTPException(403, {
         message: 'Post can only be edited within 15 minutes of creation',
       })
@@ -644,12 +644,6 @@ export async function getPostById(
   postId: bigint,
   viewer: { accountId: bigint; isMale: boolean }
 ): Promise<PostResponse> {
-  const post = await checkPostAccess(db, postId, viewer)
-
-  if (viewer.accountId !== post.authorId) {
-    await recordAuthorPostRead(viewer.accountId, post.authorId, db)
-  }
-
   const [result] = await db
     .select({
       post: posts,
@@ -682,11 +676,47 @@ export async function getPostById(
     throw new HTTPException(404, { message: 'Post not found' })
   }
 
+  const post = result.post
+  const isAuthor = viewer.accountId === post.authorId
+
+  if (!isAuthor) {
+    const [blockRecord] = await db
+      .select({ blockerId: userBlocks.blockerId })
+      .from(userBlocks)
+      .where(
+        or(
+          and(
+            eq(userBlocks.blockerId, viewer.accountId),
+            eq(userBlocks.blockedId, post.authorId)
+          ),
+          and(
+            eq(userBlocks.blockerId, post.authorId),
+            eq(userBlocks.blockedId, viewer.accountId)
+          )
+        )
+      )
+      .limit(1)
+
+    if (blockRecord) {
+      throw new HTTPException(404, { message: 'Post not found' })
+    }
+
+    if (post.genderScope === 'same_gender' && post.authorGender !== viewer.isMale) {
+      throw new HTTPException(404, { message: 'Post not found' })
+    }
+
+    if (post.accessLevel === 'followers' && !result.isFollowingAuthor) {
+      throw new HTTPException(404, { message: 'Post not found' })
+    }
+
+    await recordAuthorPostRead(viewer.accountId, post.authorId, db)
+  }
+
   return formatPost(
     result.post,
     mapAuthor(result, Boolean(result.isFollowingAuthor)),
     Boolean(result.isSaved),
-    viewer.accountId === result.post.authorId
+    isAuthor
   )
 }
 
@@ -1530,30 +1560,73 @@ export async function deleteComment(
       throw new HTTPException(403, { message: 'You can only delete your own comments' })
     }
 
-    await tx
-      .update(comments)
-      .set({
-        deletedAt: new Date(),
-      })
-      .where(eq(comments.id, commentId))
+    let toDeleteIds: bigint[] = [existing.id]
 
-    await tx
-      .update(posts)
-      .set({
-        commentsCount: sql`GREATEST(0, ${posts.commentsCount} - 1)`,
-      })
-      .where(eq(posts.id, existing.postId))
+    if (existing.rootId === null) {
+      const descendants = await tx
+        .select({ id: comments.id })
+        .from(comments)
+        .where(and(eq(comments.rootId, existing.id), isNull(comments.deletedAt)))
 
-    if (existing.rootId) {
+      toDeleteIds = [existing.id, ...descendants.map((d) => d.id)]
+
+      await tx
+        .update(comments)
+        .set({ deletedAt: new Date() })
+        .where(inArray(comments.id, toDeleteIds))
+
+      await tx
+        .update(posts)
+        .set({
+          commentsCount: sql`GREATEST(0, ${posts.commentsCount} - ${toDeleteIds.length})`,
+        })
+        .where(eq(posts.id, existing.postId))
+    } else if (existing.branchId === null) {
+      const branchDescendants = await tx
+        .select({ id: comments.id })
+        .from(comments)
+        .where(and(eq(comments.branchId, existing.id), isNull(comments.deletedAt)))
+
+      toDeleteIds = [existing.id, ...branchDescendants.map((d) => d.id)]
+
+      await tx
+        .update(comments)
+        .set({ deletedAt: new Date() })
+        .where(inArray(comments.id, toDeleteIds))
+
+      await tx
+        .update(posts)
+        .set({
+          commentsCount: sql`GREATEST(0, ${posts.commentsCount} - ${toDeleteIds.length})`,
+        })
+        .where(eq(posts.id, existing.postId))
+
+      await tx
+        .update(comments)
+        .set({
+          repliesCount: sql`GREATEST(0, ${comments.repliesCount} - ${toDeleteIds.length})`,
+        })
+        .where(eq(comments.id, existing.rootId))
+    } else {
+      await tx
+        .update(comments)
+        .set({ deletedAt: new Date() })
+        .where(eq(comments.id, existing.id))
+
+      await tx
+        .update(posts)
+        .set({
+          commentsCount: sql`GREATEST(0, ${posts.commentsCount} - 1)`,
+        })
+        .where(eq(posts.id, existing.postId))
+
       await tx
         .update(comments)
         .set({
           repliesCount: sql`GREATEST(0, ${comments.repliesCount} - 1)`,
         })
         .where(eq(comments.id, existing.rootId))
-    }
 
-    if (existing.branchId) {
       await tx
         .update(comments)
         .set({
@@ -1562,10 +1635,12 @@ export async function deleteComment(
         .where(eq(comments.id, existing.branchId))
     }
 
-    await markEntityMediaDeleted(tx, {
-      entityType: 'comment',
-      entityId: commentId,
-    })
+    for (const id of toDeleteIds) {
+      await markEntityMediaDeleted(tx, {
+        entityType: 'comment',
+        entityId: id,
+      })
+    }
 
     return {
       success: true,
@@ -1592,7 +1667,7 @@ export async function updateComment(
       throw new HTTPException(403, { message: 'You can only edit your own comments' })
     }
 
-    if (Date.now() - existing.createdAt.getTime() > EDIT_TIME_WINDOW_MS) {
+    if (Date.now() - existing.createdAt.getTime() > CONTENT_EDIT_WINDOW_MS) {
       throw new HTTPException(403, {
         message: 'Comment can only be edited within 15 minutes of creation',
       })
@@ -1680,6 +1755,7 @@ export async function updateComment(
 }
 
 export async function recordPostViews(
+  viewer: { accountId: bigint; isMale: boolean },
   postIds: bigint[],
   executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0] = db
 ): Promise<RecordViewsResult> {
@@ -1689,21 +1765,62 @@ export async function recordPostViews(
 
   const uniquePostIds = Array.from(new Set(postIds))
 
-  const result = await executor
-    .update(posts)
-    .set({
-      viewsCount: sql`${posts.viewsCount} + 1`,
+  const accessiblePosts = await executor
+    .select({
+      id: posts.id,
+      authorId: posts.authorId,
     })
+    .from(posts)
     .where(
       and(
         inArray(posts.id, uniquePostIds),
-        isNull(posts.deletedAt)
+        isNull(posts.deletedAt),
+        or(
+          eq(posts.authorId, viewer.accountId),
+          and(
+            sql`NOT EXISTS (
+              SELECT 1 FROM ${userBlocks}
+              WHERE (${userBlocks.blockerId} = ${viewer.accountId} AND ${userBlocks.blockedId} = ${posts.authorId})
+                 OR (${userBlocks.blockerId} = ${posts.authorId} AND ${userBlocks.blockedId} = ${viewer.accountId})
+            )`,
+            sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`,
+            sql`(${posts.accessLevel} = 'public' OR EXISTS (
+              SELECT 1 FROM ${follows}
+              WHERE ${follows.followerId} = ${viewer.accountId} AND ${follows.followingId} = ${posts.authorId}
+            ))`
+          )
+        )
       )
     )
-    .returning({ id: posts.id })
+
+  if (accessiblePosts.length === 0) {
+    return { success: true, updatedCount: 0 }
+  }
+
+  const rowsToInsert = accessiblePosts.map((p) => ({
+    postId: p.id,
+    userId: viewer.accountId,
+  }))
+
+  const insertedViews = await executor
+    .insert(postViews)
+    .values(rowsToInsert)
+    .onConflictDoNothing()
+    .returning({ postId: postViews.postId })
+
+  if (insertedViews.length > 0) {
+    const newlyViewedPostIds = insertedViews.map((v) => v.postId)
+
+    await executor
+      .update(posts)
+      .set({
+        viewsCount: sql`${posts.viewsCount} + 1`,
+      })
+      .where(inArray(posts.id, newlyViewedPostIds))
+  }
 
   return {
     success: true,
-    updatedCount: result.length,
+    updatedCount: insertedViews.length,
   }
 }

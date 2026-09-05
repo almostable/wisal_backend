@@ -1,76 +1,129 @@
 import { describe, it, expect } from 'bun:test'
 import { recordPostViews } from '../service'
 import { posts } from '../../../db/schema/posts'
+import { postViews } from '../../../db/schema/post-views'
 
 describe('recordPostViews Service Unit Tests', () => {
+  const viewer = {
+    accountId: 100000000000001n,
+    isMale: true,
+  }
+
   it('returns updatedCount 0 if empty postIds array is passed', async () => {
-    let updateCalled = false
+    let selectCalled = false
     const mockExecutor: any = {
-      update: () => {
-        updateCalled = true
+      select: () => {
+        selectCalled = true
         return {
-          set: () => ({
-            where: () => ({
-              returning: async () => [],
-            }),
+          from: () => ({
+            where: async () => [],
           }),
         }
       },
     }
 
-    const result = await recordPostViews([], mockExecutor)
+    const result = await recordPostViews(viewer, [], mockExecutor)
     expect(result.success).toBe(true)
     expect(result.updatedCount).toBe(0)
-    expect(updateCalled).toBe(false)
+    expect(selectCalled).toBe(false)
   })
 
-  it('executes a single update query with deduplicated IDs and returns updatedCount', async () => {
+  it('records views for accessible posts and increments viewsCount', async () => {
+    let insertedTable: any = null
+    let insertedValues: any = null
     let updatedTable: any = null
-    let setData: any = null
-    let whereCondition: any = null
-    let returningSelection: any = null
 
-    const mockReturningRows = [
-      { id: 100000000000001n },
-      { id: 100000000000002n },
+    const mockAccessible = [
+      { id: 200000000000001n, authorId: 900000000000001n },
+      { id: 200000000000002n, authorId: 900000000000002n },
+    ]
+
+    const mockInserted = [
+      { postId: 200000000000001n },
+      { postId: 200000000000002n },
     ]
 
     const mockExecutor: any = {
+      select: () => ({
+        from: () => ({
+          where: async () => mockAccessible,
+        }),
+      }),
+      insert: (table: any) => {
+        insertedTable = table
+        return {
+          values: (vals: any) => {
+            insertedValues = vals
+            return {
+              onConflictDoNothing: () => ({
+                returning: async () => mockInserted,
+              }),
+            }
+          },
+        }
+      },
       update: (table: any) => {
         updatedTable = table
         return {
-          set: (data: any) => {
-            setData = data
-            return {
-              where: (cond: any) => {
-                whereCondition = cond
-                return {
-                  returning: async (sel: any) => {
-                    returningSelection = sel
-                    return mockReturningRows
-                  },
-                }
-              },
-            }
-          },
+          set: () => ({
+            where: async () => [],
+          }),
         }
       },
     }
 
     const postIds = [
-      100000000000001n,
-      100000000000002n,
-      100000000000001n, // duplicate
+      200000000000001n,
+      200000000000002n,
+      200000000000001n, // duplicate
     ]
 
-    const result = await recordPostViews(postIds, mockExecutor)
+    const result = await recordPostViews(viewer, postIds, mockExecutor)
 
     expect(result.success).toBe(true)
     expect(result.updatedCount).toBe(2)
+    expect(insertedTable).toBe(postViews)
+    expect(insertedValues).toEqual([
+      { postId: 200000000000001n, userId: viewer.accountId },
+      { postId: 200000000000002n, userId: viewer.accountId },
+    ])
     expect(updatedTable).toBe(posts)
-    expect(setData).toBeDefined()
-    expect(setData.viewsCount).toBeDefined()
-    expect(whereCondition).toBeDefined()
-    expect(returningSelection).toEqual({ id: posts.id })
+  })
+
+  it('deduplicates re-views: if already viewed, onConflict returns empty and does not increment', async () => {
+    let updateCalled = false
+
+    const mockAccessible = [
+      { id: 200000000000001n, authorId: 900000000000001n },
+    ]
+
+    const mockExecutor: any = {
+      select: () => ({
+        from: () => ({
+          where: async () => mockAccessible,
+        }),
+      }),
+      insert: () => ({
+        values: () => ({
+          onConflictDoNothing: () => ({
+            returning: async () => [], // already viewed!
+          }),
+        }),
+      }),
+      update: () => {
+        updateCalled = true
+        return {
+          set: () => ({
+            where: async () => [],
+          }),
+        }
+      },
+    }
+
+    const result = await recordPostViews(viewer, [200000000000001n], mockExecutor)
+
+    expect(result.success).toBe(true)
+    expect(result.updatedCount).toBe(0)
+    expect(updateCalled).toBe(false)
   })
 })

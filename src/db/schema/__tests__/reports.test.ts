@@ -144,7 +144,7 @@ describe('Reports Schema Tests', () => {
       reason: 'inappropriate_content',
       details: null,
       status: 'pending',
-      resolveById: null,
+      resolvedById: null,
       modNote: null,
       resolvedAt: null,
       createdAt: now,
@@ -160,7 +160,7 @@ describe('Reports Schema Tests', () => {
     expect(parsed.reason).toBe('inappropriate_content')
     expect(parsed.details).toBeNull()
     expect(parsed.status).toBe('pending')
-    expect(parsed.resolveById).toBeNull()
+    expect(parsed.resolvedById).toBeNull()
     expect(parsed.modNote).toBeNull()
     expect(parsed.resolvedAt).toBeNull()
     expect(parsed.createdAt).toEqual(now)
@@ -179,7 +179,7 @@ describe('Reports Schema Tests', () => {
       reason: 'boundary_violation',
       details: 'Violated community boundaries',
       status: 'resolved',
-      resolveById: 888888888888888n,
+      resolvedById: 888888888888888n,
       modNote: 'Post deleted and user warned',
       resolvedAt,
       createdAt,
@@ -188,7 +188,7 @@ describe('Reports Schema Tests', () => {
 
     const parsed = selectReportSchema.parse(record)
     expect(parsed.status).toBe('resolved')
-    expect(parsed.resolveById).toBe(888888888888888n)
+    expect(parsed.resolvedById).toBe(888888888888888n)
     expect(parsed.modNote).toBe('Post deleted and user warned')
     expect(parsed.resolvedAt).toEqual(resolvedAt)
   })

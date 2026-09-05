@@ -6,8 +6,14 @@ declare global {
   }
 }
 
-;(BigInt.prototype as any).toJSON = function (): string {
-  return this.toString()
+if (!('toJSON' in BigInt.prototype)) {
+  Object.defineProperty(BigInt.prototype, 'toJSON', {
+    value: function (): string {
+      return this.toString()
+    },
+    writable: true,
+    configurable: true,
+  })
 }
 
 export const WISAL_EPOCH = 1704067200000n

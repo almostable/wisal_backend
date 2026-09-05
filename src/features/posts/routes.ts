@@ -59,8 +59,13 @@ postsRouter.post('/', zValidator('json', createPostSchema), async (c) => {
 })
 
 postsRouter.post('/views', zValidator('json', recordViewsSchema), async (c) => {
+  const account = c.get('account')
+  const profile = c.get('profile')
   const { postIds } = c.req.valid('json')
-  const result = await recordPostViews(postIds.map((id) => BigInt(id)))
+  const result = await recordPostViews(
+    { accountId: account.id, isMale: profile.isMale! },
+    postIds
+  )
 
   return c.json(result)
 })
@@ -131,7 +136,7 @@ postsRouter.get(
     const query = c.req.valid('query')
 
     const result = await getCommentReplies(
-      BigInt(id),
+      id,
       { accountId: account.id, isMale: profile.isMale! },
       query
     )
@@ -154,7 +159,7 @@ postsRouter.post(
     const data = c.req.valid('json')
 
     const comment = await replyToComment(
-      BigInt(id),
+      id,
       account.id,
       { accountId: account.id, isMale: profile.isMale! },
       data
@@ -179,7 +184,7 @@ postsRouter.patch(
     const { id } = c.req.valid('param')
     const data = c.req.valid('json')
 
-    const comment = await updateComment(account.id, BigInt(id), data)
+    const comment = await updateComment(account.id, id, data)
 
     return c.json({
       success: true,
@@ -195,7 +200,7 @@ postsRouter.delete(
     const account = c.get('account')
     const { id } = c.req.valid('param')
 
-    const result = await deleteComment(account.id, BigInt(id))
+    const result = await deleteComment(account.id, id)
 
     return c.json(result)
   }
@@ -212,7 +217,7 @@ postsRouter.get(
     const query = c.req.valid('query')
 
     const result = await getPostComments(
-      BigInt(id),
+      id,
       { accountId: account.id, isMale: profile.isMale! },
       query
     )
@@ -235,7 +240,7 @@ postsRouter.post(
     const data = c.req.valid('json')
 
     const comment = await createComment(
-      BigInt(id),
+      id,
       account.id,
       { accountId: account.id, isMale: profile.isMale! },
       {
@@ -261,7 +266,7 @@ postsRouter.get('/:id', zValidator('param', postIdParamSchema), async (c) => {
   const profile = c.get('profile')
   const { id } = c.req.valid('param')
 
-  const post = await getPostById(BigInt(id), {
+  const post = await getPostById(id, {
     accountId: account.id,
     isMale: profile.isMale!,
   })
@@ -281,7 +286,7 @@ postsRouter.patch(
     const { id } = c.req.valid('param')
     const data = c.req.valid('json')
 
-    const post = await pinPost(account.id, BigInt(id), data)
+    const post = await pinPost(account.id, id, data)
 
     return c.json({
       success: true,
@@ -299,7 +304,7 @@ postsRouter.patch(
     const { id } = c.req.valid('param')
     const data = c.req.valid('json')
 
-    const post = await updatePost(account.id, BigInt(id), data)
+    const post = await updatePost(account.id, id, data)
 
     return c.json({
       success: true,
@@ -313,7 +318,7 @@ postsRouter.post('/:id/save', zValidator('param', postIdParamSchema), async (c) 
   const profile = c.get('profile')
   const { id } = c.req.valid('param')
 
-  const result = await savePost(BigInt(id), {
+  const result = await savePost(id, {
     accountId: account.id,
     isMale: profile.isMale!,
   })
@@ -329,7 +334,7 @@ postsRouter.post('/:id/unsave', zValidator('param', postIdParamSchema), async (c
   const profile = c.get('profile')
   const { id } = c.req.valid('param')
 
-  const result = await unsavePost(BigInt(id), {
+  const result = await unsavePost(id, {
     accountId: account.id,
     isMale: profile.isMale!,
   })
@@ -344,7 +349,7 @@ postsRouter.delete('/:id', zValidator('param', postIdParamSchema), async (c) => 
   const account = c.get('account')
   const { id } = c.req.valid('param')
 
-  const result = await deletePost(account.id, BigInt(id))
+  const result = await deletePost(account.id, id)
 
   return c.json(result)
 })

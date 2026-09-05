@@ -2692,9 +2692,11 @@ describe('Posts Feature Route Tests', () => {
         isOnboardingCompleted: () => true,
       }))
 
+      let capturedViewer: any = null
       let capturedIds: bigint[] = []
       mock.module('../service', () => ({
-        recordPostViews: async (postIds: bigint[]) => {
+        recordPostViews: async (viewer: any, postIds: bigint[]) => {
+          capturedViewer = viewer
           capturedIds = postIds
           return { success: true, updatedCount: postIds.length }
         },
@@ -2715,6 +2717,7 @@ describe('Posts Feature Route Tests', () => {
       const body = (await res.json()) as { success: boolean; updatedCount: number }
       expect(body.success).toBe(true)
       expect(body.updatedCount).toBe(2)
+      expect(capturedViewer.accountId).toBe(maleAccount.id)
       expect(capturedIds).toEqual([999999999999991n, 999999999999992n])
     })
   })

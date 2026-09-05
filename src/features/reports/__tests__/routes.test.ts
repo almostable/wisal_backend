@@ -59,7 +59,7 @@ describe('Reports Feature Route Tests', () => {
     reason: 'spam',
     details: 'Spamming referral links',
     status: 'pending',
-    resolveById: null,
+    resolvedById: null,
     modNote: null,
     resolvedAt: null,
     createdAt: new Date(),

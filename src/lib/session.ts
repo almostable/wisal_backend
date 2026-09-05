@@ -1,10 +1,11 @@
-import { eq, and, isNull } from 'drizzle-orm'
+import { eq, and, isNull, gt, lte, sql } from 'drizzle-orm'
 import { db } from '../db'
 import { sessions, type Session } from '../db/schema/sessions'
 import { accounts, safeAccountSchema, type SafeAccount } from '../db/schema/accounts'
-import { generateToken, hashToken, calculateExpiryDate, isExpired } from './token'
+import { generateToken, hashToken, calculateExpiryDate } from './token'
+import { SESSION_TTL_DAYS } from '../config/constants'
 
-export const SESSION_TTL_DAYS = 360
+export { SESSION_TTL_DAYS }
 
 export const generateSessionToken = () => generateToken(32)
 export const hashSessionToken = (token: string) => hashToken(token)
@@ -50,19 +51,26 @@ export async function validateSessionToken(
   const [result] = await db
     .select({
       session: sessions,
-      account: accounts,
+      account: {
+        id: accounts.id,
+        email: accounts.email,
+        deletedAt: accounts.deletedAt,
+        createdAt: accounts.createdAt,
+        updatedAt: accounts.updatedAt,
+      },
     })
     .from(sessions)
     .innerJoin(accounts, eq(sessions.accountId, accounts.id))
-    .where(and(eq(sessions.tokenHash, tokenHash), isNull(accounts.deletedAt)))
+    .where(
+      and(
+        eq(sessions.tokenHash, tokenHash),
+        gt(sessions.expiresAt, sql`now()`),
+        isNull(accounts.deletedAt)
+      )
+    )
     .limit(1)
 
   if (!result || !result.account) {
-    return null
-  }
-
-  if (isExpired(result.session.expiresAt)) {
-    db.delete(sessions).where(eq(sessions.id, result.session.id)).catch(() => {})
     return null
   }
 
@@ -83,4 +91,15 @@ export async function invalidateSessionByToken(token: string): Promise<void> {
 
 export async function invalidateAllAccountSessions(accountId: bigint): Promise<void> {
   await db.delete(sessions).where(eq(sessions.accountId, accountId))
+}
+
+export async function cleanupExpiredSessions(
+  executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0] = db
+): Promise<number> {
+  const deleted = await executor
+    .delete(sessions)
+    .where(lte(sessions.expiresAt, sql`now()`))
+    .returning({ id: sessions.id })
+
+  return deleted.length
 }

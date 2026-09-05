@@ -4,7 +4,7 @@ import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
 import { snowflakePrimaryKey, snowflakeId, timestamps, emailSchema } from './common'
 import { accounts } from './accounts'
-import { identities, identityFormatSchema, type Identity } from './identities'
+import { identities, identityFormatSchema, standardIdentityFormatSchema, type Identity } from './identities'
 
 export const urlSchema = z
   .string()
@@ -108,7 +108,7 @@ export const onboardingInputSchema = z.object({
   isMale: z.boolean({
     message: 'is_male (gender) is required and must be a boolean',
   }),
-  identity: identityFormatSchema,
+  identity: standardIdentityFormatSchema,
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
   shortDescription: shortDescriptionSchema.nullable().optional(),
