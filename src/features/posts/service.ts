@@ -673,7 +673,6 @@ export async function getFeed(
   viewer: { accountId: bigint; isMale: boolean },
   query: FeedQueryDTO
 ): Promise<FeedResult> {
-  const feedType = query.feed ?? query.type ?? 'public'
   const limit = Math.min(Math.max(query.limit ?? 20, 1), 100)
   const offset = Math.max(query.offset ?? 0, 0)
 
@@ -683,34 +682,16 @@ export async function getFeed(
        OR (${userBlocks.blockerId} = ${posts.authorId} AND ${userBlocks.blockedId} = ${viewer.accountId})
   )`
 
-  let whereCondition: SQL
-
-  if (feedType === 'following') {
-    whereCondition = and(
-      isNull(posts.deletedAt),
-      notBlockedCondition,
-      sql`EXISTS (
-        SELECT 1 FROM ${follows}
-        WHERE ${follows.followerId} = ${viewer.accountId}
-          AND ${follows.followingId} = ${posts.authorId}
-      )`,
-      sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`
-    )!
-  } else {
-    whereCondition = and(
-      isNull(posts.deletedAt),
-      notBlockedCondition,
-      sql`(${posts.authorId} = ${viewer.accountId} OR (
-        (${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))
-        AND
-        (${posts.accessLevel} = 'public' OR EXISTS (
-          SELECT 1 FROM ${follows}
-          WHERE ${follows.followerId} = ${viewer.accountId}
-            AND ${follows.followingId} = ${posts.authorId}
-        ))
-      ))`
-    )!
-  }
+  const whereCondition = and(
+    isNull(posts.deletedAt),
+    notBlockedCondition,
+    sql`EXISTS (
+      SELECT 1 FROM ${follows}
+      WHERE ${follows.followerId} = ${viewer.accountId}
+        AND ${follows.followingId} = ${posts.authorId}
+    )`,
+    sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`
+  )!
 
   const items = await db
     .select({
@@ -738,7 +719,7 @@ export async function getFeed(
       )
     )
     .where(whereCondition)
-    .orderBy(feedType === 'following' ? desc(posts.createdAt) : sql`random()`)
+    .orderBy(desc(posts.createdAt))
     .limit(limit)
     .offset(offset)
 

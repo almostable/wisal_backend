@@ -48,6 +48,7 @@ export const profiles = pgTable('profiles', {
     .unique()
     .references(() => identities.id, { onDelete: 'restrict' }),
   regularFollowersCount: integer('regular_followers_count').notNull().default(0),
+  followersCount: integer('followers_count').notNull().default(0),
   verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
   ...timestamps,
 })

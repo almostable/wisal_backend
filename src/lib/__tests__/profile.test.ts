@@ -17,6 +17,7 @@ describe('Profile Utility Tests', () => {
       contacts: null,
       identityId: 100n,
       regularFollowersCount: 0,
+      followersCount: 15,
       verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -50,6 +51,7 @@ describe('Profile Utility Tests', () => {
       contacts: null,
       identityId: 100n,
       regularFollowersCount: 0,
+      followersCount: 0,
       verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -78,6 +80,7 @@ describe('Profile Utility Tests', () => {
       contacts: null,
       identityId: 100n,
       regularFollowersCount: 0,
+      followersCount: 0,
       verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -106,6 +109,7 @@ describe('Profile Utility Tests', () => {
       contacts: null,
       identityId: 100n,
       regularFollowersCount: 0,
+      followersCount: 0,
       verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -143,6 +147,7 @@ describe('Profile Utility Tests', () => {
       contacts: null,
       identityId: 100n,
       regularFollowersCount: 42,
+      followersCount: 50,
       verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -164,7 +169,11 @@ describe('Profile Utility Tests', () => {
     expect(formatted!.countryCode).toBe('US')
     expect(formatted!.cityId).toBe('nyc_1')
     expect(formatted!.regularFollowersCount).toBe(42)
+    expect(formatted!.followersCount).toBeUndefined()
     expect(formatted!.isVerified).toBe(false)
+
+    const formattedWithFollowers = formatProfileResponse(fullProfile, { includeFollowersCount: true })
+    expect(formattedWithFollowers!.followersCount).toBe(50)
 
     const verifiedProfile: ProfileWithIdentity = {
       ...fullProfile,
@@ -189,6 +198,7 @@ describe('Profile Utility Tests', () => {
       contacts: null,
       identityId: 100n,
       regularFollowersCount: 42,
+      followersCount: 50,
       verifiedAt: new Date(),
       createdAt: new Date(),
       updatedAt: new Date(),

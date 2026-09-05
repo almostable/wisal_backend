@@ -37,6 +37,7 @@ describe('Posts Feature Route Tests', () => {
     contacts: null,
     identityId: 444444444444444n,
     regularFollowersCount: 0,
+    followersCount: 0,
     verifiedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -77,6 +78,7 @@ describe('Posts Feature Route Tests', () => {
     contacts: null,
     identityId: 888888888888888n,
     regularFollowersCount: 0,
+    followersCount: 0,
     verifiedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -673,42 +675,7 @@ describe('Posts Feature Route Tests', () => {
     expect(body.message).toBe('Post deleted successfully')
   })
 
-  it('GET /posts/feed returns feed posts', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: maleAccount,
-        session: maleSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => maleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    mock.module('../service', () => ({
-      getFeed: async () => ({
-        posts: [samplePost],
-        limit: 20,
-        offset: 0,
-      }),
-    }))
-
-    const res = await app.request('/posts/feed?feed=public&limit=20&offset=0', {
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer valid_male_token',
-      },
-    })
-
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { success: boolean; posts: PostResponse[]; limit: number; offset: number }
-    expect(body.success).toBe(true)
-    expect(body.posts.length).toBe(1)
-    expect(body.posts[0].content).toBe('First test post')
-  })
-
-  it('GET /posts/feed?feed=following passes feed parameter and returns following feed posts', async () => {
+  it('GET /posts/feed returns feed posts of followed authors', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -723,7 +690,8 @@ describe('Posts Feature Route Tests', () => {
 
     mock.module('../service', () => ({
       getFeed: async (_viewer: any, query: any) => {
-        expect(query.feed).toBe('following')
+        expect(query.limit).toBe(20)
+        expect(query.offset).toBe(0)
         return {
           posts: [samplePost],
           limit: 20,
@@ -732,7 +700,7 @@ describe('Posts Feature Route Tests', () => {
       },
     }))
 
-    const res = await app.request('/posts/feed?feed=following&limit=20&offset=0', {
+    const res = await app.request('/posts/feed?limit=20&offset=0', {
       method: 'GET',
       headers: {
         Authorization: 'Bearer valid_male_token',
@@ -743,6 +711,7 @@ describe('Posts Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; posts: PostResponse[]; limit: number; offset: number }
     expect(body.success).toBe(true)
     expect(body.posts.length).toBe(1)
+    expect(body.posts[0].content).toBe('First test post')
   })
 
   it('GET /posts/:id returns post when allowed', async () => {

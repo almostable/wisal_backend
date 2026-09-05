@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { authMiddleware } from '../../middleware/auth'
+import { onboardingMiddleware } from '../../middleware/onboarding'
 import {
   identityParamSchema,
   onboardingInputSchema,
@@ -8,6 +9,7 @@ import {
   listMyInvitesQuerySchema,
   listFollowsQuerySchema,
   listBlocksQuerySchema,
+  profileFeedQuerySchema,
 } from './schema'
 import {
   getMyProfile,
@@ -25,6 +27,7 @@ import {
   blockUser,
   unblockUser,
   getBlockedUsers,
+  getProfileFeed,
 } from './service'
 
 export const profileRouter = new Hono()
@@ -228,6 +231,22 @@ profileRouter.get(
     const { identity } = c.req.valid('param')
     const query = c.req.valid('query')
     const result = await getUserFollowingByIdentity(identity, query, account.id)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+profileRouter.get(
+  '/feed',
+  onboardingMiddleware,
+  zValidator('query', profileFeedQuerySchema),
+  async (c) => {
+    const account = c.get('account')
+    const query = c.req.valid('query')
+    const result = await getProfileFeed(account.id, query)
 
     return c.json({
       success: true,

@@ -97,8 +97,6 @@ export interface PinPostDTO {
 }
 
 export interface FeedQueryDTO {
-  feed?: 'public' | 'following'
-  type?: 'public' | 'following'
   limit?: number
   offset?: number
 }

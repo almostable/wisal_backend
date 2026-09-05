@@ -38,6 +38,7 @@ describe('Onboarding Middleware Unit Tests', () => {
     contacts: null,
     identityId: 444444444444444n,
     regularFollowersCount: 0,
+    followersCount: 0,
     verifiedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),

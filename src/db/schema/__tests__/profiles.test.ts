@@ -226,6 +226,7 @@ describe('Profiles Schema Tests', () => {
       contacts: null,
       identityId: null,
       regularFollowersCount: 0,
+      followersCount: 0,
       verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -237,6 +238,7 @@ describe('Profiles Schema Tests', () => {
     expect(parsedSelect.cityId).toBe('city_nyc')
     expect(parsedSelect.contacts).toBeNull()
     expect(parsedSelect.regularFollowersCount).toBe(0)
+    expect(parsedSelect.followersCount).toBe(0)
     expect(parsedSelect.verifiedAt).toBeNull()
   })
 })

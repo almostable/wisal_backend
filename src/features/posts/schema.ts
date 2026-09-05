@@ -117,10 +117,7 @@ export const pinPostSchema = z.object({
   isPinned: z.boolean().default(true),
 })
 
-export const feedQuerySchema = createPaginationSchema(20, 100).extend({
-  feed: z.enum(['public', 'following']).default('public').optional(),
-  type: z.enum(['public', 'following']).optional(),
-})
+export const feedQuerySchema = createPaginationSchema(20, 100)
 
 export const userPostsQuerySchema = createPaginationSchema(20, 100)
 

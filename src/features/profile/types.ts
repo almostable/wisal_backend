@@ -87,3 +87,25 @@ export interface BlockActionResult {
   message: string
 }
 
+export type ProfileFeedType = 'random' | 'recommended'
+
+export interface ProfileFeedItem {
+  name: string
+  isMale: boolean
+  avatarKey: string | null
+  identity: string
+  shortDescription: string
+  regularFollowersCount: number
+  countryCode: string
+  cityId: string | null
+  isVerified: boolean
+}
+
+export interface ProfileFeedResult {
+  profiles: ProfileFeedItem[]
+  type: ProfileFeedType
+  seed?: string
+  limit: number
+  offset: number
+}
+

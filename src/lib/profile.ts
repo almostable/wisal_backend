@@ -17,6 +17,7 @@ export interface SafeProfile {
   contacts: Contacts | null
   identity: string | null
   regularFollowersCount: number
+  followersCount?: number
   isVerified: boolean
   isFollowing?: boolean
   isBlocked?: boolean
@@ -25,7 +26,7 @@ export interface SafeProfile {
 
 export function formatProfileResponse(
   profile: (Profile & { identity?: Identity | null | string }) | null,
-  flags?: { isFollowing?: boolean }
+  flags?: { isFollowing?: boolean; includeFollowersCount?: boolean }
 ): SafeProfile | null {
   if (!profile) return null
 
@@ -47,6 +48,10 @@ export function formatProfileResponse(
     identity: identityStr,
     regularFollowersCount: profile.regularFollowersCount ?? 0,
     isVerified: Boolean(profile.verifiedAt),
+  }
+
+  if (flags?.includeFollowersCount) {
+    res.followersCount = profile.followersCount ?? 0
   }
 
   if (flags?.isFollowing !== undefined) {

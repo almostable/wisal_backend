@@ -58,7 +58,7 @@ describe('Profile Feature Route Tests', () => {
 
     mock.module('../service', () => ({
       getMyProfile: async () => ({
-        profile: mockProfile,
+        profile: { ...mockProfile, followersCount: 10 },
         isOnboardingCompleted: true,
       }),
     }))
@@ -79,6 +79,7 @@ describe('Profile Feature Route Tests', () => {
     expect(body.success).toBe(true)
     expect(body.profile.name).toBe('Wisal User')
     expect(body.profile.identity).toBe('wisaluser')
+    expect(body.profile.followersCount).toBe(10)
     expect((body.profile as any).identityId).toBeUndefined()
     expect(body.isOnboardingCompleted).toBe(true)
   })
@@ -599,6 +600,7 @@ describe('Profile Feature Route Tests', () => {
     expect(bodyFollowed.profile.name).toBe('Wisal User')
     expect(bodyFollowed.profile.identity).toBe('wisaluser')
     expect(bodyFollowed.profile.isFollowing).toBe(true)
+    expect((bodyFollowed.profile as any).followersCount).toBeUndefined()
     expect((bodyFollowed.profile as any).identityId).toBeUndefined()
 
     const resNotFollowed = await app.request('/profile/notfollowed', {
@@ -1320,6 +1322,344 @@ describe('Profile Feature Route Tests', () => {
     // Zod strips un-declared fields; verifiedAt and isVerified must not reach the service
     expect(capturedData.verifiedAt).toBeUndefined()
     expect(capturedData.isVerified).toBeUndefined()
+  })
+
+  it('GET /profile/feed rejects unauthenticated request with 401', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => null,
+    }))
+
+    const res = await app.request('/profile/feed', {
+      method: 'GET',
+    })
+
+    expect(res.status).toBe(401)
+  })
+
+  it('GET /profile/feed rejects request when onboarding is not completed with 403', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => ({
+        ...mockProfile,
+        name: '',
+      }),
+      isOnboardingCompleted: () => false,
+    }))
+
+    const res = await app.request('/profile/feed', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Profile onboarding required')
+  })
+
+  it('GET /profile/feed returns recommended profiles (verified only, sorted by regularFollowersCount)', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => ({
+        ...mockProfile,
+        accountId: mockAccount.id,
+        identity: { id: 10n, identity: 'wisaluser' },
+      }),
+      isOnboardingCompleted: () => true,
+    }))
+
+    const sampleFeedItem = {
+      name: 'Verified Star',
+      isMale: true,
+      avatarKey: 'avatar_star.jpg',
+      identity: 'verified_star',
+      shortDescription: 'I am verified',
+      regularFollowersCount: 100,
+      countryCode: 'US',
+      cityId: 'nyc',
+      isVerified: true,
+    }
+
+    mock.module('../service', () => ({
+      getProfileFeed: async (_accountId: bigint, query: any) => {
+        expect(query.type).toBe('recommended')
+        expect(query.limit).toBe(20)
+        expect(query.offset).toBe(0)
+        return {
+          profiles: [sampleFeedItem],
+          type: 'recommended',
+          limit: 20,
+          offset: 0,
+        }
+      },
+    }))
+
+    const res = await app.request('/profile/feed?type=recommended&limit=20&offset=0', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      profiles: any[]
+      type: string
+      limit: number
+      offset: number
+    }
+    expect(body.success).toBe(true)
+    expect(body.type).toBe('recommended')
+    expect(body.profiles.length).toBe(1)
+    expect(body.profiles[0].name).toBe('Verified Star')
+    expect(body.profiles[0].isVerified).toBe(true)
+    expect(body.profiles[0].regularFollowersCount).toBe(100)
+    expect(body.profiles[0].followersCount).toBeUndefined()
+  })
+
+  it('GET /profile/feed returns random profiles without seed on initial request (offset=0)', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => ({
+        ...mockProfile,
+        accountId: mockAccount.id,
+        identity: { id: 10n, identity: 'wisaluser' },
+      }),
+      isOnboardingCompleted: () => true,
+    }))
+
+    const sampleRandomItem = {
+      name: 'Random User',
+      isMale: false,
+      avatarKey: null,
+      identity: 'random_user',
+      shortDescription: 'Hello world',
+      regularFollowersCount: 5,
+      countryCode: 'CA',
+      cityId: null,
+      isVerified: false,
+    }
+
+    mock.module('../service', () => ({
+      getProfileFeed: async (_accountId: bigint, query: any) => {
+        expect(query.type).toBe('random')
+        expect(query.seed).toBeUndefined()
+        return {
+          profiles: [sampleRandomItem],
+          type: 'random',
+          seed: '0123456789abcdef',
+          limit: 20,
+          offset: 0,
+        }
+      },
+    }))
+
+    const res = await app.request('/profile/feed?type=random', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      profiles: any[]
+      type: string
+      seed: string
+      limit: number
+      offset: number
+    }
+    expect(body.success).toBe(true)
+    expect(body.type).toBe('random')
+    expect(body.seed).toBe('0123456789abcdef')
+    expect(body.profiles[0].isVerified).toBe(false)
+    expect(body.profiles[0].followersCount).toBeUndefined()
+  })
+
+  it('GET /profile/feed accepts valid seed for pagination in random mode (offset > 0)', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => ({
+        ...mockProfile,
+        accountId: mockAccount.id,
+        identity: { id: 10n, identity: 'wisaluser' },
+      }),
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      getProfileFeed: async (_accountId: bigint, query: any) => {
+        expect(query.type).toBe('random')
+        expect(query.offset).toBe(20)
+        expect(query.seed).toBe('0123456789abcdef')
+        return {
+          profiles: [],
+          type: 'random',
+          seed: '0123456789abcdef',
+          limit: 20,
+          offset: 20,
+        }
+      },
+    }))
+
+    const res = await app.request(
+      '/profile/feed?type=random&offset=20&seed=0123456789abcdef',
+      {
+        method: 'GET',
+        headers: {
+          Authorization: 'Bearer valid_user_token',
+        },
+      }
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; seed: string }
+    expect(body.success).toBe(true)
+    expect(body.seed).toBe('0123456789abcdef')
+  })
+
+  it('GET /profile/feed rejects seed on initial request (offset=0) in random mode', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => ({
+        ...mockProfile,
+        accountId: mockAccount.id,
+        identity: { id: 10n, identity: 'wisaluser' },
+      }),
+      isOnboardingCompleted: () => true,
+    }))
+
+    const res = await app.request(
+      '/profile/feed?type=random&seed=0123456789abcdef',
+      {
+        method: 'GET',
+        headers: {
+          Authorization: 'Bearer valid_user_token',
+        },
+      }
+    )
+
+    expect(res.status).toBe(400)
+  })
+
+  it('GET /profile/feed rejects missing seed on pagination (offset > 0) in random mode', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => ({
+        ...mockProfile,
+        accountId: mockAccount.id,
+        identity: { id: 10n, identity: 'wisaluser' },
+      }),
+      isOnboardingCompleted: () => true,
+    }))
+
+    const res = await app.request('/profile/feed?type=random&offset=20', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+      },
+    })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('GET /profile/feed rejects seed in recommended mode', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => ({
+        ...mockProfile,
+        accountId: mockAccount.id,
+        identity: { id: 10n, identity: 'wisaluser' },
+      }),
+      isOnboardingCompleted: () => true,
+    }))
+
+    const res = await app.request(
+      '/profile/feed?type=recommended&seed=0123456789abcdef',
+      {
+        method: 'GET',
+        headers: {
+          Authorization: 'Bearer valid_user_token',
+        },
+      }
+    )
+
+    expect(res.status).toBe(400)
+  })
+
+  it('GET /profile/feed rejects invalid seed format', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => ({
+        ...mockProfile,
+        accountId: mockAccount.id,
+        identity: { id: 10n, identity: 'wisaluser' },
+      }),
+      isOnboardingCompleted: () => true,
+    }))
+
+    const res = await app.request(
+      '/profile/feed?type=random&offset=20&seed=invalid-seed',
+      {
+        method: 'GET',
+        headers: {
+          Authorization: 'Bearer valid_user_token',
+        },
+      }
+    )
+
+    expect(res.status).toBe(400)
   })
 })
 

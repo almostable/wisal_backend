@@ -1,5 +1,6 @@
 import {
   eq,
+  ne,
   and,
   or,
   count,
@@ -36,7 +37,7 @@ import type {
   OnboardingInput,
   UpdateProfileInput,
 } from '../../db/schema/profiles'
-import type { ListMyInvitesQuery, ListFollowsQuery, ListBlocksQuery } from './schema'
+import type { ListMyInvitesQuery, ListFollowsQuery, ListBlocksQuery, ProfileFeedQuery } from './schema'
 import type {
   PublicProfile,
   MyProfileResult,
@@ -50,6 +51,9 @@ import type {
   BlockedUserItem,
   ListBlocksResult,
   BlockActionResult,
+  ProfileFeedResult,
+  ProfileFeedItem,
+  ProfileFeedType,
 } from './types'
 
 export async function getMyProfile(accountId: bigint): Promise<MyProfileResult> {
@@ -60,7 +64,7 @@ export async function getMyProfile(accountId: bigint): Promise<MyProfileResult> 
   }
 
   return {
-    profile: formatProfileResponse(profile)!,
+    profile: formatProfileResponse(profile, { includeFollowersCount: true })!,
     isOnboardingCompleted: isOnboardingCompleted(profile),
   }
 }
@@ -137,7 +141,10 @@ export async function getPublicProfile(
     isFollowing = Boolean(followRecord)
   }
 
-  return formatProfileResponse(profile, { isFollowing })!
+  return formatProfileResponse(profile, {
+    isFollowing,
+    includeFollowersCount: viewerAccountId === profile.accountId,
+  })!
 }
 
 export async function checkHandleAvailability(
@@ -446,18 +453,30 @@ export async function followUser(
     throw new HTTPException(400, { message: 'Cannot follow a blocked user' })
   }
 
-  await db
-    .insert(follows)
-    .values({
-      followerId: followerAccountId,
-      followingId: targetAccountId,
-    })
-    .onConflictDoNothing()
+  return await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(follows)
+      .values({
+        followerId: followerAccountId,
+        followingId: targetAccountId,
+      })
+      .onConflictDoNothing()
+      .returning({ followerId: follows.followerId })
 
-  return {
-    following: true,
-    message: 'Successfully followed user',
-  }
+    if (inserted.length > 0) {
+      await tx
+        .update(profiles)
+        .set({
+          followersCount: sql`${profiles.followersCount} + 1`,
+        })
+        .where(eq(profiles.accountId, targetAccountId))
+    }
+
+    return {
+      following: true,
+      message: 'Successfully followed user',
+    }
+  })
 }
 
 export async function unfollowUser(
@@ -470,19 +489,31 @@ export async function unfollowUser(
     'Users cannot unfollow themselves'
   )
 
-  await db
-    .delete(follows)
-    .where(
-      and(
-        eq(follows.followerId, followerAccountId),
-        eq(follows.followingId, targetAccountId)
+  return await db.transaction(async (tx) => {
+    const deleted = await tx
+      .delete(follows)
+      .where(
+        and(
+          eq(follows.followerId, followerAccountId),
+          eq(follows.followingId, targetAccountId)
+        )
       )
-    )
+      .returning({ followerId: follows.followerId })
 
-  return {
-    following: false,
-    message: 'Successfully unfollowed user',
-  }
+    if (deleted.length > 0) {
+      await tx
+        .update(profiles)
+        .set({
+          followersCount: sql`GREATEST(0, ${profiles.followersCount} - 1)`,
+        })
+        .where(eq(profiles.accountId, targetAccountId))
+    }
+
+    return {
+      following: false,
+      message: 'Successfully unfollowed user',
+    }
+  })
 }
 
 export async function blockUser(
@@ -504,7 +535,7 @@ export async function blockUser(
       })
       .onConflictDoNothing()
 
-    await tx
+    const deletedFollows = await tx
       .delete(follows)
       .where(
         or(
@@ -518,6 +549,19 @@ export async function blockUser(
           )
         )
       )
+      .returning({
+        followerId: follows.followerId,
+        followingId: follows.followingId,
+      })
+
+    for (const rel of deletedFollows) {
+      await tx
+        .update(profiles)
+        .set({
+          followersCount: sql`GREATEST(0, ${profiles.followersCount} - 1)`,
+        })
+        .where(eq(profiles.accountId, rel.followingId))
+    }
 
     return {
       blocked: true,
@@ -592,6 +636,89 @@ export async function getBlockedUsers(
       blockedAt: item.blockedAt,
     })),
     total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
+  }
+}
+
+export function generateFeedSeed(): string {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+}
+
+export async function getProfileFeed(
+  viewerAccountId: bigint,
+  query: ProfileFeedQuery
+): Promise<ProfileFeedResult> {
+  const type: ProfileFeedType = query.type ?? 'recommended'
+  const limit = Math.min(Math.max(query.limit ?? 20, 1), 100)
+  const offset = Math.max(query.offset ?? 0, 0)
+  const activeSeed = type === 'random' ? (query.seed || generateFeedSeed()) : undefined
+
+  const notBlockedCondition = sql`NOT EXISTS (
+    SELECT 1 FROM ${userBlocks}
+    WHERE (${userBlocks.blockerId} = ${viewerAccountId} AND ${userBlocks.blockedId} = ${profiles.accountId})
+       OR (${userBlocks.blockerId} = ${profiles.accountId} AND ${userBlocks.blockedId} = ${viewerAccountId})
+  )`
+
+  const baseConditions = [
+    ne(profiles.accountId, viewerAccountId),
+    isNotNull(profiles.name),
+    sql`trim(${profiles.name}) != ''`,
+    isNotNull(profiles.isMale),
+    isNotNull(profiles.identityId),
+    isNotNull(profiles.countryCode),
+    sql`trim(${profiles.countryCode}) != ''`,
+    isNotNull(profiles.shortDescription),
+    sql`trim(${profiles.shortDescription}) != ''`,
+    notBlockedCondition,
+  ]
+
+  if (type === 'recommended') {
+    baseConditions.push(isNotNull(profiles.verifiedAt))
+  }
+
+  const whereCondition = and(...baseConditions)!
+
+  const orderByClause =
+    type === 'recommended'
+      ? [desc(profiles.regularFollowersCount), desc(profiles.id)]
+      : [sql`hashtext(concat(${profiles.id}::text, ${activeSeed}))`]
+
+  const items = await db
+    .select({
+      name: profiles.name,
+      isMale: profiles.isMale,
+      avatarKey: profiles.avatarKey,
+      identity: identities.identity,
+      shortDescription: profiles.shortDescription,
+      regularFollowersCount: profiles.regularFollowersCount,
+      countryCode: profiles.countryCode,
+      cityId: profiles.cityId,
+      verifiedAt: profiles.verifiedAt,
+    })
+    .from(profiles)
+    .innerJoin(identities, eq(profiles.identityId, identities.id))
+    .where(whereCondition)
+    .orderBy(...orderByClause)
+    .limit(limit)
+    .offset(offset)
+
+  const formattedProfiles: ProfileFeedItem[] = items.map((item) => ({
+    name: item.name!,
+    isMale: item.isMale!,
+    avatarKey: item.avatarKey,
+    identity: item.identity,
+    shortDescription: item.shortDescription!,
+    regularFollowersCount: item.regularFollowersCount,
+    countryCode: item.countryCode!,
+    cityId: item.cityId,
+    isVerified: Boolean(item.verifiedAt),
+  }))
+
+  return {
+    profiles: formattedProfiles,
+    type,
+    ...(type === 'random' ? { seed: activeSeed } : {}),
     limit,
     offset,
   }

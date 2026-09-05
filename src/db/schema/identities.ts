@@ -30,6 +30,7 @@ export const RESERVED_IDENTITIES = [
   'mod',
   'official',
   'staff',
+  'feed',
   'null',
   'undefined',
 ] as const

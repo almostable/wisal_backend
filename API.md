@@ -146,11 +146,13 @@ Header `Authorization: Bearer <token>`.
       "contacts": null,
       "identity": "johndoe",
       "regularFollowersCount": 0,
+      "followersCount": 15,
       "isVerified": false
     },
     "isOnboardingCompleted": true
   }
   ```
+  *Примечание:* Поле `followersCount` (общее число подписчиков) является приватным и отдается **только самому владельцу профиля** (в `GET /profile/me` и при просмотре своего профиля в `GET /profile/:identity`). Для других пользователей и в публичных лентах это поле скрыто.
 
 ### `POST /profile/onboarding`
 - **Доступ:** Авторизованный пользователь
@@ -460,6 +462,75 @@ Header `Authorization: Bearer <token>`.
     "identity": "johndoe"
   }
   ```
+
+### `GET /profile/feed`
+- **Доступ:** Авторизованный пользователь с онбордингом (`authMiddleware` + `onboardingMiddleware`)
+- **Query-параметры:**
+  - `type` *(string, опционально, `"recommended" | "random"`, по умолчанию: `"recommended"`)* — вид ленты профилей:
+    - `recommended`: в выборку попадают **только верифицированные** пользователи (`verifiedAt != null`), отсортированные по убыванию постоянных читателей (`regular_followers_count DESC`, затем `id DESC`).
+    - `random`: честное псевдослучайное перемешивание профилей через хэш-функцию `hashtext` со стабильной пагинацией по сгенерированному сервером сиду.
+  - `seed` *(string, ровно 16 hex-символов `/^[a-f0-9]{16}$/`, опционально)* — сид для стабильной пагинации в режиме `type=random`:
+    - **При первом запросе (`offset=0` или не указан):** клиент **не должен** передавать `seed` (попытка передать сид при `offset=0` вернет ошибку `400 Bad Request`). Сервер генерирует уникальный 16-символьный hex-сид автоматически и возвращает его в теле ответа.
+    - **При пагинации (`type=random` и `offset > 0`):** клиент **обязан** передать ранее полученный от сервера `seed`. Запрос без сида при `offset > 0` вернет ошибку `400 Bad Request`.
+    - **В режиме `type=recommended`:** передача `seed` **запрещена** (вернет ошибку `400 Bad Request`).
+  - `limit` *(number, опционально, по умолчанию: 20, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Бизнес-правила отбора профилей:**
+  - Профиль завершил онбординг (заполнены `name`, `is_male`, `identity`).
+  - Обязательно заполнены `country_code` и `short_description`.
+  - В режиме `recommended` обязательно наличие `verified_at` (`isVerified = true`).
+  - Исключаются пользователи, у которых есть взаимные блокировки со зрителем (`user_blocks`).
+  - Исключается профиль самого зрителя.
+  - Поле `followersCount` в ленте не отдается.
+- **Ответ `200 OK` (режим `recommended`):**
+  ```json
+  {
+    "success": true,
+    "profiles": [
+      {
+        "name": "Alex Smith",
+        "isMale": true,
+        "avatarKey": "avatars/2026-09-01/111111111111111.jpg",
+        "identity": "alexsmith",
+        "shortDescription": "Tech writer & engineer",
+        "regularFollowersCount": 42,
+        "countryCode": "US",
+        "cityId": "nyc",
+        "isVerified": true
+      }
+    ],
+    "type": "recommended",
+    "limit": 20,
+    "offset": 0
+  }
+  ```
+- **Ответ `200 OK` (режим `random`, с полем `seed`):**
+  ```json
+  {
+    "success": true,
+    "profiles": [
+      {
+        "name": "Jane Doe",
+        "isMale": false,
+        "avatarKey": null,
+        "identity": "janedoe",
+        "shortDescription": "Designer & explorer",
+        "regularFollowersCount": 15,
+        "countryCode": "FR",
+        "cityId": "paris",
+        "isVerified": false
+      }
+    ],
+    "type": "random",
+    "seed": "3f8a09b1c2d4e5f6",
+    "limit": 20,
+    "offset": 0
+  }
+  ```
+  *Примечание о жизненном цикле `seed`:*
+  1. Клиент запрашивает `GET /profile/feed?type=random`.
+  2. Сервер генерирует случайный 16-hex сид (например, `"3f8a09b1c2d4e5f6"`) и возвращает его в поле `seed`.
+  3. Для получения следующей страницы клиент отправляет `GET /profile/feed?type=random&offset=20&seed=3f8a09b1c2d4e5f6`. Это обеспечивает стабильную выборку без перемешивания между страницами.
 
 ### `GET /profile/:identity`
 - **Доступ:** Авторизованный пользователь
@@ -798,8 +869,8 @@ Header `Authorization: Bearer <token>`.
 
 ### `GET /posts/feed`
 - **Доступ:** Авторизованный пользователь с онбордингом
+- **Поведение:** Отдает исключительно публикации авторов, на которых подписан пользователь (`following`), в обратном хронологическом порядке (`desc(posts.createdAt)`). Общей ленты больше нет.
 - **Query-параметры:**
-  - `feed` *(string, опционально, `"public" | "following"`, по умолчанию: `"public"`)* — вид ленты (`public` — рандомная выборка, `following` — подписки в хронологическом порядке)
   - `limit` *(number, опционально, по умолчанию: 20, макс: 100)*
   - `offset` *(number, опционально, по умолчанию: 0)*
 - **Ответ `200 OK`:**

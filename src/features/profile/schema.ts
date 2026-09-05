@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { paginationQuerySchema } from '../../db/schema/common'
+import { paginationQuerySchema, createPaginationSchema } from '../../db/schema/common'
 import {
   onboardingInputSchema,
   updateProfileInputSchema,
@@ -27,6 +27,42 @@ export type ListFollowsQuery = z.infer<typeof listFollowsQuerySchema>
 export const listBlocksQuerySchema = paginationQuerySchema
 
 export type ListBlocksQuery = z.infer<typeof listBlocksQuerySchema>
+
+export const profileFeedTypeSchema = z.enum(['random', 'recommended'])
+
+export const profileFeedQuerySchema = createPaginationSchema(20, 100)
+  .extend({
+    type: profileFeedTypeSchema.default('recommended'),
+    seed: z.string().regex(/^[a-f0-9]{16}$/, 'Invalid seed format').optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === 'recommended' && data.seed !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Seed is not allowed for recommended feed',
+        path: ['seed'],
+      })
+    }
+    if (data.type === 'random') {
+      if (data.offset === 0 && data.seed !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'Seed cannot be provided for initial request (offset=0). The server generates the seed automatically.',
+          path: ['seed'],
+        })
+      }
+      if (data.offset > 0 && !data.seed) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Seed is required for pagination (offset > 0) in random mode',
+          path: ['seed'],
+        })
+      }
+    }
+  })
+
+export type ProfileFeedQuery = z.infer<typeof profileFeedQuerySchema>
 
 export {
   onboardingInputSchema,
