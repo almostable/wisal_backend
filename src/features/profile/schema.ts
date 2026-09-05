@@ -6,6 +6,8 @@ import {
   shortDescriptionSchema,
   countryCodeSchema,
   cityIdSchema,
+  telegramUsernameSchema,
+  contactsSchema,
 } from '../../db/schema/profiles'
 
 export const identityParamSchema = z.object({
@@ -32,5 +34,7 @@ export {
   shortDescriptionSchema,
   countryCodeSchema,
   cityIdSchema,
+  telegramUsernameSchema,
+  contactsSchema,
 }
 

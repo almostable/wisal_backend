@@ -12,10 +12,18 @@ export const urlSchema = z
   .transform((val) => val.trim())
   .pipe(z.string().url('Invalid URL format'))
 
+export const telegramUsernameSchema = z
+  .string()
+  .min(4, 'Telegram username must be at least 4 characters')
+  .max(32, 'Telegram username must be at most 32 characters')
+  .regex(
+    /^[a-zA-Z0-9_]{4,32}$/,
+    'Telegram username must be 4-32 characters and contain only letters, numbers, and underscores (without @, spaces, or links)'
+  )
+
 export const contactsSchema = z.object({
-  telegram: urlSchema.nullable().optional(),
+  telegram: telegramUsernameSchema.nullable().optional(),
   youtube: urlSchema.nullable().optional(),
-  instagram: urlSchema.nullable().optional(),
   website: urlSchema.nullable().optional(),
   email: emailSchema.nullable().optional(),
 })

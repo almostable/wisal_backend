@@ -34,9 +34,8 @@ describe('Profile Feature Route Tests', () => {
     countryCode: 'US',
     cityId: 'city_nyc',
     contacts: {
-      telegram: 'https://t.me/wisal_user',
+      telegram: 'wisal_user',
       youtube: null,
-      instagram: null,
       website: null,
       email: null,
     },
@@ -359,6 +358,54 @@ describe('Profile Feature Route Tests', () => {
       }),
     })
     expect(res5.status).toBe(400)
+
+    // Invalid telegram username (starts with @)
+    const resTg1 = await app.request('/profile/onboarding', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'John Doe',
+        isMale: true,
+        identity: 'johndoe',
+        contacts: { telegram: '@durov' },
+      }),
+    })
+    expect(resTg1.status).toBe(400)
+
+    // Invalid telegram username (is a link)
+    const resTg2 = await app.request('/profile/onboarding', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'John Doe',
+        isMale: true,
+        identity: 'johndoe',
+        contacts: { telegram: 'https://t.me/durov' },
+      }),
+    })
+    expect(resTg2.status).toBe(400)
+
+    // Invalid telegram username (< 4 chars)
+    const resTg3 = await app.request('/profile/onboarding', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'John Doe',
+        isMale: true,
+        identity: 'johndoe',
+        contacts: { telegram: 'abc' },
+      }),
+    })
+    expect(resTg3.status).toBe(400)
   })
 
   it('PATCH /profile/me updates and clears shortDescription, countryCode, and cityId', async () => {

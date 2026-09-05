@@ -9,47 +9,75 @@ import {
   shortDescriptionSchema,
   countryCodeSchema,
   cityIdSchema,
+  telegramUsernameSchema,
 } from '../profiles'
 
 describe('Profiles Schema Tests', () => {
   it('validates valid contacts object with all fields', () => {
     const contacts = {
-      telegram: 'https://t.me/username',
+      telegram: 'john_doe',
       youtube: 'https://youtube.com/@channel',
-      instagram: 'https://instagram.com/profile',
       website: 'https://example.com',
       email: 'user@example.com',
     }
 
     const parsed = contactsSchema.parse(contacts)
-    expect(parsed.telegram).toBe('https://t.me/username')
+    expect(parsed.telegram).toBe('john_doe')
     expect(parsed.youtube).toBe('https://youtube.com/@channel')
-    expect(parsed.instagram).toBe('https://instagram.com/profile')
     expect(parsed.website).toBe('https://example.com')
     expect(parsed.email).toBe('user@example.com')
   })
 
   it('allows partial and null fields in contacts', () => {
     const partialContacts = {
-      telegram: 'https://t.me/username',
+      telegram: 'john_doe',
       youtube: null,
       website: undefined,
     }
 
     const parsed = contactsSchema.parse(partialContacts)
-    expect(parsed.telegram).toBe('https://t.me/username')
+    expect(parsed.telegram).toBe('john_doe')
     expect(parsed.youtube).toBeNull()
-    expect(parsed.instagram).toBeUndefined()
     expect(parsed.website).toBeUndefined()
     expect(parsed.email).toBeUndefined()
   })
 
-  it('rejects invalid URLs in telegram, youtube, instagram, and website', () => {
-    expect(() => contactsSchema.parse({ telegram: 'invalid-url' })).toThrow()
+  it('rejects invalid URLs in youtube and website', () => {
     expect(() => contactsSchema.parse({ youtube: 'not a link' })).toThrow()
-    expect(() => contactsSchema.parse({ instagram: 'ftp://invalid-domain' })).not.toThrow() // standard valid URL format
-    expect(() => contactsSchema.parse({ instagram: 'not_a_valid_url' })).toThrow()
     expect(() => contactsSchema.parse({ website: 'just_text' })).toThrow()
+  })
+
+  it('validates telegramUsernameSchema (4 to 32 chars, no @, spaces, or links)', () => {
+    // Valid
+    expect(telegramUsernameSchema.parse('user')).toBe('user')
+    expect(telegramUsernameSchema.parse('durov')).toBe('durov')
+    expect(telegramUsernameSchema.parse('john_doe')).toBe('john_doe')
+    expect(telegramUsernameSchema.parse('AliceBob')).toBe('AliceBob')
+    expect(telegramUsernameSchema.parse('user_123')).toBe('user_123')
+    expect(telegramUsernameSchema.parse('a'.repeat(32))).toBe('a'.repeat(32))
+
+    // Rejects @
+    expect(() => telegramUsernameSchema.parse('@durov')).toThrow()
+    expect(() => telegramUsernameSchema.parse('user@name')).toThrow()
+
+    // Rejects links
+    expect(() => telegramUsernameSchema.parse('https://t.me/durov')).toThrow()
+    expect(() => telegramUsernameSchema.parse('t.me/durov')).toThrow()
+    expect(() => telegramUsernameSchema.parse('durov.me')).toThrow()
+
+    // Rejects spaces
+    expect(() => telegramUsernameSchema.parse('user name')).toThrow()
+    expect(() => telegramUsernameSchema.parse(' durov')).toThrow()
+    expect(() => telegramUsernameSchema.parse('durov ')).toThrow()
+
+    // Rejects special characters
+    expect(() => telegramUsernameSchema.parse('user-name')).toThrow()
+    expect(() => telegramUsernameSchema.parse('user!name')).toThrow()
+
+    // Rejects length < 4 or > 32
+    expect(() => telegramUsernameSchema.parse('abc')).toThrow()
+    expect(() => telegramUsernameSchema.parse('')).toThrow()
+    expect(() => telegramUsernameSchema.parse('a'.repeat(33))).toThrow()
   })
 
   it('rejects invalid email format in contacts', () => {
@@ -102,7 +130,7 @@ describe('Profiles Schema Tests', () => {
       countryCode: 'US',
       cityId: 'city_123',
       contacts: {
-        telegram: 'https://t.me/johndoe',
+        telegram: 'johndoe',
         email: 'john@wisal.dev',
       },
     }
@@ -111,7 +139,7 @@ describe('Profiles Schema Tests', () => {
     expect(parsed.shortDescription).toBe('Coffee & Code')
     expect(parsed.countryCode).toBe('US')
     expect(parsed.cityId).toBe('city_123')
-    expect(parsed.contacts?.telegram).toBe('https://t.me/johndoe')
+    expect(parsed.contacts?.telegram).toBe('johndoe')
     expect(parsed.contacts?.email).toBe('john@wisal.dev')
   })
 
@@ -171,7 +199,7 @@ describe('Profiles Schema Tests', () => {
       countryCode: 'US',
       cityId: 'city_nyc',
       contacts: {
-        telegram: 'https://t.me/johndoe',
+        telegram: 'johndoe',
         email: 'john@wisal.dev',
       },
     }
@@ -181,7 +209,7 @@ describe('Profiles Schema Tests', () => {
     expect(parsedInsert.countryCode).toBe('US')
     expect(parsedInsert.cityId).toBe('city_nyc')
     expect(parsedInsert.contacts).toEqual({
-      telegram: 'https://t.me/johndoe',
+      telegram: 'johndoe',
       email: 'john@wisal.dev',
     })
 

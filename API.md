@@ -59,9 +59,8 @@ Header `Authorization: Bearer <token>`.
       "countryCode": null,
       "cityId": null,
       "contacts": {
-        "telegram": "https://t.me/johndoe",
+        "telegram": "johndoe",
         "youtube": null,
-        "instagram": null,
         "website": null,
         "email": null
       },
@@ -161,7 +160,7 @@ Header `Authorization: Bearer <token>`.
   - `shortDescription` *(string, опционально, мин. 1, макс. 110 симв.)* — краткое описание
   - `countryCode` *(string, опционально, ровно 2 симв. в верхнем регистре)* — код страны (ISO 3166-1 alpha-2)
   - `cityId` *(string, опционально, мин. 1, макс. 64 симв.)* — идентификатор города
-  - `contacts` *(object, опционально)* — контакты (`telegram`, `youtube`, `instagram`, `website`, `email`)
+  - `contacts` *(object, опционально)* — контакты (`telegram` username 4-32 симв., `youtube`, `website`, `email`)
 - **Ответ `200 OK`:**
   ```json
   {
@@ -207,9 +206,8 @@ Header `Authorization: Bearer <token>`.
       "countryCode": "KZ",
       "cityId": "almaty",
       "contacts": {
-        "telegram": "https://t.me/updated",
+        "telegram": "updated",
         "youtube": null,
-        "instagram": null,
         "website": null,
         "email": null
       },
@@ -475,9 +473,8 @@ Header `Authorization: Bearer <token>`.
       "countryCode": null,
       "cityId": null,
       "contacts": {
-        "telegram": "https://t.me/johndoe",
+        "telegram": "johndoe",
         "youtube": null,
-        "instagram": null,
         "website": null,
         "email": null
       },
