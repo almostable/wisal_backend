@@ -32,6 +32,9 @@ export const profiles = pgTable('profiles', {
   isMale: boolean('is_male'),
   avatarKey: text('avatar_key'),
   description: text('description'),
+  shortDescription: text('short_description'),
+  countryCode: varchar('country_code', { length: 2 }),
+  cityId: varchar('city_id', { length: 64 }),
   contacts: jsonb('contacts').$type<Contacts>(),
   identityId: snowflakeId('identity_id')
     .unique()
@@ -59,7 +62,25 @@ export const nameSchema = z
 
 export const descriptionSchema = z
   .string()
-  .max(500, 'Description must be at most 500 characters')
+  .trim()
+  .min(1, 'Description cannot be empty')
+  .max(2000, 'Description must be at most 2000 characters')
+
+export const shortDescriptionSchema = z
+  .string()
+  .trim()
+  .min(1, 'Short description must be at least 1 character')
+  .max(110, 'Short description must be at most 110 characters')
+
+export const countryCodeSchema = z
+  .string()
+  .length(2, 'Country code must be exactly 2 characters')
+  .regex(/^[A-Z]{2}$/, 'Country code must be 2 uppercase letters')
+
+export const cityIdSchema = z
+  .string()
+  .min(1, 'City ID cannot be empty')
+  .max(64, 'City ID must be at most 64 characters')
   .trim()
 
 export const onboardingInputSchema = z.object({
@@ -70,6 +91,9 @@ export const onboardingInputSchema = z.object({
   identity: identityFormatSchema,
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
+  shortDescription: shortDescriptionSchema.nullable().optional(),
+  countryCode: countryCodeSchema.nullable().optional(),
+  cityId: cityIdSchema.nullable().optional(),
   contacts: contactsSchema.nullable().optional(),
 })
 
@@ -78,6 +102,9 @@ export const updateProfileInputSchema = z.object({
   identity: identityFormatSchema.optional(),
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
+  shortDescription: shortDescriptionSchema.nullable().optional(),
+  countryCode: countryCodeSchema.nullable().optional(),
+  cityId: cityIdSchema.nullable().optional(),
   isMale: z.boolean().optional(),
   contacts: contactsSchema.nullable().optional(),
 })

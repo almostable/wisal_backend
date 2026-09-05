@@ -3,6 +3,9 @@ import { paginationQuerySchema } from '../../db/schema/common'
 import {
   onboardingInputSchema,
   updateProfileInputSchema,
+  shortDescriptionSchema,
+  countryCodeSchema,
+  cityIdSchema,
 } from '../../db/schema/profiles'
 
 export const identityParamSchema = z.object({
@@ -23,5 +26,11 @@ export const listBlocksQuerySchema = paginationQuerySchema
 
 export type ListBlocksQuery = z.infer<typeof listBlocksQuerySchema>
 
-export { onboardingInputSchema, updateProfileInputSchema }
+export {
+  onboardingInputSchema,
+  updateProfileInputSchema,
+  shortDescriptionSchema,
+  countryCodeSchema,
+  cityIdSchema,
+}
 

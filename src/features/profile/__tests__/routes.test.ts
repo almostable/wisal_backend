@@ -30,6 +30,9 @@ describe('Profile Feature Route Tests', () => {
     isMale: true,
     avatarKey: null,
     description: 'Hello world bio',
+    shortDescription: 'Coffee & Code',
+    countryCode: 'US',
+    cityId: 'city_nyc',
     contacts: {
       telegram: 'https://t.me/wisal_user',
       youtube: null,
@@ -223,6 +226,195 @@ describe('Profile Feature Route Tests', () => {
     expect(body.profile.identity).toBe('new_handle_2026')
     expect(body.profile.description).toBe('Updated bio')
     expect((body.profile as any).identityId).toBeUndefined()
+  })
+
+  it('POST /profile/onboarding accepts and returns shortDescription, countryCode, and cityId', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      completeUserOnboarding: async (_accountId: bigint, input: any) => ({
+        ...mockProfile,
+        name: input.name,
+        isMale: input.isMale,
+        identity: input.identity,
+        shortDescription: input.shortDescription,
+        countryCode: input.countryCode,
+        cityId: input.cityId,
+      }),
+    }))
+
+    const res = await app.request('/profile/onboarding', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'Johnathan Doe',
+        isMale: true,
+        identity: 'johndoe2026',
+        shortDescription: 'Coffee & Code',
+        countryCode: 'US',
+        cityId: 'city_nyc',
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; profile: SafeProfile }
+    expect(body.success).toBe(true)
+    expect(body.profile.shortDescription).toBe('Coffee & Code')
+    expect(body.profile.countryCode).toBe('US')
+    expect(body.profile.cityId).toBe('city_nyc')
+  })
+
+  it('POST /profile/onboarding rejects invalid shortDescription, countryCode, or cityId with 400', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    // Invalid shortDescription (> 110 chars)
+    const res1 = await app.request('/profile/onboarding', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'John Doe',
+        isMale: true,
+        identity: 'johndoe',
+        shortDescription: 'a'.repeat(111),
+      }),
+    })
+    expect(res1.status).toBe(400)
+
+    // Invalid countryCode (lowercase)
+    const res2 = await app.request('/profile/onboarding', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'John Doe',
+        isMale: true,
+        identity: 'johndoe',
+        countryCode: 'us',
+      }),
+    })
+    expect(res2.status).toBe(400)
+
+    // Invalid cityId (> 64 chars)
+    const res3 = await app.request('/profile/onboarding', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'John Doe',
+        isMale: true,
+        identity: 'johndoe',
+        cityId: 'c'.repeat(65),
+      }),
+    })
+    expect(res3.status).toBe(400)
+
+    // Invalid description (empty string)
+    const res4 = await app.request('/profile/onboarding', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'John Doe',
+        isMale: true,
+        identity: 'johndoe',
+        description: '   ',
+      }),
+    })
+    expect(res4.status).toBe(400)
+
+    // Invalid description (> 2000 chars)
+    const res5 = await app.request('/profile/onboarding', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'John Doe',
+        isMale: true,
+        identity: 'johndoe',
+        description: 'a'.repeat(2001),
+      }),
+    })
+    expect(res5.status).toBe(400)
+  })
+
+  it('PATCH /profile/me updates and clears shortDescription, countryCode, and cityId', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      updateUserProfile: async (_accountId: bigint, input: any) => ({
+        ...mockProfile,
+        shortDescription: input.shortDescription !== undefined ? input.shortDescription : mockProfile.shortDescription,
+        countryCode: input.countryCode !== undefined ? input.countryCode : mockProfile.countryCode,
+        cityId: input.cityId !== undefined ? input.cityId : mockProfile.cityId,
+      }),
+    }))
+
+    // Update with values
+    const resUpdate = await app.request('/profile/me', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        shortDescription: 'Solo Dev',
+        countryCode: 'KZ',
+        cityId: 'almaty_01',
+      }),
+    })
+    expect(resUpdate.status).toBe(200)
+    const bodyUpdate = (await resUpdate.json()) as { success: boolean; profile: SafeProfile }
+    expect(bodyUpdate.profile.shortDescription).toBe('Solo Dev')
+    expect(bodyUpdate.profile.countryCode).toBe('KZ')
+    expect(bodyUpdate.profile.cityId).toBe('almaty_01')
+
+    // Update with nulls to clear
+    const resClear = await app.request('/profile/me', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        shortDescription: null,
+        countryCode: null,
+        cityId: null,
+      }),
+    })
+    expect(resClear.status).toBe(200)
+    const bodyClear = (await resClear.json()) as { success: boolean; profile: SafeProfile }
+    expect(bodyClear.profile.shortDescription).toBeNull()
+    expect(bodyClear.profile.countryCode).toBeNull()
+    expect(bodyClear.profile.cityId).toBeNull()
   })
 
   it('PATCH /profile/me returns 409 when new identity is already taken', async () => {

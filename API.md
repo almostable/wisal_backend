@@ -55,6 +55,9 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
+      "shortDescription": null,
+      "countryCode": null,
+      "cityId": null,
       "contacts": {
         "telegram": "https://t.me/johndoe",
         "youtube": null,
@@ -109,6 +112,9 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
+      "shortDescription": null,
+      "countryCode": null,
+      "cityId": null,
       "contacts": null,
       "identity": "johndoe"
     },
@@ -133,6 +139,9 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
+      "shortDescription": null,
+      "countryCode": null,
+      "cityId": null,
       "contacts": null,
       "identity": "johndoe",
       "regularFollowersCount": 0
@@ -148,7 +157,10 @@ Header `Authorization: Bearer <token>`.
   - `isMale` *(boolean, обязательное)* — пол (после онбординга неизменяем)
   - `identity` *(string, обязательное, мин. 3, макс. 32 симв., `^[a-z0-9_]+$`)* — уникальный юзернейм/хэндл
   - `avatarKey` *(string, опционально)* — ключ аватара в хранилище
-  - `description` *(string, опционально, макс. 500 симв.)* — описание/биография
+  - `description` *(string, опционально, мин. 1, макс. 2000 симв.)* — описание/биография
+  - `shortDescription` *(string, опционально, мин. 1, макс. 110 симв.)* — краткое описание
+  - `countryCode` *(string, опционально, ровно 2 симв. в верхнем регистре)* — код страны (ISO 3166-1 alpha-2)
+  - `cityId` *(string, опционально, мин. 1, макс. 64 симв.)* — идентификатор города
   - `contacts` *(object, опционально)* — контакты (`telegram`, `youtube`, `instagram`, `website`, `email`)
 - **Ответ `200 OK`:**
   ```json
@@ -160,6 +172,9 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
+      "shortDescription": null,
+      "countryCode": null,
+      "cityId": null,
       "contacts": null,
       "identity": "johndoe"
     }
@@ -172,7 +187,10 @@ Header `Authorization: Bearer <token>`.
   - `name` *(string, опционально, мин. 1, макс. 100 симв.)*
   - `identity` *(string, опционально, мин. 3, макс. 32 симв., `^[a-z0-9_]+$`)* — новый уникальный юзернейм/хэндл
   - `avatarKey` *(string | null, опционально)*
-  - `description` *(string | null, опционально, макс. 500 симв.)*
+  - `description` *(string | null, опционально, мин. 1, макс. 2000 симв.)*
+  - `shortDescription` *(string | null, опционально, мин. 1, макс. 110 симв.)*
+  - `countryCode` *(string | null, опционально, ровно 2 симв. в верхнем регистре)*
+  - `cityId` *(string | null, опционально, мин. 1, макс. 64 симв.)*
   - `contacts` *(object | null, опционально)*
   - `isMale` *(boolean, опционально, допустимо только если пол ранее не был задан)*
 - **Ответ `200 OK`:**
@@ -185,6 +203,9 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": "avatars/user.png",
       "description": "New bio",
+      "shortDescription": "Solo Dev",
+      "countryCode": "KZ",
+      "cityId": "almaty",
       "contacts": {
         "telegram": "https://t.me/updated",
         "youtube": null,
@@ -450,6 +471,9 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
+      "shortDescription": null,
+      "countryCode": null,
+      "cityId": null,
       "contacts": {
         "telegram": "https://t.me/johndoe",
         "youtube": null,
@@ -472,6 +496,9 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": null,
+      "shortDescription": null,
+      "countryCode": null,
+      "cityId": null,
       "contacts": null,
       "identity": "johndoe",
       "isFollowing": false,

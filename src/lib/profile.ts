@@ -11,6 +11,9 @@ export interface SafeProfile {
   isMale: boolean | null
   avatarKey: string | null
   description: string | null
+  shortDescription: string | null
+  countryCode: string | null
+  cityId: string | null
   contacts: Contacts | null
   identity: string | null
   regularFollowersCount: number
@@ -36,6 +39,9 @@ export function formatProfileResponse(
     isMale: profile.isMale,
     avatarKey: profile.avatarKey,
     description: profile.description,
+    shortDescription: profile.shortDescription ?? null,
+    countryCode: profile.countryCode ?? null,
+    cityId: profile.cityId ?? null,
     contacts: profile.contacts ?? null,
     identity: identityStr,
     regularFollowersCount: profile.regularFollowersCount ?? 0,
@@ -65,6 +71,9 @@ export function formatRestrictedProfileResponse(
     isMale: profile.isMale,
     avatarKey: null,
     description: null,
+    shortDescription: null,
+    countryCode: null,
+    cityId: null,
     contacts: null,
     identity: identityStr,
     regularFollowersCount: 0,
@@ -172,6 +181,9 @@ export async function completeOnboarding(
           isMale: input.isMale,
           avatarKey: input.avatarKey ?? null,
           description: input.description?.trim() ?? null,
+          shortDescription: input.shortDescription?.trim() ?? null,
+          countryCode: input.countryCode ?? null,
+          cityId: input.cityId?.trim() ?? null,
           contacts: input.contacts ?? null,
           identityId: createdIdentity.id,
         })
@@ -188,6 +200,9 @@ export async function completeOnboarding(
           isMale: input.isMale,
           avatarKey: input.avatarKey ?? null,
           description: input.description?.trim() ?? null,
+          shortDescription: input.shortDescription?.trim() ?? null,
+          countryCode: input.countryCode ?? null,
+          cityId: input.cityId?.trim() ?? null,
           contacts: input.contacts ?? null,
           identityId: createdIdentity.id,
         })
@@ -297,6 +312,15 @@ export async function updateProfile(
     }
     if (input.description !== undefined) {
       updateData.description = input.description?.trim() ?? null
+    }
+    if (input.shortDescription !== undefined) {
+      updateData.shortDescription = input.shortDescription?.trim() ?? null
+    }
+    if (input.countryCode !== undefined) {
+      updateData.countryCode = input.countryCode ?? null
+    }
+    if (input.cityId !== undefined) {
+      updateData.cityId = input.cityId?.trim() ?? null
     }
     if (input.contacts !== undefined) {
       updateData.contacts = input.contacts ?? null
