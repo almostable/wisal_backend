@@ -37,6 +37,7 @@ describe('Posts Feature Route Tests', () => {
     contacts: null,
     identityId: 444444444444444n,
     regularFollowersCount: 0,
+    verifiedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     identity: {
@@ -76,6 +77,7 @@ describe('Posts Feature Route Tests', () => {
     contacts: null,
     identityId: 888888888888888n,
     regularFollowersCount: 0,
+    verifiedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     identity: {
@@ -98,6 +100,7 @@ describe('Posts Feature Route Tests', () => {
     isPinned: false,
     savesCount: 0,
     commentsCount: 0,
+    viewsCount: 0,
     isSaved: false,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -2609,6 +2612,140 @@ describe('Posts Feature Route Tests', () => {
     expect(body.success).toBe(true)
     expect(body.comment.content).toBe('Updated comment content')
     expect(body.comment.editedAt).toBe(editedDate.toISOString())
+  })
+
+  describe('POST /posts/views batch endpoint', () => {
+    it('rejects unauthenticated request with 401', async () => {
+      const res = await app.request('/posts/views', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postIds: ['999999999999991'] }),
+      })
+      expect(res.status).toBe(401)
+    })
+
+    it('rejects when onboarding is incomplete with 403', async () => {
+      mock.module('../../../lib/session', () => ({
+        validateSessionToken: async () => ({
+          account: maleAccount,
+          session: maleSession,
+        }),
+      }))
+      mock.module('../../../lib/profile', () => ({
+        getProfileByAccountId: async () => ({
+          ...maleProfile,
+          identityId: null,
+          identity: null,
+        }),
+        isOnboardingCompleted: () => false,
+      }))
+
+      const res = await app.request('/posts/views', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer valid_male_token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ postIds: ['999999999999991'] }),
+      })
+      expect(res.status).toBe(403)
+    })
+
+    it('rejects with 400 if postIds is missing, empty, or invalid', async () => {
+      mock.module('../../../lib/session', () => ({
+        validateSessionToken: async () => ({
+          account: maleAccount,
+          session: maleSession,
+        }),
+      }))
+      mock.module('../../../lib/profile', () => ({
+        getProfileByAccountId: async () => maleProfile,
+        isOnboardingCompleted: () => true,
+      }))
+
+      // Missing postIds
+      const resEmpty = await app.request('/posts/views', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer valid_male_token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      })
+      expect(resEmpty.status).toBe(400)
+
+      // Empty array
+      const resZero = await app.request('/posts/views', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer valid_male_token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ postIds: [] }),
+      })
+      expect(resZero.status).toBe(400)
+
+      // Invalid ID format
+      const resInvalid = await app.request('/posts/views', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer valid_male_token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ postIds: ['not-a-number'] }),
+      })
+      expect(resInvalid.status).toBe(400)
+
+      // Exceeds max 100
+      const tooMany = Array.from({ length: 101 }, (_, i) => String(100000000000000 + i))
+      const resTooMany = await app.request('/posts/views', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer valid_male_token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ postIds: tooMany }),
+      })
+      expect(resTooMany.status).toBe(400)
+    })
+
+    it('records views successfully with 200', async () => {
+      mock.module('../../../lib/session', () => ({
+        validateSessionToken: async () => ({
+          account: maleAccount,
+          session: maleSession,
+        }),
+      }))
+      mock.module('../../../lib/profile', () => ({
+        getProfileByAccountId: async () => maleProfile,
+        isOnboardingCompleted: () => true,
+      }))
+
+      let capturedIds: bigint[] = []
+      mock.module('../service', () => ({
+        recordPostViews: async (postIds: bigint[]) => {
+          capturedIds = postIds
+          return { success: true, updatedCount: postIds.length }
+        },
+      }))
+
+      const res = await app.request('/posts/views', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer valid_male_token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postIds: ['999999999999991', '999999999999992'],
+        }),
+      })
+
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { success: boolean; updatedCount: number }
+      expect(body.success).toBe(true)
+      expect(body.updatedCount).toBe(2)
+      expect(capturedIds).toEqual([999999999999991n, 999999999999992n])
+    })
   })
 })
 

@@ -229,6 +229,13 @@ export const updateCommentSchema = z
 
 export const listCommentsQuerySchema = createPaginationSchema(50, 100)
 
+export const recordViewsSchema = z.object({
+  postIds: z
+    .array(z.string().regex(/^\d{1,20}$/, 'Invalid post ID format'))
+    .min(1, 'At least 1 post ID is required')
+    .max(100, 'Maximum 100 post IDs allowed'),
+})
+
 export type PostIdParam = z.infer<typeof postIdParamSchema>
 export type CommentIdParam = z.infer<typeof commentIdParamSchema>
 export type UserPostsParam = z.infer<typeof userPostsParamSchema>
@@ -242,3 +249,4 @@ export type CreateCommentInput = z.infer<typeof createCommentSchema>
 export type ReplyCommentInput = z.infer<typeof replyCommentSchema>
 export type UpdateCommentInput = z.infer<typeof updateCommentSchema>
 export type ListCommentsQueryInput = z.infer<typeof listCommentsQuerySchema>
+export type RecordViewsInput = z.infer<typeof recordViewsSchema>

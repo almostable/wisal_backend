@@ -24,6 +24,7 @@ export interface PostResponse {
   isPinned: boolean
   savesCount?: number
   commentsCount: number
+  viewsCount: number
   isSaved?: boolean
   createdAt: Date
   updatedAt: Date
@@ -165,4 +166,13 @@ export interface ListCommentsResult {
 export interface DeleteCommentResult {
   success: boolean
   message: string
+}
+
+export interface RecordViewsDTO {
+  postIds: string[]
+}
+
+export interface RecordViewsResult {
+  success: boolean
+  updatedCount: number
 }

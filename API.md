@@ -601,6 +601,7 @@ Header `Authorization: Bearer <token>`.
       "isPinned": false,
       "savesCount": 0,
       "commentsCount": 0,
+      "viewsCount": 0,
       "isSaved": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
@@ -641,6 +642,7 @@ Header `Authorization: Bearer <token>`.
       "isPinned": false,
       "savesCount": 0,
       "commentsCount": 0,
+      "viewsCount": 0,
       "isSaved": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
@@ -652,6 +654,24 @@ Header `Authorization: Bearer <token>`.
         "isMale": true
       }
     }
+  }
+  ```
+
+### `POST /posts/views`
+- **Доступ:** Авторизованный пользователь с онбордингом
+- **Описание:** Пакетное засчитывание (инкремент) просмотров для одного или нескольких постов. Обновляет счетчик `views_count` одним SQL-запросом. Не затрагивает метку `updated_at`. Удаленные посты (`deleted_at IS NOT NULL`) игнорируются.
+- **Тело запроса (JSON):**
+  - `postIds` *(array of string, обязательное, от 1 до 100 элементов)* — массив Snowflake ID постов
+  ```json
+  {
+    "postIds": ["999999999999991", "999999999999992"]
+  }
+  ```
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "updatedCount": 2
   }
   ```
 
@@ -689,6 +709,7 @@ Header `Authorization: Bearer <token>`.
       "isPinned": true,
       "savesCount": 0,
       "commentsCount": 0,
+      "viewsCount": 0,
       "isSaved": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
@@ -754,6 +775,7 @@ Header `Authorization: Bearer <token>`.
         "accessLevel": "public",
         "isPinned": false,
         "commentsCount": 2,
+        "viewsCount": 0,
         "isSaved": true,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
@@ -796,6 +818,7 @@ Header `Authorization: Bearer <token>`.
         "accessLevel": "public",
         "isPinned": false,
         "commentsCount": 2,
+        "viewsCount": 0,
         "isSaved": true,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
@@ -834,6 +857,7 @@ Header `Authorization: Bearer <token>`.
       "isPinned": false,
       "savesCount": 10,
       "commentsCount": 4,
+      "viewsCount": 15,
       "isSaved": true,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
@@ -873,6 +897,7 @@ Header `Authorization: Bearer <token>`.
         "accessLevel": "public",
         "isPinned": true,
         "commentsCount": 1,
+        "viewsCount": 0,
         "isSaved": false,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",

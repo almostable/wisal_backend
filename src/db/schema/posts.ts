@@ -41,6 +41,7 @@ export const posts = pgTable(
     isPinned: boolean('is_pinned').notNull().default(false),
     savesCount: integer('saves_count').notNull().default(0),
     commentsCount: integer('comments_count').notNull().default(0),
+    viewsCount: integer('views_count').notNull().default(0),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
     ...timestamps,
   },
@@ -53,6 +54,7 @@ export const posts = pgTable(
     index('posts_is_pinned_idx').on(table.isPinned),
     index('posts_saves_count_idx').on(table.savesCount),
     index('posts_comments_count_idx').on(table.commentsCount),
+    index('posts_views_count_idx').on(table.viewsCount),
   ]
 )
 

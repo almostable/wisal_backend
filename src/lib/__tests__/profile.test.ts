@@ -17,6 +17,7 @@ describe('Profile Utility Tests', () => {
       contacts: null,
       identityId: 100n,
       regularFollowersCount: 0,
+      verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: {
@@ -49,6 +50,7 @@ describe('Profile Utility Tests', () => {
       contacts: null,
       identityId: 100n,
       regularFollowersCount: 0,
+      verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: {
@@ -76,6 +78,7 @@ describe('Profile Utility Tests', () => {
       contacts: null,
       identityId: 100n,
       regularFollowersCount: 0,
+      verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: {
@@ -103,6 +106,7 @@ describe('Profile Utility Tests', () => {
       contacts: null,
       identityId: 100n,
       regularFollowersCount: 0,
+      verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: null,

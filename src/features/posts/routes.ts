@@ -16,6 +16,7 @@ import {
   replyCommentSchema,
   updateCommentSchema,
   listCommentsQuerySchema,
+  recordViewsSchema,
 } from './schema'
 import {
   createPost,
@@ -34,6 +35,7 @@ import {
   replyToComment,
   updateComment,
   deleteComment,
+  recordPostViews,
 } from './service'
 
 export const postsRouter = new Hono()
@@ -54,6 +56,13 @@ postsRouter.post('/', zValidator('json', createPostSchema), async (c) => {
     },
     201
   )
+})
+
+postsRouter.post('/views', zValidator('json', recordViewsSchema), async (c) => {
+  const { postIds } = c.req.valid('json')
+  const result = await recordPostViews(postIds.map((id) => BigInt(id)))
+
+  return c.json(result)
 })
 
 postsRouter.get('/feed', zValidator('query', feedQuerySchema), async (c) => {

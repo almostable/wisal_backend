@@ -52,6 +52,7 @@ import type {
   ListCommentsQueryDTO,
   ListCommentsResult,
   DeleteCommentResult,
+  RecordViewsResult,
 } from './types'
 
 const EDIT_TIME_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
@@ -132,6 +133,7 @@ function formatPost(
     genderScope: post.genderScope as GenderScope,
     accessLevel: post.accessLevel as AccessLevel,
     isPinned: post.isPinned,
+    viewsCount: post.viewsCount ?? 0,
     ...(canViewSavesCount ? { savesCount: post.savesCount ?? 0 } : {}),
     commentsCount: post.commentsCount ?? 0,
     ...(isSaved !== undefined ? { isSaved } : {}),
@@ -1614,4 +1616,33 @@ export async function updateComment(
       replyToUserData
     )
   })
+}
+
+export async function recordPostViews(
+  postIds: bigint[],
+  executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0] = db
+): Promise<RecordViewsResult> {
+  if (postIds.length === 0) {
+    return { success: true, updatedCount: 0 }
+  }
+
+  const uniquePostIds = Array.from(new Set(postIds))
+
+  const result = await executor
+    .update(posts)
+    .set({
+      viewsCount: sql`${posts.viewsCount} + 1`,
+    })
+    .where(
+      and(
+        inArray(posts.id, uniquePostIds),
+        isNull(posts.deletedAt)
+      )
+    )
+    .returning({ id: posts.id })
+
+  return {
+    success: true,
+    updatedCount: result.length,
+  }
 }

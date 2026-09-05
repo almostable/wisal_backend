@@ -76,6 +76,7 @@ describe('Posts Schema Tests', () => {
       isPinned: false,
       savesCount: 5,
       commentsCount: 2,
+      viewsCount: 10,
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -86,6 +87,7 @@ describe('Posts Schema Tests', () => {
     expect(parsed.authorGender).toBe(true)
     expect(parsed.savesCount).toBe(5)
     expect(parsed.commentsCount).toBe(2)
+    expect(parsed.viewsCount).toBe(10)
     expect(parsed.deletedAt).toBeNull()
   })
 
@@ -100,6 +102,7 @@ describe('Posts Schema Tests', () => {
     expect(indexNames).toContain('posts_is_pinned_idx')
     expect(indexNames).toContain('posts_saves_count_idx')
     expect(indexNames).toContain('posts_comments_count_idx')
+    expect(indexNames).toContain('posts_views_count_idx')
   })
 
   it('has expected enum constants defined', () => {

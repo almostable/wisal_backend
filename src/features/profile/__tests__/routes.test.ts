@@ -41,6 +41,7 @@ describe('Profile Feature Route Tests', () => {
     },
     identity: 'wisaluser',
     regularFollowersCount: 0,
+    isVerified: false,
   }
 
   const mockPublicProfile: PublicProfile = {
