@@ -1,4 +1,4 @@
-import { pgTable, varchar, boolean, text, jsonb, integer } from 'drizzle-orm/pg-core'
+import { pgTable, varchar, boolean, text, jsonb, integer, timestamp } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
@@ -48,6 +48,7 @@ export const profiles = pgTable('profiles', {
     .unique()
     .references(() => identities.id, { onDelete: 'restrict' }),
   regularFollowersCount: integer('regular_followers_count').notNull().default(0),
+  verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
   ...timestamps,
 })
 

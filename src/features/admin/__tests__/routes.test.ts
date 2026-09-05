@@ -858,4 +858,240 @@ describe('Admin Feature Route Tests', () => {
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe('Report not found')
   })
+
+  it('GET /admin/users/:id returns user details', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    mock.module('../service', () => ({
+      getUserById: async (id: bigint) => ({
+        id,
+        email: 'user@wisal.dev',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        profile: {
+          id: 888888n,
+          name: 'John Doe',
+          isMale: true,
+          avatarKey: null,
+          description: 'Hello world',
+          shortDescription: null,
+          countryCode: null,
+          cityId: null,
+          contacts: null,
+          identity: 'johndoe',
+          regularFollowersCount: 0,
+          isVerified: true,
+        },
+      }),
+    }))
+
+    const res = await app.request('/admin/users/123456789', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; user: any }
+    expect(body.success).toBe(true)
+    expect(body.user.email).toBe('user@wisal.dev')
+    expect(body.user.profile.isVerified).toBe(true)
+  })
+
+  it('GET /admin/users/:id returns 404 when user not found', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    mock.module('../service', () => ({
+      getUserById: async () => {
+        throw new HTTPException(404, { message: 'User not found' })
+      },
+    }))
+
+    const res = await app.request('/admin/users/999999999', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer valid_token',
+      },
+    })
+
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('User not found')
+  })
+
+  it('PATCH /admin/users/:id updates profile fields and sets isVerified to true', async () => {
+    let capturedId: bigint | null = null
+    let capturedData: any = null
+
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    mock.module('../service', () => ({
+      updateUserProfileByAdmin: async (id: bigint, input: any) => {
+        capturedId = id
+        capturedData = input
+        return {
+          id,
+          email: 'user@wisal.dev',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          profile: {
+            id: 888888n,
+            name: input.name ?? 'John Doe',
+            isMale: input.isMale ?? true,
+            avatarKey: null,
+            description: input.description ?? null,
+            shortDescription: null,
+            countryCode: null,
+            cityId: null,
+            contacts: null,
+            identity: input.identity ?? 'johndoe',
+            regularFollowersCount: 0,
+            isVerified: Boolean(input.isVerified),
+          },
+        }
+      },
+    }))
+
+    const res = await app.request('/admin/users/123456789', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_token',
+      },
+      body: JSON.stringify({
+        name: 'Updated Name',
+        isVerified: true,
+        identity: 'alex_vip',
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; user: any }
+    expect(body.success).toBe(true)
+    expect(body.user.profile.name).toBe('Updated Name')
+    expect(body.user.profile.isVerified).toBe(true)
+    expect(capturedId as bigint | null).toBe(123456789n)
+    expect(capturedData.isVerified).toBe(true)
+    expect(capturedData.name).toBe('Updated Name')
+  })
+
+  it('PATCH /admin/users/:id rejects identity starting with digits or invalid format', async () => {
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    const res1 = await app.request('/admin/users/123456789', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_token',
+      },
+      body: JSON.stringify({
+        identity: '12345',
+      }),
+    })
+    expect(res1.status).toBe(400)
+
+    const res2 = await app.request('/admin/users/123456789', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_token',
+      },
+      body: JSON.stringify({
+        identity: '1user',
+      }),
+    })
+    expect(res2.status).toBe(400)
+
+    const res3 = await app.request('/admin/users/123456789', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_token',
+      },
+      body: JSON.stringify({
+        identity: '_user',
+      }),
+    })
+    expect(res3.status).toBe(400)
+  })
+
+  it('PATCH /admin/users/:id resets verification when isVerified: false', async () => {
+    let capturedData: any = null
+
+    mock.module('../../../lib/admin-session', () => ({
+      validateAdminSessionToken: async () => ({
+        admin: mockAdmin,
+        session: mockSession,
+      }),
+      ADMIN_COOKIE_NAME: 'admin_session',
+    }))
+
+    mock.module('../service', () => ({
+      updateUserProfileByAdmin: async (id: bigint, input: any) => {
+        capturedData = input
+        return {
+          id,
+          email: 'user@wisal.dev',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          profile: {
+            id: 888888n,
+            name: 'John Doe',
+            isMale: true,
+            avatarKey: null,
+            description: null,
+            shortDescription: null,
+            countryCode: null,
+            cityId: null,
+            contacts: null,
+            identity: 'johndoe',
+            regularFollowersCount: 0,
+            isVerified: false,
+          },
+        }
+      },
+    }))
+
+    const res = await app.request('/admin/users/123456789', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_token',
+      },
+      body: JSON.stringify({
+        isVerified: false,
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; user: any }
+    expect(body.success).toBe(true)
+    expect(body.user.profile.isVerified).toBe(false)
+    expect(capturedData.isVerified).toBe(false)
+  })
 })

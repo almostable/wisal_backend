@@ -19,8 +19,10 @@ import { admins, safeAdminSchema, type SafeAdmin, type AdminRole } from '../../d
 import { adminSessions } from '../../db/schema/admin-sessions'
 import { invites } from '../../db/schema/invites'
 import { accounts, safeAccountSchema } from '../../db/schema/accounts'
-import { profiles, type ProfileWithIdentity } from '../../db/schema/profiles'
-import { identities } from '../../db/schema/identities'
+import { profiles, type Profile, type ProfileWithIdentity } from '../../db/schema/profiles'
+import { identities, type Identity } from '../../db/schema/identities'
+import { reconcileEntityMedia } from '../uploads/service'
+import type { AdminUpdateUserProfileInput } from './schema'
 import {
   reports,
   type ReportTargetType,
@@ -402,6 +404,217 @@ export async function listUsers(options: ListUsersOptions = {}): Promise<ListUse
     limit,
     offset,
   }
+}
+
+export async function getUserById(accountId: bigint): Promise<UserListItem> {
+  const [record] = await db
+    .select({
+      account: {
+        id: accounts.id,
+        email: accounts.email,
+        createdAt: accounts.createdAt,
+        updatedAt: accounts.updatedAt,
+      },
+      profile: profiles,
+      identity: identities,
+    })
+    .from(accounts)
+    .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+    .leftJoin(identities, eq(profiles.identityId, identities.id))
+    .where(eq(accounts.id, accountId))
+    .limit(1)
+
+  if (!record || !record.account) {
+    throw new HTTPException(404, { message: 'User not found' })
+  }
+
+  const fullProfile: ProfileWithIdentity | null =
+    record.profile && record.profile.id
+      ? {
+          ...record.profile,
+          identity: record.identity && record.identity.id ? record.identity : null,
+        }
+      : null
+
+  return {
+    ...record.account,
+    profile: formatProfileResponse(fullProfile),
+  }
+}
+
+export async function updateUserProfileByAdmin(
+  accountId: bigint,
+  input: AdminUpdateUserProfileInput
+): Promise<UserListItem> {
+  return await db.transaction(async (tx) => {
+    const [record] = await tx
+      .select({
+        account: {
+          id: accounts.id,
+          email: accounts.email,
+          createdAt: accounts.createdAt,
+          updatedAt: accounts.updatedAt,
+        },
+        profile: profiles,
+        identity: identities,
+      })
+      .from(accounts)
+      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(eq(accounts.id, accountId))
+      .limit(1)
+
+    if (!record || !record.account) {
+      throw new HTTPException(404, { message: 'User not found' })
+    }
+
+    const existingProfile = record.profile && record.profile.id ? record.profile : null
+    let updatedIdentity: Identity | null = record.identity && record.identity.id ? record.identity : null
+
+    let newVerifiedAt: Date | null
+    if (input.isVerified !== undefined) {
+      newVerifiedAt = input.isVerified ? new Date() : null
+    } else {
+      newVerifiedAt = existingProfile?.verifiedAt ?? null
+    }
+
+    const resultingIsVerified = newVerifiedAt !== null
+
+    let newIdentityId: bigint | null = existingProfile?.identityId ?? null
+    if (input.identity !== undefined) {
+      const normalizedIdentity = input.identity.trim().toLowerCase()
+      const minLength = resultingIsVerified ? 3 : 5
+      if (normalizedIdentity.length < minLength) {
+        throw new HTTPException(400, {
+          message: `Identity must be at least ${minLength} characters long`,
+        })
+      }
+
+      if (!updatedIdentity || updatedIdentity.identity.toLowerCase() !== normalizedIdentity) {
+        const existingIdentityRecord = await tx.query.identities.findFirst({
+          where: eq(sql`lower(${identities.identity})`, normalizedIdentity),
+        })
+
+        if (existingIdentityRecord && existingIdentityRecord.id !== existingProfile?.identityId) {
+          throw new HTTPException(409, { message: `Identity '${input.identity}' is already taken` })
+        }
+
+        if (existingProfile?.identityId) {
+          const [updated] = await tx
+            .update(identities)
+            .set({ identity: normalizedIdentity })
+            .where(eq(identities.id, existingProfile.identityId))
+            .returning()
+          updatedIdentity = updated
+        } else {
+          const [created] = await tx
+            .insert(identities)
+            .values({ identity: normalizedIdentity })
+            .returning()
+          updatedIdentity = created
+          newIdentityId = created.id
+        }
+      }
+    }
+
+    let finalProfile: Profile
+
+    if (existingProfile) {
+      const updateData: Partial<typeof profiles.$inferInsert> = {}
+
+      if (input.name !== undefined) {
+        updateData.name = input.name.trim()
+      }
+      if (input.isMale !== undefined) {
+        updateData.isMale = input.isMale
+      }
+      if (input.avatarKey !== undefined) {
+        updateData.avatarKey = input.avatarKey
+        const oldAvatarKeys = existingProfile.avatarKey ? [existingProfile.avatarKey] : []
+        const newAvatarKeys = input.avatarKey ? [input.avatarKey] : []
+        if (oldAvatarKeys.length > 0 || newAvatarKeys.length > 0) {
+          await reconcileEntityMedia(tx, {
+            entityType: 'avatar',
+            entityId: accountId,
+            userId: accountId,
+            newFileKeys: newAvatarKeys,
+            oldFileKeys: oldAvatarKeys,
+          })
+        }
+      }
+      if (input.description !== undefined) {
+        updateData.description = input.description?.trim() ?? null
+      }
+      if (input.shortDescription !== undefined) {
+        updateData.shortDescription = input.shortDescription?.trim() ?? null
+      }
+      if (input.countryCode !== undefined) {
+        updateData.countryCode = input.countryCode ?? null
+      }
+      if (input.cityId !== undefined) {
+        updateData.cityId = input.cityId?.trim() ?? null
+      }
+      if (input.contacts !== undefined) {
+        updateData.contacts = input.contacts ?? null
+      }
+      if (input.isVerified !== undefined) {
+        updateData.verifiedAt = newVerifiedAt
+      }
+      if (newIdentityId !== null && newIdentityId !== existingProfile.identityId) {
+        updateData.identityId = newIdentityId
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        const [updated] = await tx
+          .update(profiles)
+          .set(updateData)
+          .where(eq(profiles.id, existingProfile.id))
+          .returning()
+        finalProfile = updated
+      } else {
+        finalProfile = existingProfile
+      }
+    } else {
+      const [created] = await tx
+        .insert(profiles)
+        .values({
+          accountId,
+          name: input.name?.trim() ?? null,
+          isMale: input.isMale ?? null,
+          avatarKey: input.avatarKey ?? null,
+          description: input.description?.trim() ?? null,
+          shortDescription: input.shortDescription?.trim() ?? null,
+          countryCode: input.countryCode ?? null,
+          cityId: input.cityId?.trim() ?? null,
+          contacts: input.contacts ?? null,
+          identityId: newIdentityId,
+          verifiedAt: newVerifiedAt,
+        })
+        .returning()
+
+      if (input.avatarKey) {
+        await reconcileEntityMedia(tx, {
+          entityType: 'avatar',
+          entityId: accountId,
+          userId: accountId,
+          newFileKeys: [input.avatarKey],
+          oldFileKeys: [],
+        })
+      }
+
+      finalProfile = created
+    }
+
+    const fullProfile: ProfileWithIdentity = {
+      ...finalProfile,
+      identity: updatedIdentity,
+    }
+
+    return {
+      ...record.account,
+      profile: formatProfileResponse(fullProfile),
+    }
+  })
 }
 
 export async function listReports(options: ListReportsOptions = {}): Promise<ListReportsResult> {

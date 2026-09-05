@@ -14,6 +14,7 @@ import {
   listReportsQuerySchema,
   updateReportResolutionSchema,
   snowflakeParamSchema,
+  adminUpdateUserProfileSchema,
 } from './schema'
 import {
   loginAdmin,
@@ -25,6 +26,8 @@ import {
   deleteInvite,
   listInvites,
   listUsers,
+  getUserById,
+  updateUserProfileByAdmin,
   listReports,
   getReportById,
   updateReportResolution,
@@ -192,6 +195,40 @@ adminRouter.get(
     return c.json({
       success: true,
       ...result,
+    })
+  }
+)
+
+adminRouter.get(
+  '/users/:id',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param')
+    const accountId = stringToSnowflake(id)
+    const user = await getUserById(accountId)
+
+    return c.json({
+      success: true,
+      user,
+    })
+  }
+)
+
+adminRouter.patch(
+  '/users/:id',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  zValidator('json', adminUpdateUserProfileSchema),
+  async (c) => {
+    const { id } = c.req.valid('param')
+    const data = c.req.valid('json')
+    const accountId = stringToSnowflake(id)
+    const user = await updateUserProfileByAdmin(accountId, data)
+
+    return c.json({
+      success: true,
+      user,
     })
   }
 )

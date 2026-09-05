@@ -6,6 +6,15 @@ import {
   REPORT_STATUSES,
 } from '../../db/schema/reports'
 import { emailSchema, paginationQuerySchema, snowflakeParamSchema } from '../../db/schema/common'
+import {
+  nameSchema,
+  descriptionSchema,
+  shortDescriptionSchema,
+  countryCodeSchema,
+  cityIdSchema,
+  contactsSchema,
+} from '../../db/schema/profiles'
+import { identityFormatSchema } from '../../db/schema/identities'
 
 export const loginInputSchema = z.object({
   email: emailSchema,
@@ -70,6 +79,19 @@ export const updateReportResolutionSchema = z.object({
     .optional(),
 })
 
+export const adminUpdateUserProfileSchema = z.object({
+  name: nameSchema.optional(),
+  identity: identityFormatSchema.optional(),
+  isMale: z.boolean().optional(),
+  avatarKey: z.string().nullable().optional(),
+  description: descriptionSchema.nullable().optional(),
+  shortDescription: shortDescriptionSchema.nullable().optional(),
+  countryCode: countryCodeSchema.nullable().optional(),
+  cityId: cityIdSchema.nullable().optional(),
+  contacts: contactsSchema.nullable().optional(),
+  isVerified: z.boolean().optional(),
+})
+
 export { snowflakeParamSchema, paginationQuerySchema }
 
 export type SnowflakeParam = z.infer<typeof snowflakeParamSchema>
@@ -80,3 +102,4 @@ export type PaginationQueryInput = z.infer<typeof paginationQuerySchema>
 export type ListInvitesQueryInput = z.infer<typeof listInvitesQuerySchema>
 export type ListReportsQueryInput = z.infer<typeof listReportsQuerySchema>
 export type UpdateReportResolutionRouteInput = z.infer<typeof updateReportResolutionSchema>
+export type AdminUpdateUserProfileInput = z.infer<typeof adminUpdateUserProfileSchema>

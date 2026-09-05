@@ -140,8 +140,19 @@ export async function getPublicProfile(
   return formatProfileResponse(profile, { isFollowing })!
 }
 
-export async function checkHandleAvailability(identity: string): Promise<CheckIdentityResult> {
-  const result = await checkIdentityAvailable(identity)
+export async function checkHandleAvailability(
+  identity: string,
+  accountId?: bigint
+): Promise<CheckIdentityResult> {
+  let isVerified = false
+  if (accountId !== undefined) {
+    const profile = await db.query.profiles.findFirst({
+      where: eq(profiles.accountId, accountId),
+    })
+    isVerified = Boolean(profile?.verifiedAt)
+  }
+
+  const result = await checkIdentityAvailable(identity, isVerified)
 
   return {
     available: result.available,

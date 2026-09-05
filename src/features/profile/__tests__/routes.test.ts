@@ -1184,6 +1184,142 @@ describe('Profile Feature Route Tests', () => {
     expect(bodyFollowing.users).toEqual([])
     expect(bodyFollowing.total).toBe(0)
   })
+
+  it('POST /profile/onboarding rejects identity starting with digits or underscores', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    const res1 = await app.request('/profile/onboarding', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_user_token',
+      },
+      body: JSON.stringify({
+        name: 'John Doe',
+        isMale: true,
+        identity: '12345',
+      }),
+    })
+    expect(res1.status).toBe(400)
+
+    const res2 = await app.request('/profile/onboarding', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_user_token',
+      },
+      body: JSON.stringify({
+        name: 'John Doe',
+        isMale: true,
+        identity: '1user',
+      }),
+    })
+    expect(res2.status).toBe(400)
+
+    const res3 = await app.request('/profile/onboarding', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_user_token',
+      },
+      body: JSON.stringify({
+        name: 'John Doe',
+        isMale: true,
+        identity: '_user',
+      }),
+    })
+    expect(res3.status).toBe(400)
+  })
+
+  it('PATCH /profile/me rejects identity starting with digits or length < 5 for unverified user', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      updateUserProfile: async (_accountId: bigint, input: any) => {
+        if (input.identity && input.identity.length < 5) {
+          throw new HTTPException(400, { message: 'Identity must be at least 5 characters long' })
+        }
+        return {
+          ...mockProfile,
+          identity: input.identity,
+        }
+      },
+    }))
+
+    // Starts with digit
+    const resDigit = await app.request('/profile/me', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_user_token',
+      },
+      body: JSON.stringify({
+        identity: '1user',
+      }),
+    })
+    expect(resDigit.status).toBe(400)
+
+    // Length 3 for unverified user
+    const resShort = await app.request('/profile/me', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_user_token',
+      },
+      body: JSON.stringify({
+        identity: 'cat',
+      }),
+    })
+    expect(resShort.status).toBe(400)
+    const bodyShort = (await resShort.json()) as { error: string }
+    expect(bodyShort.error).toBe('Identity must be at least 5 characters long')
+  })
+
+  it('PATCH /profile/me does not allow user to set verifiedAt or isVerified', async () => {
+    let capturedData: any = null
+
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../service', () => ({
+      updateUserProfile: async (_accountId: bigint, input: any) => {
+        capturedData = input
+        return mockProfile
+      },
+    }))
+
+    const res = await app.request('/profile/me', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer valid_user_token',
+      },
+      body: JSON.stringify({
+        name: 'Hacker Name',
+        verifiedAt: new Date().toISOString(),
+        isVerified: true,
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    // Zod strips un-declared fields; verifiedAt and isVerified must not reach the service
+    expect(capturedData.verifiedAt).toBeUndefined()
+    expect(capturedData.isVerified).toBeUndefined()
+  })
 })
 
 

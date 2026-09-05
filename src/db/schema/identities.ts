@@ -34,20 +34,27 @@ export const RESERVED_IDENTITIES = [
   'undefined',
 ] as const
 
-export const identityFormatSchema = z
-  .string()
-  .transform((val) => val.trim().toLowerCase())
-  .pipe(
-    z
-      .string()
-      .min(3, 'Identity must be at least 3 characters long')
-      .max(32, 'Identity must be at most 32 characters long')
-      .regex(/^[a-z0-9_]+$/, 'Identity can only contain letters, numbers, and underscores')
-      .refine(
-        (val) => !RESERVED_IDENTITIES.includes(val as (typeof RESERVED_IDENTITIES)[number]),
-        { message: 'This identity is reserved and cannot be used' }
-      )
-  )
+export const createIdentityFormatSchema = (isVerified: boolean = false) => {
+  const minLength = isVerified ? 3 : 5
+  return z
+    .string()
+    .transform((val) => val.trim().toLowerCase())
+    .pipe(
+      z
+        .string()
+        .min(minLength, `Identity must be at least ${minLength} characters long`)
+        .max(32, 'Identity must be at most 32 characters long')
+        .regex(/^[a-z]/, 'Identity must start with a letter')
+        .regex(/^[a-z0-9_]+$/, 'Identity can only contain letters, numbers, and underscores')
+        .refine(
+          (val) => !RESERVED_IDENTITIES.includes(val as (typeof RESERVED_IDENTITIES)[number]),
+          { message: 'This identity is reserved and cannot be used' }
+        )
+    )
+}
+
+export const identityFormatSchema = createIdentityFormatSchema(true)
+export const standardIdentityFormatSchema = createIdentityFormatSchema(false)
 
 export const insertIdentitySchema = createInsertSchema(identities, {
   identity: () => identityFormatSchema,

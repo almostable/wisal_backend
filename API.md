@@ -64,7 +64,9 @@ Header `Authorization: Bearer <token>`.
         "website": null,
         "email": null
       },
-      "identity": "johndoe"
+      "identity": "johndoe",
+      "regularFollowersCount": 0,
+      "isVerified": false
     },
     "isOnboardingCompleted": true
   }
@@ -143,7 +145,8 @@ Header `Authorization: Bearer <token>`.
       "cityId": null,
       "contacts": null,
       "identity": "johndoe",
-      "regularFollowersCount": 0
+      "regularFollowersCount": 0,
+      "isVerified": false
     },
     "isOnboardingCompleted": true
   }
@@ -154,7 +157,7 @@ Header `Authorization: Bearer <token>`.
 - **Тело запроса (JSON):**
   - `name` *(string, обязательное, мин. 1, макс. 100 симв.)* — отображаемое имя
   - `isMale` *(boolean, обязательное)* — пол (после онбординга неизменяем)
-  - `identity` *(string, обязательное, мин. 3, макс. 32 симв., `^[a-z0-9_]+$`)* — уникальный юзернейм/хэндл
+  - `identity` *(string, обязательное, мин. 5 симв. для обычных, мин. 3 симв. при наличии verified_at, макс. 32 симв.)* — уникальный юзернейм/хэндл. Должен начинаться с буквы (`[a-z]`), содержать только буквы, цифры и знаки подчёркивания (`^[a-z][a-z0-9_]*$`). Не может начинаться с цифры или состоять только из цифр.
   - `avatarKey` *(string, опционально)* — ключ аватара в хранилище
   - `description` *(string, опционально, мин. 1, макс. 2000 симв.)* — описание/биография
   - `shortDescription` *(string, опционально, мин. 1, макс. 110 симв.)* — краткое описание
@@ -175,7 +178,9 @@ Header `Authorization: Bearer <token>`.
       "countryCode": null,
       "cityId": null,
       "contacts": null,
-      "identity": "johndoe"
+      "identity": "johndoe",
+      "regularFollowersCount": 0,
+      "isVerified": false
     }
   }
   ```
@@ -184,7 +189,7 @@ Header `Authorization: Bearer <token>`.
 - **Доступ:** Авторизованный пользователь
 - **Тело запроса (JSON):**
   - `name` *(string, опционально, мин. 1, макс. 100 симв.)*
-  - `identity` *(string, опционально, мин. 3, макс. 32 симв., `^[a-z0-9_]+$`)* — новый уникальный юзернейм/хэндл
+  - `identity` *(string, опционально, мин. 5 симв. для обычных, мин. 3 симв. при наличии verified_at, макс. 32 симв.)* — новый уникальный юзернейм/хэндл (начинается с буквы, не только цифры)
   - `avatarKey` *(string | null, опционально)*
   - `description` *(string | null, опционально, мин. 1, макс. 2000 симв.)*
   - `shortDescription` *(string | null, опционально, мин. 1, макс. 110 симв.)*
@@ -192,6 +197,7 @@ Header `Authorization: Bearer <token>`.
   - `cityId` *(string | null, опционально, мин. 1, макс. 64 симв.)*
   - `contacts` *(object | null, опционально)*
   - `isMale` *(boolean, опционально, допустимо только если пол ранее не был задан)*
+> **Безопасность:** Поле `verified_at` защищено от изменения пользователем. Внешне отдаётся вычисляемое свойство `isVerified: boolean`.
 - **Ответ `200 OK`:**
   ```json
   {
@@ -211,7 +217,9 @@ Header `Authorization: Bearer <token>`.
         "website": null,
         "email": null
       },
-      "identity": "johndoe"
+      "identity": "johndoe",
+      "regularFollowersCount": 0,
+      "isVerified": false
     }
   }
   ```
@@ -479,6 +487,8 @@ Header `Authorization: Bearer <token>`.
         "email": null
       },
       "identity": "johndoe",
+      "regularFollowersCount": 0,
+      "isVerified": false,
       "isFollowing": true
     }
   }
@@ -498,6 +508,8 @@ Header `Authorization: Bearer <token>`.
       "cityId": null,
       "contacts": null,
       "identity": "johndoe",
+      "regularFollowersCount": 0,
+      "isVerified": false,
       "isFollowing": false,
       "isBlocked": true
     }
@@ -1450,16 +1462,92 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
           "isMale": true,
           "avatarKey": null,
           "description": null,
+          "shortDescription": null,
+          "countryCode": null,
+          "cityId": null,
           "contacts": null,
-          "createdAt": "2026-08-18T00:00:00.000Z",
-          "updatedAt": "2026-08-18T00:00:00.000Z",
-          "identity": null
+          "identity": null,
+          "regularFollowersCount": 0,
+          "isVerified": false
         }
       }
     ],
     "total": 1,
     "limit": 50,
     "offset": 0
+  }
+  ```
+
+### `GET /admin/users/:id`
+- **Доступ:** `admin`, `moderator`
+- **URL-параметры:**
+  - `id` *(string / snowflake, обязательное)* — идентификатор аккаунта пользователя
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "user": {
+      "id": "100000000000000",
+      "email": "user@wisal.dev",
+      "createdAt": "2026-08-18T00:00:00.000Z",
+      "updatedAt": "2026-08-18T00:00:00.000Z",
+      "profile": {
+        "id": "200000000000000",
+        "name": "User Name",
+        "isMale": true,
+        "avatarKey": null,
+        "description": "User bio",
+        "shortDescription": null,
+        "countryCode": null,
+        "cityId": null,
+        "contacts": null,
+        "identity": "username",
+        "regularFollowersCount": 10,
+        "isVerified": true
+      }
+    }
+  }
+  ```
+
+### `PATCH /admin/users/:id`
+- **Доступ:** `admin`, `moderator`
+- **URL-параметры:**
+  - `id` *(string / snowflake, обязательное)* — идентификатор аккаунта пользователя
+- **Тело запроса (JSON):**
+  - `name` *(string, опционально, мин. 1, макс. 100 симв.)*
+  - `identity` *(string, опционально, мин. 3-32 симв. для верифицированных, мин. 5-32 симв. для не верифицированных)*
+  - `isMale` *(boolean, опционально)* — модератор/админ может корректировать пол пользователя
+  - `avatarKey` *(string | null, опционально)*
+  - `description` *(string | null, опционально, мин. 1, макс. 2000 симв.)*
+  - `shortDescription` *(string | null, опционально, мин. 1, макс. 110 симв.)*
+  - `countryCode` *(string | null, опционально, ровно 2 симв. в верхнем регистре)*
+  - `cityId` *(string | null, опционально, мин. 1, макс. 64 симв.)*
+  - `contacts` *(object | null, опционально)*
+  - `isVerified` *(boolean, опционально)* — управление верификацией: при `true` сервер устанавливает текущую дату в `verified_at`, при `false` сбрасывает `verified_at` в `null`.
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "user": {
+      "id": "100000000000000",
+      "email": "user@wisal.dev",
+      "createdAt": "2026-08-18T00:00:00.000Z",
+      "updatedAt": "2026-08-18T00:00:00.000Z",
+      "profile": {
+        "id": "200000000000000",
+        "name": "Updated Name",
+        "isMale": true,
+        "avatarKey": null,
+        "description": "Updated bio",
+        "shortDescription": null,
+        "countryCode": null,
+        "cityId": null,
+        "contacts": null,
+        "identity": "updated_user",
+        "regularFollowersCount": 10,
+        "isVerified": true
+      }
+    }
   }
   ```
 

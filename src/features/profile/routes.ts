@@ -132,8 +132,9 @@ profileRouter.get(
 )
 
 profileRouter.get('/check/:identity', zValidator('param', identityParamSchema), async (c) => {
+  const account = c.get('account')
   const { identity } = c.req.valid('param')
-  const result = await checkHandleAvailability(identity)
+  const result = await checkHandleAvailability(identity, account.id)
 
   return c.json({
     success: true,

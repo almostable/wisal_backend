@@ -2,7 +2,7 @@ import { eq, sql } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../db'
 import { profiles, type Profile, type ProfileWithIdentity, type OnboardingInput, type UpdateProfileInput, type Contacts } from '../db/schema/profiles'
-import { identities, identityFormatSchema, type Identity } from '../db/schema/identities'
+import { identities, identityFormatSchema, createIdentityFormatSchema, type Identity } from '../db/schema/identities'
 import { attachMediaFiles, reconcileEntityMedia } from '../features/uploads/service'
 
 export interface SafeProfile {
@@ -17,6 +17,7 @@ export interface SafeProfile {
   contacts: Contacts | null
   identity: string | null
   regularFollowersCount: number
+  isVerified: boolean
   isFollowing?: boolean
   isBlocked?: boolean
   isHidden?: boolean
@@ -45,6 +46,7 @@ export function formatProfileResponse(
     contacts: profile.contacts ?? null,
     identity: identityStr,
     regularFollowersCount: profile.regularFollowersCount ?? 0,
+    isVerified: Boolean(profile.verifiedAt),
   }
 
   if (flags?.isFollowing !== undefined) {
@@ -77,6 +79,7 @@ export function formatRestrictedProfileResponse(
     contacts: null,
     identity: identityStr,
     regularFollowersCount: 0,
+    isVerified: Boolean(profile.verifiedAt),
   }
 
   if (flags.isBlocked) {
@@ -158,6 +161,14 @@ export async function completeOnboarding(
 
     if (existingProfile && existingProfile.identityId) {
       throw new HTTPException(400, { message: 'Onboarding has already been completed for this account' })
+    }
+
+    const isVerified = Boolean(existingProfile?.verifiedAt)
+    const minLength = isVerified ? 3 : 5
+    if (normalizedIdentity.length < minLength) {
+      throw new HTTPException(400, {
+        message: `Identity must be at least ${minLength} characters long`,
+      })
     }
 
     const [createdIdentity] = await tx
@@ -265,6 +276,13 @@ export async function updateProfile(
 
     if (input.identity !== undefined) {
       const normalizedIdentity = input.identity.trim().toLowerCase()
+      const isVerified = Boolean(existingProfile.verifiedAt)
+      const minLength = isVerified ? 3 : 5
+      if (normalizedIdentity.length < minLength) {
+        throw new HTTPException(400, {
+          message: `Identity must be at least ${minLength} characters long`,
+        })
+      }
 
       if (!existingProfile.identity || existingProfile.identity.identity.toLowerCase() !== normalizedIdentity) {
         const existingIdentityRecord = await tx.query.identities.findFirst({
@@ -378,9 +396,11 @@ export async function getProfileByIdentity(
 }
 
 export async function checkIdentityAvailable(
-  identityHandle: string
+  identityHandle: string,
+  isVerified: boolean = false
 ): Promise<{ available: boolean; reason?: string }> {
-  const parsed = identityFormatSchema.safeParse(identityHandle)
+  const schema = createIdentityFormatSchema(isVerified)
+  const parsed = schema.safeParse(identityHandle)
   if (!parsed.success) {
     return {
       available: false,
