@@ -8,6 +8,7 @@ import { identities } from '../../db/schema/identities'
 import { sessions } from '../../db/schema/sessions'
 import { posts } from '../../db/schema/posts'
 import { postSaves } from '../../db/schema/post-saves'
+import { postLikes } from '../../db/schema/post-likes'
 import { follows } from '../../db/schema/follows'
 import { userBlocks } from '../../db/schema/user-blocks'
 import { mediaUploads } from '../../db/schema/media-uploads'
@@ -326,6 +327,21 @@ export async function deleteAccount(
         .update(posts)
         .set({
           savesCount: sql`GREATEST(0, ${posts.savesCount} - 1)`,
+        })
+        .where(inArray(posts.id, postIds))
+    }
+
+    const userLikes = await tx
+      .delete(postLikes)
+      .where(eq(postLikes.userId, accountId))
+      .returning({ postId: postLikes.postId })
+
+    if (userLikes.length > 0) {
+      const postIds = Array.from(new Set(userLikes.map((s) => s.postId)))
+      await tx
+        .update(posts)
+        .set({
+          likesCount: sql`GREATEST(0, ${posts.likesCount} - 1)`,
         })
         .where(inArray(posts.id, postIds))
     }

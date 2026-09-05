@@ -147,4 +147,15 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
     expect(seed2).toMatch(/^[a-f0-9]{16}$/)
     expect(seed1).not.toBe(seed2)
   })
+
+  it('random feed order by clause casts seed parameter to text to prevent Postgres 42P18 error', () => {
+    const { PgDialect } = require('drizzle-orm/pg-core')
+    const { sql } = require('drizzle-orm')
+    const { profiles } = require('../../../db/schema/profiles')
+    const seed = '0123456789abcdef'
+    const clause = sql`hashtext(concat(${profiles.id}::text, ${seed}::text))`
+    const dialect = new PgDialect()
+    const compiled = dialect.sqlToQuery(clause)
+    expect(compiled.sql).toBe('hashtext(concat("profiles"."id"::text, $1::text))')
+  })
 })

@@ -9,6 +9,7 @@ import { invites } from './invites'
 import { follows } from './follows'
 import { posts } from './posts'
 import { postSaves } from './post-saves'
+import { postLikes } from './post-likes'
 import { reports } from './reports'
 import { mediaUploads } from './media-uploads'
 
@@ -37,6 +38,7 @@ export const accountsRelations = relations(accounts, ({ one, many }) => ({
   following: many(follows, { relationName: 'follower' }),
   posts: many(posts),
   postSaves: many(postSaves),
+  postLikes: many(postLikes),
   reportsFiled: many(reports, { relationName: 'reporter' }),
   reportsReceived: many(reports, { relationName: 'reportedUser' }),
   mediaUploads: many(mediaUploads),

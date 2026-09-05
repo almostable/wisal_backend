@@ -122,7 +122,7 @@ Header `Authorization: Bearer <token>`.
   - Зануляет все поля профиля в `profiles` и удаляет хэндл из таблицы `identities`.
   - Переводит аватар пользователя в статус `deleted` в `media_uploads`.
   - Выполняет soft-delete всех постов пользователя (`deleted_at = NOW()`, `is_pinned = false`) и переводит медиа постов и комментариев под ними в статус `deleted`.
-  - Удаляет закладки пользователя (`post_saves`) и связи подписок (`follows`, с декрементом счетчиков `followers_count` у авторов) и блокировок (`user_blocks`).
+  - Удаляет закладки пользователя (`post_saves`) и лайки (`post_likes`, с декрементом счетчиков `likes_count` у постов), связи подписок (`follows`, с декрементом счетчиков `followers_count` у авторов) и блокировок (`user_blocks`).
   - Комментарии пользователя в чужих ветках сохраняются, но полностью обезличиваются (`name: null`, `identity: null`, `avatarKey: null`, `isMale: null`, `isDeleted: true`).
 - **Тело запроса (JSON):**
   - `password` *(string, обязательное)* — текущий пароль пользователя для подтверждения удаления
@@ -734,9 +734,11 @@ Header `Authorization: Bearer <token>`.
       "accessLevel": "public",
       "isPinned": false,
       "savesCount": 0,
+      "likesCount": 0,
       "commentsCount": 0,
       "viewsCount": 0,
       "isSaved": false,
+      "isLiked": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -775,9 +777,11 @@ Header `Authorization: Bearer <token>`.
       "accessLevel": "public",
       "isPinned": false,
       "savesCount": 0,
+      "likesCount": 0,
       "commentsCount": 0,
       "viewsCount": 0,
       "isSaved": false,
+      "isLiked": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -842,9 +846,11 @@ Header `Authorization: Bearer <token>`.
       "accessLevel": "public",
       "isPinned": true,
       "savesCount": 0,
+      "likesCount": 0,
       "commentsCount": 0,
       "viewsCount": 0,
       "isSaved": false,
+      "isLiked": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -888,6 +894,37 @@ Header `Authorization: Bearer <token>`.
   ```
   *Примечание:* Поле `savesCount` передается в ответе только если текущий пользователь является автором поста. Для сторонних пользователей поле опускается.
 
+### `POST /posts/:id/like`
+- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID поста
+- **Поведение:** Если публикация ограничена охватом `same_gender` и пол пользователя не совпадает с полом автора, или пользователь заблокирован, сервер возвращает `404 Not Found` (`{"error": "Post not found"}`).
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "liked": true,
+    "likesCount": 1,
+    "message": "Post liked successfully"
+  }
+  ```
+  *Примечание:* Поле `likesCount` передается в ответе только если текущий пользователь является автором поста. Для сторонних пользователей поле опускается.
+
+### `POST /posts/:id/unlike`
+- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID поста
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "liked": false,
+    "likesCount": 0,
+    "message": "Post unliked successfully"
+  }
+  ```
+  *Примечание:* Поле `likesCount` передается в ответе только если текущий пользователь является автором поста. Для сторонних пользователей поле опускается.
+
 ### `GET /posts/saves`
 - **Доступ:** Авторизованный пользователь с онбордингом
 - **Query-параметры:**
@@ -911,6 +948,7 @@ Header `Authorization: Bearer <token>`.
         "commentsCount": 2,
         "viewsCount": 0,
         "isSaved": true,
+        "isLiked": false,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
         "author": {
@@ -928,7 +966,7 @@ Header `Authorization: Bearer <token>`.
     "offset": 0
   }
   ```
-  *Примечание:* Посты упорядочены по времени сохранения (`desc`). Поле `savesCount` включается только для публикаций, автором которых является сам пользователь.
+  *Примечание:* Посты упорядочены по времени сохранения (`desc`). Поля `savesCount` и `likesCount` включаются только для публикаций, автором которых является сам пользователь.
 
 ### `GET /posts/feed`
 - **Доступ:** Авторизованный пользователь с онбордингом
@@ -954,6 +992,7 @@ Header `Authorization: Bearer <token>`.
         "commentsCount": 2,
         "viewsCount": 0,
         "isSaved": true,
+        "isLiked": true,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
         "author": {
@@ -990,9 +1029,11 @@ Header `Authorization: Bearer <token>`.
       "accessLevel": "public",
       "isPinned": false,
       "savesCount": 10,
+      "likesCount": 25,
       "commentsCount": 4,
       "viewsCount": 15,
       "isSaved": true,
+      "isLiked": true,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
       "author": {
@@ -1006,7 +1047,7 @@ Header `Authorization: Bearer <token>`.
     }
   }
   ```
-  *Примечание:* Поле `savesCount` передается только если текущий пользователь является автором поста. Для других пользователей поле не отображается.
+  *Примечание:* Поля `savesCount` и `likesCount` передаются только если текущий пользователь является автором поста. Для других пользователей эти поля не отображаются.
 
 ### `GET /posts/user/:identity`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
@@ -1033,6 +1074,7 @@ Header `Authorization: Bearer <token>`.
         "commentsCount": 1,
         "viewsCount": 0,
         "isSaved": false,
+        "isLiked": false,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
         "author": {

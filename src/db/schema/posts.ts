@@ -6,6 +6,7 @@ import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
 import { accounts } from './accounts'
 import { postSaves } from './post-saves'
 import { postViews } from './post-views'
+import { postLikes } from './post-likes'
 
 export const POST_TYPES = ['text', 'media'] as const
 export type PostType = (typeof POST_TYPES)[number]
@@ -41,6 +42,7 @@ export const posts = pgTable(
     accessLevel: varchar('access_level', { length: 32 }).notNull().default('public'),
     isPinned: boolean('is_pinned').notNull().default(false),
     savesCount: integer('saves_count').notNull().default(0),
+    likesCount: integer('likes_count').notNull().default(0),
     commentsCount: integer('comments_count').notNull().default(0),
     viewsCount: integer('views_count').notNull().default(0),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
@@ -54,6 +56,7 @@ export const posts = pgTable(
     index('posts_access_level_idx').on(table.accessLevel),
     index('posts_is_pinned_idx').on(table.isPinned),
     index('posts_saves_count_idx').on(table.savesCount),
+    index('posts_likes_count_idx').on(table.likesCount),
     index('posts_comments_count_idx').on(table.commentsCount),
     index('posts_views_count_idx').on(table.viewsCount),
     uniqueIndex('posts_author_pinned_unique_idx')
@@ -69,6 +72,7 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
   }),
   saves: many(postSaves),
   views: many(postViews),
+  likes: many(postLikes),
 }))
 
 export const postContentSchema = z

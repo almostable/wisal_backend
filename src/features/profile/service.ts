@@ -692,7 +692,7 @@ export async function getProfileFeed(
   const orderByClause =
     type === 'recommended'
       ? [desc(profiles.regularFollowersCount), desc(profiles.id)]
-      : [sql`hashtext(concat(${profiles.id}::text, ${activeSeed}))`, asc(profiles.id)]
+      : [sql`hashtext(concat(${profiles.id}::text, ${activeSeed}::text))`, asc(profiles.id)]
 
   const items = await db
     .select({

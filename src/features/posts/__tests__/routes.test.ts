@@ -168,6 +168,12 @@ describe('Posts Feature Route Tests', () => {
     const resUnsave = await app.request('/posts/999999999999991/unsave', { method: 'POST' })
     expect(resUnsave.status).toBe(401)
 
+    const resLike = await app.request('/posts/999999999999991/like', { method: 'POST' })
+    expect(resLike.status).toBe(401)
+
+    const resUnlike = await app.request('/posts/999999999999991/unlike', { method: 'POST' })
+    expect(resUnlike.status).toBe(401)
+
     const resComments = await app.request('/posts/999999999999991/comments', { method: 'GET' })
     expect(resComments.status).toBe(401)
 
@@ -1059,6 +1065,242 @@ describe('Posts Feature Route Tests', () => {
     expect(body.error).toBe('Post not found')
   })
 
+  it('POST /posts/:id/like likes a post and returns likesCount for author', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      likePost: async (_postId: bigint, viewer: { accountId: bigint; isMale: boolean }) => {
+        expect(viewer.accountId).toBe(maleAccount.id)
+        expect(viewer.isMale).toBe(true)
+        return {
+          liked: true,
+          likesCount: 1,
+          message: 'Post liked successfully',
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991/like', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      liked: boolean
+      likesCount?: number
+      message: string
+    }
+    expect(body.success).toBe(true)
+    expect(body.liked).toBe(true)
+    expect(body.likesCount).toBe(1)
+    expect(body.message).toBe('Post liked successfully')
+  })
+
+  it('POST /posts/:id/like likes a post and omits likesCount for non-author', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      likePost: async () => {
+        return {
+          liked: true,
+          message: 'Post liked successfully',
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991/like', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      liked: boolean
+      likesCount?: number
+      message: string
+    }
+    expect(body.success).toBe(true)
+    expect(body.liked).toBe(true)
+    expect(body.likesCount).toBeUndefined()
+    expect(body.message).toBe('Post liked successfully')
+  })
+
+  it('POST /posts/:id/like returns 404 when post does not exist or gender scope check fails', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: femaleAccount,
+        session: femaleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => femaleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      likePost: async () => {
+        throw new HTTPException(404, { message: 'Post not found' })
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991/like', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_female_token',
+      },
+    })
+
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Post not found')
+  })
+
+  it('POST /posts/:id/unlike unlikes a post and returns likesCount for author', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      unlikePost: async (_postId: bigint, viewer: { accountId: bigint; isMale: boolean }) => {
+        expect(viewer.accountId).toBe(maleAccount.id)
+        expect(viewer.isMale).toBe(true)
+        return {
+          liked: false,
+          likesCount: 0,
+          message: 'Post unliked successfully',
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991/unlike', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      liked: boolean
+      likesCount?: number
+      message: string
+    }
+    expect(body.success).toBe(true)
+    expect(body.liked).toBe(false)
+    expect(body.likesCount).toBe(0)
+    expect(body.message).toBe('Post unliked successfully')
+  })
+
+  it('POST /posts/:id/unlike unlikes a post and omits likesCount for non-author', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      unlikePost: async () => {
+        return {
+          liked: false,
+          message: 'Post unliked successfully',
+        }
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991/unlike', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      success: boolean
+      liked: boolean
+      likesCount?: number
+      message: string
+    }
+    expect(body.success).toBe(true)
+    expect(body.liked).toBe(false)
+    expect(body.likesCount).toBeUndefined()
+    expect(body.message).toBe('Post unliked successfully')
+  })
+
+  it('POST /posts/:id/unlike returns 404 when post does not exist or gender scope check fails', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: femaleAccount,
+        session: femaleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => femaleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      unlikePost: async () => {
+        throw new HTTPException(404, { message: 'Post not found' })
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991/unlike', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_female_token',
+      },
+    })
+
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Post not found')
+  })
+
   it('GET /posts/saves returns paginated list of saved posts', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
@@ -1935,7 +2177,7 @@ describe('Posts Feature Route Tests', () => {
     expect(body2.error).toBe('Cannot reply to a blocked user')
   })
 
-  it('GET /posts/:id, POST /posts/:id/save, POST /posts/:id/unsave return 404 for blocked or restricted post access', async () => {
+  it('GET /posts/:id, POST /posts/:id/save, POST /posts/:id/unsave, POST /posts/:id/like, POST /posts/:id/unlike return 404 for blocked or restricted post access', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -1958,6 +2200,12 @@ describe('Posts Feature Route Tests', () => {
       unsavePost: async () => {
         throw new HTTPException(404, { message: 'Post not found' })
       },
+      likePost: async () => {
+        throw new HTTPException(404, { message: 'Post not found' })
+      },
+      unlikePost: async () => {
+        throw new HTTPException(404, { message: 'Post not found' })
+      },
     }))
 
     const resGet = await app.request('/posts/999999999999991', {
@@ -1977,6 +2225,18 @@ describe('Posts Feature Route Tests', () => {
       headers: { Authorization: 'Bearer valid_male_token' },
     })
     expect(resUnsave.status).toBe(404)
+
+    const resLike = await app.request('/posts/999999999999991/like', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer valid_male_token' },
+    })
+    expect(resLike.status).toBe(404)
+
+    const resUnlike = await app.request('/posts/999999999999991/unlike', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer valid_male_token' },
+    })
+    expect(resUnlike.status).toBe(404)
   })
 
   it('GET /posts/:id/comments only returns root comments and excludes replies', async () => {

@@ -19,6 +19,7 @@ import { posts, type Post, type PostType, type GenderScope, type AccessLevel } f
 import { comments, type Comment, type CommentType } from '../../db/schema/comments'
 import { userBlocks } from '../../db/schema/user-blocks'
 import { postSaves } from '../../db/schema/post-saves'
+import { postLikes } from '../../db/schema/post-likes'
 import { accounts } from '../../db/schema/accounts'
 import { profiles } from '../../db/schema/profiles'
 import { identities } from '../../db/schema/identities'
@@ -45,6 +46,7 @@ import type {
   UserPostsResult,
   SavedPostsResult,
   SaveActionResult,
+  LikeActionResult,
   CommentResponse,
   CommentAuthorInfo,
   ReplyToUserInfo,
@@ -142,7 +144,8 @@ function formatPost(
   post: Post,
   author?: PostAuthorInfo | null,
   isSaved?: boolean,
-  canViewSavesCount: boolean = false
+  canViewAuthorCounts: boolean = false,
+  isLiked?: boolean
 ): PostResponse {
   return {
     id: post.id,
@@ -155,9 +158,15 @@ function formatPost(
     accessLevel: post.accessLevel as AccessLevel,
     isPinned: post.isPinned,
     viewsCount: post.viewsCount ?? 0,
-    ...(canViewSavesCount ? { savesCount: post.savesCount ?? 0 } : {}),
+    ...(canViewAuthorCounts
+      ? {
+          savesCount: post.savesCount ?? 0,
+          likesCount: post.likesCount ?? 0,
+        }
+      : {}),
     commentsCount: post.commentsCount ?? 0,
     ...(isSaved !== undefined ? { isSaved } : {}),
+    ...(isLiked !== undefined ? { isLiked } : {}),
     createdAt: post.createdAt,
     updatedAt: post.updatedAt,
     author: author ?? null,
@@ -317,7 +326,7 @@ export async function createPost(
       .where(eq(accounts.id, authorAccountId))
       .limit(1)
 
-    return formatPost(created, authorData ? mapAuthor(authorData) : null, false, true)
+    return formatPost(created, authorData ? mapAuthor(authorData) : null, false, true, false)
   })
 }
 
@@ -429,7 +438,24 @@ export async function updatePost(
       )
       .limit(1)
 
-    return formatPost(updated, authorData ? mapAuthor(authorData) : null, Boolean(savedRecord), true)
+    const [likedRecord] = await tx
+      .select({ postId: postLikes.postId })
+      .from(postLikes)
+      .where(
+        and(
+          eq(postLikes.postId, postId),
+          eq(postLikes.userId, authorAccountId)
+        )
+      )
+      .limit(1)
+
+    return formatPost(
+      updated,
+      authorData ? mapAuthor(authorData) : null,
+      Boolean(savedRecord),
+      true,
+      Boolean(likedRecord)
+    )
   })
 }
 
@@ -539,7 +565,24 @@ export async function pinPost(
       )
       .limit(1)
 
-    return formatPost(updated, authorData ? mapAuthor(authorData) : null, Boolean(savedRecord), true)
+    const [likedRecord] = await tx
+      .select({ postId: postLikes.postId })
+      .from(postLikes)
+      .where(
+        and(
+          eq(postLikes.postId, postId),
+          eq(postLikes.userId, authorAccountId)
+        )
+      )
+      .limit(1)
+
+    return formatPost(
+      updated,
+      authorData ? mapAuthor(authorData) : null,
+      Boolean(savedRecord),
+      true,
+      Boolean(likedRecord)
+    )
   })
 }
 
@@ -620,6 +663,83 @@ export async function unsavePost(
   })
 }
 
+export async function likePost(
+  postId: bigint,
+  viewer: { accountId: bigint; isMale: boolean }
+): Promise<LikeActionResult> {
+  return await db.transaction(async (tx) => {
+    const post = await checkPostAccess(tx, postId, viewer)
+    const isAuthor = viewer.accountId === post.authorId
+
+    const inserted = await tx
+      .insert(postLikes)
+      .values({
+        postId,
+        userId: viewer.accountId,
+      })
+      .onConflictDoNothing()
+      .returning()
+
+    let currentLikesCount = post.likesCount
+    if (inserted.length > 0) {
+      const [updated] = await tx
+        .update(posts)
+        .set({
+          likesCount: sql`${posts.likesCount} + 1`,
+        })
+        .where(eq(posts.id, postId))
+        .returning({ likesCount: posts.likesCount })
+
+      currentLikesCount = updated?.likesCount ?? post.likesCount + 1
+    }
+
+    return {
+      liked: true,
+      ...(isAuthor ? { likesCount: currentLikesCount } : {}),
+      message: 'Post liked successfully',
+    }
+  })
+}
+
+export async function unlikePost(
+  postId: bigint,
+  viewer: { accountId: bigint; isMale: boolean }
+): Promise<LikeActionResult> {
+  return await db.transaction(async (tx) => {
+    const post = await checkPostAccess(tx, postId, viewer)
+    const isAuthor = viewer.accountId === post.authorId
+
+    const deleted = await tx
+      .delete(postLikes)
+      .where(
+        and(
+          eq(postLikes.postId, postId),
+          eq(postLikes.userId, viewer.accountId)
+        )
+      )
+      .returning()
+
+    let currentLikesCount = post.likesCount
+    if (deleted.length > 0) {
+      const [updated] = await tx
+        .update(posts)
+        .set({
+          likesCount: sql`GREATEST(0, ${posts.likesCount} - 1)`,
+        })
+        .where(eq(posts.id, postId))
+        .returning({ likesCount: posts.likesCount })
+
+      currentLikesCount = updated?.likesCount ?? Math.max(0, post.likesCount - 1)
+    }
+
+    return {
+      liked: false,
+      ...(isAuthor ? { likesCount: currentLikesCount } : {}),
+      message: 'Post unliked successfully',
+    }
+  })
+}
+
 export async function recordAuthorPostRead(
   readerAccountId: bigint,
   authorAccountId: bigint,
@@ -649,6 +769,7 @@ export async function getPostById(
       post: posts,
       ...authorSelectFields,
       isSaved: sql<boolean>`CASE WHEN ${postSaves.userId} IS NOT NULL THEN true ELSE false END`,
+      isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
       isFollowingAuthor: sql<boolean>`CASE WHEN ${viewerFollows.followingId} IS NOT NULL THEN true ELSE false END`,
     })
     .from(posts)
@@ -660,6 +781,13 @@ export async function getPostById(
       and(
         eq(postSaves.postId, posts.id),
         eq(postSaves.userId, viewer.accountId)
+      )
+    )
+    .leftJoin(
+      postLikes,
+      and(
+        eq(postLikes.postId, posts.id),
+        eq(postLikes.userId, viewer.accountId)
       )
     )
     .leftJoin(
@@ -716,7 +844,8 @@ export async function getPostById(
     result.post,
     mapAuthor(result, Boolean(result.isFollowingAuthor)),
     Boolean(result.isSaved),
-    isAuthor
+    isAuthor,
+    Boolean(result.isLiked)
   )
 }
 
@@ -749,6 +878,7 @@ export async function getFeed(
       post: posts,
       ...authorSelectFields,
       isSaved: sql<boolean>`CASE WHEN ${postSaves.userId} IS NOT NULL THEN true ELSE false END`,
+      isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
       isFollowingAuthor: sql<boolean>`CASE WHEN ${viewerFollows.followingId} IS NOT NULL THEN true ELSE false END`,
     })
     .from(posts)
@@ -760,6 +890,13 @@ export async function getFeed(
       and(
         eq(postSaves.postId, posts.id),
         eq(postSaves.userId, viewer.accountId)
+      )
+    )
+    .leftJoin(
+      postLikes,
+      and(
+        eq(postLikes.postId, posts.id),
+        eq(postLikes.userId, viewer.accountId)
       )
     )
     .leftJoin(
@@ -779,7 +916,8 @@ export async function getFeed(
       item.post,
       mapAuthor(item, Boolean(item.isFollowingAuthor)),
       Boolean(item.isSaved),
-      viewer.accountId === item.post.authorId
+      viewer.accountId === item.post.authorId,
+      Boolean(item.isLiked)
     )
   )
 
@@ -877,6 +1015,7 @@ export async function getUserPosts(
         post: posts,
         ...authorSelectFields,
         isSaved: sql<boolean>`CASE WHEN ${postSaves.userId} IS NOT NULL THEN true ELSE false END`,
+        isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
       })
       .from(posts)
       .innerJoin(accounts, eq(posts.authorId, accounts.id))
@@ -887,6 +1026,13 @@ export async function getUserPosts(
         and(
           eq(postSaves.postId, posts.id),
           eq(postSaves.userId, viewer.accountId)
+        )
+      )
+      .leftJoin(
+        postLikes,
+        and(
+          eq(postLikes.postId, posts.id),
+          eq(postLikes.userId, viewer.accountId)
         )
       )
       .where(whereClause)
@@ -904,7 +1050,8 @@ export async function getUserPosts(
       item.post,
       mapAuthor(item, isFollowing),
       Boolean(item.isSaved),
-      viewer.accountId === item.post.authorId
+      viewer.accountId === item.post.authorId,
+      Boolean(item.isLiked)
     )
   )
 
@@ -950,6 +1097,7 @@ export async function getSavedPosts(
         post: posts,
         ...authorSelectFields,
         isFollowingAuthor: sql<boolean>`CASE WHEN ${viewerFollows.followingId} IS NOT NULL THEN true ELSE false END`,
+        isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
       })
       .from(postSaves)
       .innerJoin(posts, eq(postSaves.postId, posts.id))
@@ -961,6 +1109,13 @@ export async function getSavedPosts(
         and(
           eq(viewerFollows.followerId, viewer.accountId),
           eq(viewerFollows.followingId, posts.authorId)
+        )
+      )
+      .leftJoin(
+        postLikes,
+        and(
+          eq(postLikes.postId, posts.id),
+          eq(postLikes.userId, viewer.accountId)
         )
       )
       .where(whereCondition)
@@ -979,7 +1134,8 @@ export async function getSavedPosts(
       item.post,
       mapAuthor(item, Boolean(item.isFollowingAuthor)),
       true,
-      viewer.accountId === item.post.authorId
+      viewer.accountId === item.post.authorId,
+      Boolean(item.isLiked)
     )
   )
 

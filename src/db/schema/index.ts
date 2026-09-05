@@ -14,4 +14,4 @@ export * from './user-blocks'
 export * from './reports'
 export * from './media-uploads'
 export * from './post-views'
-
+export * from './post-likes'

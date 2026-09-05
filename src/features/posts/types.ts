@@ -24,9 +24,11 @@ export interface PostResponse {
   accessLevel: AccessLevel
   isPinned: boolean
   savesCount?: number
+  likesCount?: number
   commentsCount: number
   viewsCount: number
   isSaved?: boolean
+  isLiked?: boolean
   createdAt: Date
   updatedAt: Date
   author?: PostAuthorInfo | null
@@ -74,6 +76,12 @@ export interface CommentResponse {
 export interface SaveActionResult {
   saved: boolean
   savesCount?: number
+  message: string
+}
+
+export interface LikeActionResult {
+  liked: boolean
+  likesCount?: number
   message: string
 }
 

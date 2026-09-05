@@ -29,6 +29,8 @@ import {
   getSavedPosts,
   savePost,
   unsavePost,
+  likePost,
+  unlikePost,
   getPostComments,
   getCommentReplies,
   createComment,
@@ -335,6 +337,38 @@ postsRouter.post('/:id/unsave', zValidator('param', postIdParamSchema), async (c
   const { id } = c.req.valid('param')
 
   const result = await unsavePost(id, {
+    accountId: account.id,
+    isMale: profile.isMale!,
+  })
+
+  return c.json({
+    success: true,
+    ...result,
+  })
+})
+
+postsRouter.post('/:id/like', zValidator('param', postIdParamSchema), async (c) => {
+  const account = c.get('account')
+  const profile = c.get('profile')
+  const { id } = c.req.valid('param')
+
+  const result = await likePost(id, {
+    accountId: account.id,
+    isMale: profile.isMale!,
+  })
+
+  return c.json({
+    success: true,
+    ...result,
+  })
+})
+
+postsRouter.post('/:id/unlike', zValidator('param', postIdParamSchema), async (c) => {
+  const account = c.get('account')
+  const profile = c.get('profile')
+  const { id } = c.req.valid('param')
+
+  const result = await unlikePost(id, {
     accountId: account.id,
     isMale: profile.isMale!,
   })
