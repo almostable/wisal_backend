@@ -17,6 +17,7 @@ export const readers = pgTable(
       .defaultNow()
       .notNull(),
     lastReadAt: timestamp('last_read_at', { withTimezone: true, mode: 'date' }),
+    lastReadPostId: snowflakeId('last_read_post_id'),
   },
   (table) => [
     primaryKey({

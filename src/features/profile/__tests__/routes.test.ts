@@ -758,7 +758,7 @@ describe('Profile Feature Route Tests', () => {
     expect(body.users[0].identity).toBe('follower1')
   })
 
-  it('GET /profile/reading returns list of accounts user reads', async () => {
+  it('GET /profile/authors returns list of subscribed authors with unreadCount', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -772,15 +772,21 @@ describe('Profile Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      getReading: async () => ({
-        users: [
+      getSubscribedAuthors: async () => ({
+        authors: [
           {
             id: 888888888888888n,
-            name: 'Following One',
+            name: 'Author One',
             avatarKey: 'avatar.png',
+            shortDescription: 'Writer',
             description: 'Leader',
-            identity: 'following1',
+            identity: 'author1',
+            isMale: true,
+            isVerified: true,
             readAt: new Date(),
+            lastReadAt: new Date(),
+            lastReadPostId: 100n,
+            unreadCount: 5,
           },
         ],
         total: 1,
@@ -789,7 +795,7 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
-    const res = await app.request('/profile/reading', {
+    const res = await app.request('/profile/authors', {
       method: 'GET',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -799,17 +805,19 @@ describe('Profile Feature Route Tests', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       success: boolean
-      users: any[]
+      authors: any[]
       total: number
       limit: number
       offset: number
     }
     expect(body.success).toBe(true)
     expect(body.total).toBe(1)
-    expect(body.users[0].identity).toBe('following1')
+    expect(body.authors[0].identity).toBe('author1')
+    expect(body.authors[0].unreadCount).toBe(5)
+    expect(body.authors[0].lastReadPostId).toBe('100')
   })
 
-  it('GET /profile/:identity/readers and GET /profile/:identity/reading return public lists', async () => {
+  it('GET /profile/:identity/readers returns public list', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -826,7 +834,7 @@ describe('Profile Feature Route Tests', () => {
       getUserReadersByIdentity: async (handle: string) => {
         if (handle === 'targetuser') {
           return {
-            users: [
+            profiles: [
               {
                 id: 11111n,
                 name: 'Public Fan',
@@ -844,17 +852,6 @@ describe('Profile Feature Route Tests', () => {
         }
         throw new HTTPException(404, { message: 'Profile not found' })
       },
-      getUserReadingByIdentity: async (handle: string) => {
-        if (handle === 'targetuser') {
-          return {
-            users: [],
-            total: 0,
-            limit: 50,
-            offset: 0,
-          }
-        }
-        throw new HTTPException(404, { message: 'Profile not found' })
-      },
     }))
 
     const resFollowers = await app.request('/profile/targetuser/readers', {
@@ -862,25 +859,96 @@ describe('Profile Feature Route Tests', () => {
       headers: { Authorization: 'Bearer valid_user_token' },
     })
     expect(resFollowers.status).toBe(200)
-    const bodyFollowers = (await resFollowers.json()) as { success: boolean; users: any[]; total: number }
+    const bodyFollowers = (await resFollowers.json()) as { success: boolean; profiles: any[]; total: number }
     expect(bodyFollowers.success).toBe(true)
-    expect(bodyFollowers.users.length).toBe(1)
-    expect(bodyFollowers.users[0].identity).toBe('publicfan')
-
-    const resFollowing = await app.request('/profile/targetuser/reading', {
-      method: 'GET',
-      headers: { Authorization: 'Bearer valid_user_token' },
-    })
-    expect(resFollowing.status).toBe(200)
-    const bodyFollowing = (await resFollowing.json()) as { success: boolean; total: number }
-    expect(bodyFollowing.success).toBe(true)
-    expect(bodyFollowing.total).toBe(0)
+    expect(bodyFollowers.profiles.length).toBe(1)
+    expect(bodyFollowers.profiles[0].identity).toBe('publicfan')
 
     const res404 = await app.request('/profile/nonexistent/readers', {
       method: 'GET',
       headers: { Authorization: 'Bearer valid_user_token' },
     })
     expect(res404.status).toBe(404)
+  })
+
+  it('POST /profile/:author_id/read marks author posts read when last_post_id is provided', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => mockProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      markAuthorPostsRead: async (_viewerId: bigint, authorId: string, lastPostId: bigint) => {
+        if (authorId === 'nonexistent') {
+          throw new HTTPException(404, { message: 'Subscription not found' })
+        }
+        if (authorId === 'myself') {
+          throw new HTTPException(400, { message: 'Profiles cannot mark own posts as read' })
+        }
+        return {
+          lastReadPostId: lastPostId,
+          lastReadAt: new Date(),
+          message: 'Author posts marked as read',
+        }
+      },
+    }))
+
+    // snake_case last_post_id
+    const resSnake = await app.request('/profile/author123/read', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ last_post_id: '105' }),
+    })
+    expect(resSnake.status).toBe(200)
+    const bodySnake = (await resSnake.json()) as { success: boolean; lastReadPostId: string }
+    expect(bodySnake.success).toBe(true)
+    expect(bodySnake.lastReadPostId).toBe('105')
+
+    // camelCase lastPostId
+    const resCamel = await app.request('/profile/author123/read', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ lastPostId: 105 }),
+    })
+    expect(resCamel.status).toBe(200)
+    const bodyCamel = (await resCamel.json()) as { success: boolean; lastReadPostId: string }
+    expect(bodyCamel.success).toBe(true)
+    expect(bodyCamel.lastReadPostId).toBe('105')
+
+    // invalid post id
+    const resInvalid = await app.request('/profile/author123/read', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ last_post_id: 'invalid_id' }),
+    })
+    expect(resInvalid.status).toBe(400)
+
+    // not found
+    const resNotFound = await app.request('/profile/nonexistent/read', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_user_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ last_post_id: 105 }),
+    })
+    expect(resNotFound.status).toBe(404)
   })
 
   it('POST /profile/:identity/read reads user and handles self-read error', async () => {
@@ -1198,13 +1266,7 @@ describe('Profile Feature Route Tests', () => {
 
     mock.module('../service', () => ({
       getUserReadersByIdentity: async () => ({
-        users: [],
-        total: 0,
-        limit: 50,
-        offset: 0,
-      }),
-      getUserReadingByIdentity: async () => ({
-        users: [],
+        profiles: [],
         total: 0,
         limit: 50,
         offset: 0,
@@ -1218,20 +1280,9 @@ describe('Profile Feature Route Tests', () => {
       },
     })
     expect(resFollowers.status).toBe(200)
-    const bodyFollowers = (await resFollowers.json()) as { success: boolean; users: any[]; total: number }
-    expect(bodyFollowers.users).toEqual([])
+    const bodyFollowers = (await resFollowers.json()) as { success: boolean; profiles: any[]; total: number }
+    expect(bodyFollowers.profiles).toEqual([])
     expect(bodyFollowers.total).toBe(0)
-
-    const resFollowing = await app.request('/profile/blockeduser/reading', {
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer valid_user_token',
-      },
-    })
-    expect(resFollowing.status).toBe(200)
-    const bodyFollowing = (await resFollowing.json()) as { success: boolean; users: any[]; total: number }
-    expect(bodyFollowing.users).toEqual([])
-    expect(bodyFollowing.total).toBe(0)
   })
 
   it('POST /profile/onboarding rejects identity starting with digits or underscores', async () => {

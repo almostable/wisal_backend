@@ -307,8 +307,9 @@ Header `Authorization: Bearer <token>`.
   }
   ```
 
-### `GET /profile/reading`
+### `GET /profile/authors`
 - **Доступ:** Авторизованный пользователь
+- **Описание:** Возвращает список авторов, на которых подписан текущий пользователь, с вычисленным счетчиком непрочитанных постов (`unreadCount`) в одном SQL-запросе. Авторы с новыми публикациями (`unreadCount > 0`) выводятся в начале списка.
 - **Query-параметры:**
   - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
   - `offset` *(number, опционально, по умолчанию: 0)*
@@ -316,15 +317,20 @@ Header `Authorization: Bearer <token>`.
   ```json
   {
     "success": true,
-    "profiles": [
+    "authors": [
       {
         "id": "222222222222222",
-        "name": "Reading Name",
+        "name": "Author Name",
         "avatarKey": "avatars/user.png",
-        "description": "User bio",
-        "identity": "reading_handle",
+        "shortDescription": "Author bio",
+        "description": "Full author description",
+        "identity": "author_handle",
+        "isMale": true,
+        "isVerified": true,
         "readAt": "2026-08-20T00:00:00.000Z",
-        "lastReadAt": null
+        "lastReadAt": "2026-09-01T12:00:00.000Z",
+        "lastReadPostId": "105",
+        "unreadCount": 3
       }
     ],
     "total": 1,
@@ -362,38 +368,26 @@ Header `Authorization: Bearer <token>`.
   }
   ```
 
-### `GET /profile/:identity/reading`
+### `POST /profile/:author_id/read`
 - **Доступ:** Авторизованный пользователь
+- **Описание:** 
+  1. При передаче `last_post_id` (или `lastPostId`): фиксирует прогресс прочтения постов автора с монотонной защитой от рассинхронизации сети (`GREATEST(COALESCE(last_read_post_id, 0), :last_post_id)`). Меньший ID не перезапишет больший, если пакеты пришли не по порядку.
+  2. Без тела запроса (или пустой JSON `{}`): подписывает пользователя на автора (начать чтение).
 - **URL-параметры:**
-  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
-- **Query-параметры:**
-  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
-  - `offset` *(number, опционально, по умолчанию: 0)*
-- **Ответ `200 OK`:**
+  - `author_id` *(string, обязательное)* — Snowflake ID автора или его `identity`
+- **Тело запроса (JSON, опционально):**
+  - `last_post_id` *(string | number, опционально)* — ID последнего прочитанного поста (Snowflake)
+  - `lastPostId` *(string | number, опционально)* — альтернативное имя в camelCase
+- **Ответ `200 OK` (при отметке прочитанного):**
   ```json
   {
     "success": true,
-    "profiles": [
-      {
-        "id": "222222222222222",
-        "name": "Reading Name",
-        "avatarKey": "avatars/user.png",
-        "description": "User bio",
-        "identity": "reading_handle",
-        "readAt": "2026-08-20T00:00:00.000Z"
-      }
-    ],
-    "total": 1,
-    "limit": 50,
-    "offset": 0
+    "lastReadPostId": "105",
+    "lastReadAt": "2026-09-07T12:00:00.000Z",
+    "message": "Author posts marked as read"
   }
   ```
-
-### `POST /profile/:identity/read`
-- **Доступ:** Авторизованный пользователь
-- **URL-параметры:**
-  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя, на профиль которого нужно подписаться
-- **Ответ `200 OK`:**
+- **Ответ `200 OK` (при подписке):**
   ```json
   {
     "success": true,
@@ -402,10 +396,11 @@ Header `Authorization: Bearer <token>`.
   }
   ```
 
-### `DELETE /profile/:identity/read`
+### `DELETE /profile/:author_id/read`
 - **Доступ:** Авторизованный пользователь
+- **Описание:** Отписывает пользователя от автора (прекратить чтение).
 - **URL-параметры:**
-  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя, от чтения профиля которого нужно отписаться
+  - `author_id` *(string, обязательное)* — Snowflake ID автора или его `identity`
 - **Ответ `200 OK`:**
   ```json
   {
@@ -972,48 +967,6 @@ Header `Authorization: Bearer <token>`.
   ```
   *Примечание:* Посты упорядочены по времени сохранения (`desc`). Поля `savesCount` и `likesCount` включаются только для публикаций, автором которых является сам пользователь.
 
-### `GET /posts/feed`
-- **Доступ:** Авторизованный пользователь с онбордингом
-- **Поведение:** Отдает исключительно публикации авторов, профили которых читает пользователь (`reading`), в обратном хронологическом порядке (`desc(posts.createdAt)`). Общей ленты больше нет.
-- **Query-параметры:**
-  - `limit` *(number, опционально, по умолчанию: 20, макс: 100)*
-  - `offset` *(number, опционально, по умолчанию: 0)*
-- **Ответ `200 OK`:**
-  ```json
-  {
-    "success": true,
-    "posts": [
-      {
-        "id": "999999999999991",
-        "authorId": "111111111111111",
-        "authorGender": true,
-        "type": "text",
-        "payload": {},
-        "content": "Feed post",
-        "genderScope": "all",
-        "accessLevel": "public",
-        "isPinned": false,
-        "commentsCount": 2,
-        "viewsCount": 0,
-        "isSaved": true,
-        "isLiked": true,
-        "createdAt": "2026-08-20T00:00:00.000Z",
-        "updatedAt": "2026-08-20T00:00:00.000Z",
-        "editedAt": null,
-        "author": {
-          "id": "111111111111111",
-          "name": "John Doe",
-          "identity": "johndoe",
-          "avatarKey": null,
-          "isMale": true,
-          "isReading": true
-        }
-      }
-    ],
-    "limit": 20,
-    "offset": 0
-  }
-  ```
 
 ### `GET /posts/:id`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
@@ -1121,7 +1074,7 @@ Header `Authorization: Bearer <token>`.
 
 ### `GET /posts/:id/comments`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)
-- **Описание:** Возвращает только комментарии первого уровня (ответы непосредственно на сам пост). Реплаи на комментарии запрашиваются отдельно через `GET /posts/comments/:id/replies`.
+- **Описание:** Единый эндпоинт получения всех комментариев поста (включая ответы/реплаи всех уровней вложенности) в хронологическом порядке (`createdAt ASC`). Каждый комментарий содержит `parentId`, `replyToCommentId` и `replyToProfile` для восстановления дерева на клиенте.
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID поста
 - **Query-параметры:**
@@ -1141,8 +1094,8 @@ Header `Authorization: Bearer <token>`.
         "replyToProfile": null,
         "type": "text",
         "payload": {},
-        "content": "First comment on post",
-        "repliesCount": 2,
+        "content": "First root comment",
+        "repliesCount": 1,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
         "editedAt": null,
@@ -1153,27 +1106,7 @@ Header `Authorization: Bearer <token>`.
           "avatarKey": null,
           "isMale": true
         }
-      }
-    ],
-    "total": 1,
-    "limit": 50,
-    "offset": 0
-  }
-  ```
-
-### `GET /posts/comments/:id/replies`
-- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту комментария)
-- **Описание:** Возвращает плоский хронологический список всех ответов (реплаев) ветки указанного комментария (`createdAt ASC`). Принимает ID как корневого комментария, так и любого реплая ветки.
-- **URL-параметры:**
-  - `id` *(string, обязательное)* — Snowflake ID комментария
-- **Query-параметры:**
-  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
-  - `offset` *(number, опционально, по умолчанию: 0)*
-- **Ответ `200 OK`:**
-  ```json
-  {
-    "success": true,
-    "comments": [
+      },
       {
         "id": "888888888888882",
         "postId": "999999999999991",
@@ -1187,7 +1120,7 @@ Header `Authorization: Bearer <token>`.
         },
         "type": "text",
         "payload": {},
-        "content": "Reply to first comment",
+        "content": "Reply to John's comment",
         "repliesCount": 0,
         "createdAt": "2026-08-20T00:01:00.000Z",
         "updatedAt": "2026-08-20T00:01:00.000Z",
@@ -1199,32 +1132,6 @@ Header `Authorization: Bearer <token>`.
           "avatarKey": null,
           "isMale": false
         }
-      },
-      {
-        "id": "888888888888883",
-        "postId": "999999999999991",
-        "authorId": "333333333333333",
-        "parentId": "888888888888881",
-        "replyToCommentId": "888888888888882",
-        "replyToProfile": {
-          "id": "222222222222222",
-          "name": "Jane Smith",
-          "identity": "janesmith"
-        },
-        "type": "text",
-        "payload": {},
-        "content": "Reply to Jane inside same thread",
-        "repliesCount": 0,
-        "createdAt": "2026-08-20T00:02:00.000Z",
-        "updatedAt": "2026-08-20T00:02:00.000Z",
-        "editedAt": null,
-        "author": {
-          "id": "333333333333333",
-          "name": "Alex Brown",
-          "identity": "alexbrown",
-          "avatarKey": null,
-          "isMale": true
-        }
       }
     ],
     "total": 2,
@@ -1235,6 +1142,7 @@ Header `Authorization: Bearer <token>`.
 
 ### `POST /posts/:id/comments`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)
+- **Описание:** Создание комментария к посту (корневого или ответа на существующий комментарий).
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID поста
 - **Тело запроса (JSON):**
@@ -1243,7 +1151,7 @@ Header `Authorization: Bearer <token>`.
   - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*:
     - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (от 1 до 10 файлов)
     - Для `type: "text"`: `{}`
-  - `parentId` *(string | null, опционально)* — Snowflake ID родительского комментария (если ответ)
+  - `parentId` *(string | null, опционально)* — Snowflake ID родительского комментария (если создается реплай)
 - **Ответ `201 Created`:**
   ```json
   {
@@ -1272,22 +1180,6 @@ Header `Authorization: Bearer <token>`.
     }
   }
   ```
-
-### `POST /posts/comments/:id/reply`
-- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)
-- **URL-параметры:**
-  - `id` *(string, обязательное)* — Snowflake ID родительского комментария (корневого или реплая)
-- **Тело запроса (JSON):**
-  - `type` *(string, опционально, `"text" | "media"`, по умолчанию: `"text"`)*
-  - `content` *(string, обязательное для `type: "text"`, опционально для `type: "media"`, макс. 5000 симв.)* — текст ответа
-  - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*
-- **Ответ `201 Created`:**
-  ```json
-  {
-    "success": true,
-    "comment": {
-      "id": "888888888888882",
-      "postId": "999999999999991",
       "authorId": "222222222222222",
       "parentId": "888888888888881",
       "replyToCommentId": "888888888888881",

@@ -21,6 +21,7 @@ import { accounts } from '../../db/schema/accounts'
 import { profiles } from '../../db/schema/profiles'
 import { identities } from '../../db/schema/identities'
 import { readers } from '../../db/schema/readers'
+import { posts } from '../../db/schema/posts'
 import { profileBlocks } from '../../db/schema/profile-blocks'
 import {
   getProfileByAccountId,
@@ -40,6 +41,7 @@ import type {
 import type {
   ListMyInvitesQuery,
   ListReadersQuery,
+  ListAuthorsQuery,
   ListBlocksQuery,
   ProfileFeedQuery,
   ProfileSearchQuery,
@@ -53,6 +55,9 @@ import type {
   ListMyInvitesResult,
   ReaderProfileItem,
   ListReadersResult,
+  AuthorSubscriptionItem,
+  ListAuthorsResult,
+  MarkAuthorReadResult,
   ReadActionResult,
   BlockedProfileItem,
   ListBlocksResult,
@@ -287,27 +292,17 @@ export async function getProfileIdByIdentity(identityHandle: string): Promise<bi
   return result?.profileId ?? null
 }
 
-async function fetchReaderList(
-  type: 'readers' | 'reading',
+export async function getReaders(
   targetProfileId: bigint,
   options: ListReadersQuery = { limit: 50, offset: 0 }
 ): Promise<ListReadersResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
-  const joinCol = type === 'readers' ? readers.readerProfileId : readers.authorProfileId
 
-  const whereClause =
-    type === 'readers'
-      ? and(
-          eq(readers.authorProfileId, targetProfileId),
-          gte(readers.lastReadAt, sql`NOW() - INTERVAL '30 days'`)
-        )
-      : eq(readers.readerProfileId, targetProfileId)
-
-  const orderClause =
-    type === 'readers'
-      ? desc(readers.lastReadAt)
-      : desc(readers.createdAt)
+  const whereClause = and(
+    eq(readers.authorProfileId, targetProfileId),
+    gte(readers.lastReadAt, sql`NOW() - INTERVAL '30 days'`)
+  )
 
   const [items, totalResult] = await Promise.all([
     db
@@ -321,10 +316,10 @@ async function fetchReaderList(
         lastReadAt: readers.lastReadAt,
       })
       .from(readers)
-      .innerJoin(profiles, eq(joinCol, profiles.id))
+      .innerJoin(profiles, eq(readers.readerProfileId, profiles.id))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
       .where(whereClause)
-      .orderBy(orderClause)
+      .orderBy(desc(readers.lastReadAt))
       .limit(limit)
       .offset(offset),
     db
@@ -347,20 +342,6 @@ async function fetchReaderList(
     limit,
     offset,
   }
-}
-
-export async function getReaders(
-  targetProfileId: bigint,
-  options: ListReadersQuery = { limit: 50, offset: 0 }
-): Promise<ListReadersResult> {
-  return fetchReaderList('readers', targetProfileId, options)
-}
-
-export async function getReading(
-  targetProfileId: bigint,
-  options: ListReadersQuery = { limit: 50, offset: 0 }
-): Promise<ListReadersResult> {
-  return fetchReaderList('reading', targetProfileId, options)
 }
 
 export async function checkBlockExists(
@@ -387,8 +368,7 @@ export async function checkBlockExists(
   return Boolean(record)
 }
 
-async function getUserReaderListByIdentity(
-  type: 'readers' | 'reading',
+export async function getUserReadersByIdentity(
   identityHandle: string,
   options: ListReadersQuery = { limit: 50, offset: 0 },
   viewerProfileId?: bigint
@@ -410,31 +390,112 @@ async function getUserReaderListByIdentity(
     }
   }
 
-  return fetchReaderList(type, targetProfileId, options)
+  return getReaders(targetProfileId, options)
 }
 
-export async function getUserReadersByIdentity(
-  identityHandle: string,
-  options: ListReadersQuery = { limit: 50, offset: 0 },
-  viewerProfileId?: bigint
-): Promise<ListReadersResult> {
-  return getUserReaderListByIdentity('readers', identityHandle, options, viewerProfileId)
+export async function getSubscribedAuthors(
+  viewer: { profileId: bigint; isMale?: boolean | null },
+  options: ListAuthorsQuery = { limit: 50, offset: 0 }
+): Promise<ListAuthorsResult> {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
+  const offset = Math.max(options.offset ?? 0, 0)
+
+  const genderCondition =
+    typeof viewer.isMale === 'boolean'
+      ? sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`
+      : sql`${posts.genderScope} = 'all'`
+
+  const unreadSubquery = sql<number>`(
+    SELECT count(*)::int
+    FROM ${posts}
+    WHERE ${posts.authorId} = ${readers.authorProfileId}
+      AND ${posts.deletedAt} IS NULL
+      AND ${posts.id} > COALESCE(${readers.lastReadPostId}, 0)
+      AND ${genderCondition}
+  )`
+
+  const whereClause = and(
+    eq(readers.readerProfileId, viewer.profileId),
+    isNull(accounts.deletedAt)
+  )
+
+  const [items, totalResult] = await Promise.all([
+    db
+      .select({
+        id: profiles.id,
+        name: profiles.name,
+        avatarKey: profiles.avatarKey,
+        shortDescription: profiles.shortDescription,
+        description: profiles.description,
+        identity: identities.identity,
+        isMale: profiles.isMale,
+        isVerified: sql<boolean>`${profiles.verifiedAt} is not null`,
+        readAt: readers.createdAt,
+        lastReadAt: readers.lastReadAt,
+        lastReadPostId: readers.lastReadPostId,
+        unreadCount: unreadSubquery.as('unread_count'),
+      })
+      .from(readers)
+      .innerJoin(profiles, eq(readers.authorProfileId, profiles.id))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(whereClause)
+      .orderBy(
+        sql`CASE WHEN (${unreadSubquery}) > 0 THEN 1 ELSE 0 END DESC`,
+        desc(readers.createdAt)
+      )
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(readers)
+      .innerJoin(profiles, eq(readers.authorProfileId, profiles.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(whereClause),
+  ])
+
+  return {
+    authors: items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      avatarKey: item.avatarKey,
+      shortDescription: item.shortDescription,
+      description: item.description,
+      identity: item.identity,
+      isMale: item.isMale,
+      isVerified: Boolean(item.isVerified),
+      readAt: item.readAt,
+      lastReadAt: item.lastReadAt,
+      lastReadPostId: item.lastReadPostId,
+      unreadCount: Number(item.unreadCount ?? 0),
+    })),
+    total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
+  }
 }
 
-export async function getUserReadingByIdentity(
-  identityHandle: string,
-  options: ListReadersQuery = { limit: 50, offset: 0 },
-  viewerProfileId?: bigint
-): Promise<ListReadersResult> {
-  return getUserReaderListByIdentity('reading', identityHandle, options, viewerProfileId)
+export async function resolveProfileId(identifier: string): Promise<bigint | null> {
+  const trimmed = identifier.trim()
+  if (/^\d{1,20}$/.test(trimmed)) {
+    const [byProfileId] = await db
+      .select({ id: profiles.id })
+      .from(profiles)
+      .where(eq(profiles.id, BigInt(trimmed)))
+      .limit(1)
+    if (byProfileId) {
+      return byProfileId.id
+    }
+  }
+  return await getProfileIdByIdentity(trimmed)
 }
 
 async function resolveTargetProfile(
   actorProfileId: bigint,
-  targetIdentity: string,
+  targetIdentifier: string,
   selfErrorMessage: string
 ): Promise<bigint> {
-  const targetProfileId = await getProfileIdByIdentity(targetIdentity)
+  const targetProfileId = await resolveProfileId(targetIdentifier)
   if (!targetProfileId) {
     throw new HTTPException(404, { message: 'Profile not found' })
   }
@@ -444,6 +505,45 @@ async function resolveTargetProfile(
   }
 
   return targetProfileId
+}
+
+export async function markAuthorPostsRead(
+  viewerProfileId: bigint,
+  authorIdentifier: string,
+  lastPostId: bigint
+): Promise<MarkAuthorReadResult> {
+  const authorProfileId = await resolveTargetProfile(
+    viewerProfileId,
+    authorIdentifier,
+    'Profiles cannot mark own posts as read'
+  )
+
+  const [updated] = await db
+    .update(readers)
+    .set({
+      lastReadPostId: sql`GREATEST(COALESCE(${readers.lastReadPostId}, 0), ${lastPostId})`,
+      lastReadAt: sql`NOW()`,
+    })
+    .where(
+      and(
+        eq(readers.readerProfileId, viewerProfileId),
+        eq(readers.authorProfileId, authorProfileId)
+      )
+    )
+    .returning({
+      lastReadPostId: readers.lastReadPostId,
+      lastReadAt: readers.lastReadAt,
+    })
+
+  if (!updated) {
+    throw new HTTPException(404, { message: 'Subscription not found' })
+  }
+
+  return {
+    lastReadPostId: updated.lastReadPostId!,
+    lastReadAt: updated.lastReadAt!,
+    message: 'Author posts marked as read',
+  }
 }
 
 export async function readProfile(

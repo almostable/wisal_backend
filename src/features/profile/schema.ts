@@ -14,6 +14,28 @@ export const identityParamSchema = z.object({
   identity: z.string().min(1, 'Identity handle is required'),
 })
 
+export const authorParamSchema = z.object({
+  author_id: z.string().min(1, 'Author ID or identity is required'),
+})
+
+export const markAuthorReadSchema = z
+  .object({
+    last_post_id: z
+      .union([z.string().regex(/^\d{1,20}$/, 'Invalid post ID'), z.number().int().positive()])
+      .optional(),
+    lastPostId: z
+      .union([z.string().regex(/^\d{1,20}$/, 'Invalid post ID'), z.number().int().positive()])
+      .optional(),
+  })
+  .refine((data) => data.last_post_id !== undefined || data.lastPostId !== undefined, {
+    message: 'last_post_id or lastPostId is required',
+  })
+  .transform((data) => ({
+    lastPostId: BigInt((data.last_post_id ?? data.lastPostId)!),
+  }))
+
+export type MarkAuthorReadInput = z.infer<typeof markAuthorReadSchema>
+
 export const listMyInvitesQuerySchema = paginationQuerySchema.extend({
   status: z.enum(['all', 'active', 'used', 'expired']).default('all'),
 })
@@ -23,6 +45,10 @@ export type ListMyInvitesQuery = z.infer<typeof listMyInvitesQuerySchema>
 export const listReadersQuerySchema = paginationQuerySchema
 
 export type ListReadersQuery = z.infer<typeof listReadersQuerySchema>
+
+export const listAuthorsQuerySchema = paginationQuerySchema
+
+export type ListAuthorsQuery = z.infer<typeof listAuthorsQuerySchema>
 
 export const listBlocksQuerySchema = paginationQuerySchema
 

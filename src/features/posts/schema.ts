@@ -119,8 +119,6 @@ export const pinPostSchema = z.object({
   isPinned: z.boolean().default(true),
 })
 
-export const feedQuerySchema = createPaginationSchema(20, 100)
-
 export const userPostsQuerySchema = createPaginationSchema(20, 100)
 
 export const savedPostsQuerySchema = createPaginationSchema(20, 100)
@@ -131,15 +129,6 @@ export const createCommentSchema = z
     content: z.string().trim().max(5000, 'Content must be at most 5000 characters').nullable().optional(),
     payload: z.record(z.string(), z.unknown()).default({}).optional(),
     parentId: z.string().regex(/^\d{1,20}$/, 'Invalid parent ID format').nullable().optional(),
-  })
-  .superRefine(validateMediaOrText)
-  .transform(transformMediaOrText)
-
-export const replyCommentSchema = z
-  .object({
-    type: z.enum(COMMENT_TYPES).default('text').optional(),
-    content: z.string().trim().max(5000, 'Content must be at most 5000 characters').nullable().optional(),
-    payload: z.record(z.string(), z.unknown()).default({}).optional(),
   })
   .superRefine(validateMediaOrText)
   .transform(transformMediaOrText)
@@ -170,11 +159,9 @@ export type UserPostsParam = z.infer<typeof userPostsParamSchema>
 export type CreatePostInput = z.infer<typeof createPostSchema>
 export type UpdatePostInput = z.infer<typeof updatePostSchema>
 export type PinPostInput = z.infer<typeof pinPostSchema>
-export type FeedQueryInput = z.infer<typeof feedQuerySchema>
 export type UserPostsQueryInput = z.infer<typeof userPostsQuerySchema>
 export type SavedPostsQueryInput = z.infer<typeof savedPostsQuerySchema>
 export type CreateCommentInput = z.infer<typeof createCommentSchema>
-export type ReplyCommentInput = z.infer<typeof replyCommentSchema>
 export type UpdateCommentInput = z.infer<typeof updateCommentSchema>
 export type ListCommentsQueryInput = z.infer<typeof listCommentsQuerySchema>
 export type RecordViewsInput = z.infer<typeof recordViewsSchema>

@@ -142,9 +142,6 @@ describe('Posts Feature Route Tests', () => {
   }
 
   it('rejects unauthenticated requests with 401 on /posts routes', async () => {
-    const resFeed = await app.request('/posts/feed', { method: 'GET' })
-    expect(resFeed.status).toBe(401)
-
     const resSaves = await app.request('/posts/saves', { method: 'GET' })
     expect(resSaves.status).toBe(401)
 
@@ -176,22 +173,12 @@ describe('Posts Feature Route Tests', () => {
     const resComments = await app.request('/posts/999999999999991/comments', { method: 'GET' })
     expect(resComments.status).toBe(401)
 
-    const resReplies = await app.request('/posts/comments/888888888888881/replies', { method: 'GET' })
-    expect(resReplies.status).toBe(401)
-
     const resPostComment = await app.request('/posts/999999999999991/comments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: 'Comment' }),
     })
     expect(resPostComment.status).toBe(401)
-
-    const resReplyComment = await app.request('/posts/comments/888888888888881/reply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: 'Reply' }),
-    })
-    expect(resReplyComment.status).toBe(401)
 
     const resUpdateComment = await app.request('/posts/comments/888888888888881', {
       method: 'PATCH',
@@ -223,7 +210,7 @@ describe('Posts Feature Route Tests', () => {
       isOnboardingCompleted: () => false,
     }))
 
-    const res = await app.request('/posts/feed', {
+    const res = await app.request('/posts/saves', {
       method: 'GET',
       headers: { Authorization: 'Bearer valid_token' },
     })
@@ -722,45 +709,6 @@ describe('Posts Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; message: string }
     expect(body.success).toBe(true)
     expect(body.message).toBe('Post deleted successfully')
-  })
-
-  it('GET /posts/feed returns feed posts of followed authors', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: maleAccount,
-        session: maleSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => maleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    mock.module('../service', () => ({
-      getFeed: async (_viewer: any, query: any) => {
-        expect(query.limit).toBe(20)
-        expect(query.offset).toBe(0)
-        return {
-          posts: [samplePost],
-          limit: 20,
-          offset: 0,
-        }
-      },
-    }))
-
-    const res = await app.request('/posts/feed?limit=20&offset=0', {
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer valid_male_token',
-      },
-    })
-
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { success: boolean; posts: PostResponse[]; limit: number; offset: number }
-    expect(body.success).toBe(true)
-    expect(body.posts.length).toBe(1)
-    expect(body.posts[0].content).toBe('First test post')
   })
 
   it('GET /posts/:id returns post when allowed', async () => {
@@ -1411,7 +1359,7 @@ describe('Posts Feature Route Tests', () => {
     expect(body.total).toBe(2)
   })
 
-  it('GET /posts/:id/comments returns post comments list with pagination', async () => {
+  it('GET /posts/:id/comments returns all post comments including replies with pagination', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -1424,10 +1372,24 @@ describe('Posts Feature Route Tests', () => {
       isOnboardingCompleted: () => true,
     }))
 
+    const sampleReply: CommentResponse = {
+      ...sampleComment,
+      id: 888888888888882n,
+      parentId: sampleComment.id,
+      replyToCommentId: sampleComment.id,
+      replyToProfile: {
+        id: sampleComment.authorId,
+        name: sampleComment.author!.name,
+        identity: sampleComment.author!.identity,
+      },
+      content: 'Reply comment on post',
+      repliesCount: 0,
+    }
+
     mock.module('../service', () => ({
       getPostComments: async () => ({
-        comments: [sampleComment],
-        total: 1,
+        comments: [sampleComment, sampleReply],
+        total: 2,
         limit: 50,
         offset: 0,
       }),
@@ -1449,9 +1411,12 @@ describe('Posts Feature Route Tests', () => {
       offset: number
     }
     expect(body.success).toBe(true)
-    expect(body.comments.length).toBe(1)
+    expect(body.comments.length).toBe(2)
     expect(body.comments[0].content).toBe('First comment on post')
-    expect(body.total).toBe(1)
+    expect(body.comments[0].parentId).toBeNull()
+    expect(body.comments[1].content).toBe('Reply comment on post')
+    expect(body.comments[1].parentId).toBe(sampleComment.id.toString())
+    expect(body.total).toBe(2)
   })
 
   it('GET /posts/:id/comments returns 404 when post access is restricted or post does not exist', async () => {
@@ -1483,177 +1448,6 @@ describe('Posts Feature Route Tests', () => {
     expect(res.status).toBe(404)
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe('Post not found')
-  })
-
-  it('GET /posts/comments/:id/replies returns comment replies list with pagination', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: maleAccount,
-        session: maleSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => maleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    const sampleReply: CommentResponse = {
-      ...sampleComment,
-      id: 888888888888882n,
-      parentId: sampleComment.id,
-      content: 'First reply to comment',
-      repliesCount: 0,
-    }
-
-    mock.module('../service', () => ({
-      getCommentReplies: async (commentId: bigint) => {
-        expect(commentId).toBe(sampleComment.id)
-        return {
-          comments: [sampleReply],
-          total: 1,
-          limit: 50,
-          offset: 0,
-        }
-      },
-    }))
-
-    const res = await app.request('/posts/comments/888888888888881/replies?limit=50&offset=0', {
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer valid_male_token',
-      },
-    })
-
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as {
-      success: boolean
-      comments: any[]
-      total: number
-      limit: number
-      offset: number
-    }
-    expect(body.success).toBe(true)
-    expect(body.comments.length).toBe(1)
-    expect(body.comments[0].id).toBe('888888888888882')
-    expect(body.comments[0].parentId).toBe('888888888888881')
-    expect(body.comments[0].content).toBe('First reply to comment')
-    expect(body.comments[0].repliesCount).toBe(0)
-    expect(body.total).toBe(1)
-  })
-
-  it('GET /posts/comments/:id/replies returns 404 when parent comment does not exist', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: maleAccount,
-        session: maleSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => maleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    mock.module('../service', () => ({
-      getCommentReplies: async () => {
-        throw new HTTPException(404, { message: 'Comment not found' })
-      },
-    }))
-
-    const res = await app.request('/posts/comments/999999999999999/replies', {
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer valid_male_token',
-      },
-    })
-
-    expect(res.status).toBe(404)
-    const body = (await res.json()) as { error: string }
-    expect(body.error).toBe('Comment not found')
-  })
-
-  it('GET /posts/comments/:id/replies returns 404 when post access is restricted or post does not exist', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: femaleAccount,
-        session: femaleSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => femaleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    mock.module('../service', () => ({
-      getCommentReplies: async () => {
-        throw new HTTPException(404, { message: 'Post not found' })
-      },
-    }))
-
-    const res = await app.request('/posts/comments/888888888888881/replies', {
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer valid_female_token',
-      },
-    })
-
-    expect(res.status).toBe(404)
-    const body = (await res.json()) as { error: string }
-    expect(body.error).toBe('Post not found')
-  })
-
-  it('GET /posts/comments/:id/replies returns masked replies when reply author is blocked', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: maleAccount,
-        session: maleSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => maleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    const sampleReply: CommentResponse = {
-      ...sampleComment,
-      id: 888888888888882n,
-      parentId: sampleComment.id,
-      content: 'Visible reply content',
-      repliesCount: 0,
-      isBlocked: true,
-      author: {
-        ...sampleComment.author!,
-        avatarKey: null,
-        isBlocked: true,
-      },
-    }
-
-    mock.module('../service', () => ({
-      getCommentReplies: async () => ({
-        comments: [sampleReply],
-        total: 1,
-        limit: 50,
-        offset: 0,
-      }),
-    }))
-
-    const res = await app.request('/posts/comments/888888888888881/replies', {
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer valid_male_token',
-      },
-    })
-
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { success: boolean; comments: any[] }
-    expect(body.success).toBe(true)
-    expect(body.comments[0].content).toBe('Visible reply content')
-    expect(body.comments[0].isBlocked).toBe(true)
-    expect(body.comments[0].is_blocked).toBeUndefined()
-    expect(body.comments[0].author.avatarKey).toBeNull()
   })
 
   it('POST /posts/:id/comments creates a new root comment successfully', async () => {
@@ -1893,87 +1687,6 @@ describe('Posts Feature Route Tests', () => {
     expect((body.comment.payload as any).media[0].fileKey).toBe('media/2026-08-30/723491823749128301.png')
   })
 
-  it('POST /posts/comments/:id/reply replies directly to a comment', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: maleAccount,
-        session: maleSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => maleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    mock.module('../service', () => ({
-      replyToComment: async (
-        commentId: bigint,
-        authorAccountId: bigint,
-        _viewer: any,
-        input: any
-      ) => ({
-        ...sampleComment,
-        id: 888888888888883n,
-        authorId: authorAccountId,
-        parentId: commentId,
-        content: input.content,
-      }),
-    }))
-
-    const res = await app.request('/posts/comments/888888888888881/reply', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer valid_male_token',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        content: 'Direct reply to comment',
-      }),
-    })
-
-    expect(res.status).toBe(201)
-    const body = (await res.json()) as { success: boolean; comment: any }
-    expect(body.success).toBe(true)
-    expect(body.comment.content).toBe('Direct reply to comment')
-    expect(body.comment.parentId).toBe('888888888888881')
-  })
-
-  it('POST /posts/comments/:id/reply returns 404 when parent comment does not exist', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: maleAccount,
-        session: maleSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => maleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    mock.module('../service', () => ({
-      replyToComment: async () => {
-        throw new HTTPException(404, { message: 'Comment not found' })
-      },
-    }))
-
-    const res = await app.request('/posts/comments/999999999999999/reply', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer valid_male_token',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        content: 'Reply to non-existent comment',
-      }),
-    })
-
-    expect(res.status).toBe(404)
-    const body = (await res.json()) as { error: string }
-    expect(body.error).toBe('Comment not found')
-  })
-
   it('DELETE /posts/comments/:id deletes a comment successfully', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
@@ -2164,7 +1877,7 @@ describe('Posts Feature Route Tests', () => {
     expect(body.comments[0].author.avatarKey).toBeNull()
   })
 
-  it('POST /posts/:id/comments and POST /posts/comments/:id/reply reject replying to blocked user with 400', async () => {
+  it('POST /posts/:id/comments rejects replying to blocked user with 400', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -2181,12 +1894,9 @@ describe('Posts Feature Route Tests', () => {
       createComment: async () => {
         throw new HTTPException(400, { message: 'Cannot reply to a blocked user' })
       },
-      replyToComment: async () => {
-        throw new HTTPException(400, { message: 'Cannot reply to a blocked user' })
-      },
     }))
 
-    const res1 = await app.request('/posts/999999999999991/comments', {
+    const res = await app.request('/posts/999999999999991/comments', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_male_token',
@@ -2198,24 +1908,9 @@ describe('Posts Feature Route Tests', () => {
       }),
     })
 
-    expect(res1.status).toBe(400)
-    const body1 = (await res1.json()) as { error: string }
-    expect(body1.error).toBe('Cannot reply to a blocked user')
-
-    const res2 = await app.request('/posts/comments/888888888888881/reply', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer valid_male_token',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        content: 'Replying to blocked user directly',
-      }),
-    })
-
-    expect(res2.status).toBe(400)
-    const body2 = (await res2.json()) as { error: string }
-    expect(body2.error).toBe('Cannot reply to a blocked user')
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Cannot reply to a blocked user')
   })
 
   it('GET /posts/:id, POST /posts/:id/save, POST /posts/:id/unsave, POST /posts/:id/like, POST /posts/:id/unlike return 404 for blocked or restricted post access', async () => {
@@ -2341,91 +2036,6 @@ describe('Posts Feature Route Tests', () => {
     expect(body.comments[1].parentId).toBeNull()
     expect(body.comments[1].repliesCount).toBe(0)
     expect(body.total).toBe(2)
-  })
-
-  it('GET /posts/comments/:id/replies returns flat list with replyToProfile info', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: maleAccount,
-        session: maleSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => maleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    const reply1: CommentResponse = {
-      ...sampleComment,
-      id: 888888888888882n,
-      parentId: 888888888888881n,
-      replyToCommentId: 888888888888881n,
-      replyToProfile: {
-        id: maleAccount.id,
-        name: 'Male User',
-        identity: 'male_user',
-      },
-      content: 'First reply to root',
-      repliesCount: 0,
-    }
-
-    const reply2: CommentResponse = {
-      ...sampleComment,
-      id: 888888888888883n,
-      authorId: femaleAccount.id,
-      parentId: 888888888888881n,
-      replyToCommentId: 888888888888882n,
-      replyToProfile: {
-        id: maleAccount.id,
-        name: 'Male User',
-        identity: 'male_user',
-      },
-      content: 'Reply to reply1 in flat thread',
-      repliesCount: 0,
-      author: {
-        id: femaleAccount.id,
-        name: 'Female User',
-        identity: 'female_user',
-        avatarKey: null,
-        isMale: false,
-      },
-    }
-
-    mock.module('../service', () => ({
-      getCommentReplies: async (commentId: bigint) => {
-        expect(commentId).toBe(888888888888881n)
-        return {
-          comments: [reply1, reply2],
-          total: 2,
-          limit: 50,
-          offset: 0,
-        }
-      },
-    }))
-
-    const res = await app.request('/posts/comments/888888888888881/replies', {
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer valid_male_token',
-      },
-    })
-
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as {
-      success: boolean
-      comments: any[]
-      total: number
-    }
-    expect(body.success).toBe(true)
-    expect(body.comments.length).toBe(2)
-    // Both belong to root parentId
-    expect(body.comments[0].parentId).toBe('888888888888881')
-    expect(body.comments[1].parentId).toBe('888888888888881')
-    // replyToProfile is present
-    expect(body.comments[0].replyToProfile?.identity).toBe('male_user')
-    expect(body.comments[1].replyToCommentId).toBe('888888888888882')
-    expect(body.comments[1].replyToProfile?.name).toBe('Male User')
   })
 
   it('PATCH /posts/:id returns 403 when post is older than 15 minutes', async () => {
@@ -2614,7 +2224,7 @@ describe('Posts Feature Route Tests', () => {
     expect(body.error).toBe('Comment not found')
   })
 
-  it('GET /posts/feed and GET /posts/:id include author.isReading for viewer', async () => {
+  it('GET /posts/:id includes author.isReading for viewer', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -2636,22 +2246,8 @@ describe('Posts Feature Route Tests', () => {
     }
 
     mock.module('../service', () => ({
-      getFeed: async () => ({
-        posts: [postWithFollowingAuthor],
-        limit: 20,
-        offset: 0,
-      }),
       getPostById: async () => postWithFollowingAuthor,
     }))
-
-    const resFeed = await app.request('/posts/feed', {
-      method: 'GET',
-      headers: { Authorization: 'Bearer valid_male_token' },
-    })
-    expect(resFeed.status).toBe(200)
-    const bodyFeed = (await resFeed.json()) as { success: boolean; posts: PostResponse[] }
-    expect(bodyFeed.success).toBe(true)
-    expect(bodyFeed.posts[0].author?.isReading).toBe(true)
 
     const resPost = await app.request('/posts/999999999999991', {
       method: 'GET',

@@ -63,6 +63,9 @@ export const posts = pgTable(
     uniqueIndex('posts_author_pinned_unique_idx')
       .on(table.authorId)
       .where(sql`${table.isPinned} = true AND ${table.deletedAt} IS NULL`),
+    index('idx_posts_author_unread_scan')
+      .on(table.authorId, table.id, table.genderScope, table.authorGender)
+      .where(sql`${table.deletedAt} IS NULL`),
   ]
 )
 

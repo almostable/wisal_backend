@@ -31,6 +31,7 @@ describe('Readers Schema Tests', () => {
       authorProfileId: 200000000000002n,
       createdAt: now,
       lastReadAt: now,
+      lastReadPostId: 300000000000003n,
     }
 
     const parsed = selectReaderSchema.parse(record)
@@ -38,19 +39,22 @@ describe('Readers Schema Tests', () => {
     expect(parsed.authorProfileId).toBe(200000000000002n)
     expect(parsed.createdAt).toEqual(now)
     expect(parsed.lastReadAt).toEqual(now)
+    expect(parsed.lastReadPostId).toBe(300000000000003n)
   })
 
-  it('validates selectReaderSchema with null lastReadAt', () => {
+  it('validates selectReaderSchema with null lastReadAt and lastReadPostId', () => {
     const now = new Date()
     const record = {
       readerProfileId: 100000000000001n,
       authorProfileId: 200000000000002n,
       createdAt: now,
       lastReadAt: null,
+      lastReadPostId: null,
     }
 
     const parsed = selectReaderSchema.parse(record)
     expect(parsed.lastReadAt).toBeNull()
+    expect(parsed.lastReadPostId).toBeNull()
   })
 
   it('has composite primary key on reader_profile_id and author_profile_id', () => {

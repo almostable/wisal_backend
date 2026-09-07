@@ -152,11 +152,11 @@ describe('Comments Anonymization Integration Tests', () => {
     expect(activeComment.author.identity).toBe('viewer')
   })
 
-  it('GET /posts/comments/:id/replies returns isDeleted: true for replyToUser when target was deleted', async () => {
+  it('GET /posts/:id/comments returns isDeleted: true for replyToProfile when target was deleted', async () => {
     setupAuth()
 
     mock.module('../service', () => ({
-      getCommentReplies: async () => ({
+      getPostComments: async () => ({
         comments: [
           {
             id: 888888888888883n,
@@ -164,7 +164,7 @@ describe('Comments Anonymization Integration Tests', () => {
             authorId: 111111111111111n,
             parentId: 888888888888881n,
             replyToCommentId: 888888888888881n,
-            replyToUser: {
+            replyToProfile: {
               id: 555555555555555n,
               name: null,
               identity: null,
@@ -192,7 +192,7 @@ describe('Comments Anonymization Integration Tests', () => {
       }),
     }))
 
-    const res = await app.request('/posts/comments/888888888888881/replies', {
+    const res = await app.request('/posts/999999999999991/comments', {
       method: 'GET',
       headers: {
         Authorization: 'Bearer valid_token',
@@ -205,10 +205,10 @@ describe('Comments Anonymization Integration Tests', () => {
     expect(body.comments.length).toBe(1)
 
     const reply = body.comments[0]
-    expect(reply.replyToUser).toBeDefined()
-    expect(reply.replyToUser.isDeleted).toBe(true)
-    expect(reply.replyToUser.name).toBeNull()
-    expect(reply.replyToUser.identity).toBeNull()
+    expect(reply.replyToProfile).toBeDefined()
+    expect(reply.replyToProfile.isDeleted).toBe(true)
+    expect(reply.replyToProfile.name).toBeNull()
+    expect(reply.replyToProfile.identity).toBeNull()
     expect(reply.author.isDeleted).toBeUndefined()
   })
 })

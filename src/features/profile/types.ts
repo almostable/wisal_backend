@@ -62,6 +62,36 @@ export interface ListReadersResult {
   offset: number
 }
 
+export interface AuthorSubscriptionItem {
+  id: bigint
+  name: string | null
+  avatarKey: string | null
+  shortDescription: string | null
+  description: string | null
+  identity: string | null
+  isMale: boolean | null
+  isVerified: boolean
+  readAt: Date
+  lastReadAt: Date | null
+  lastReadPostId: bigint | null
+  unreadCount: number
+}
+
+export interface ListAuthorsResult {
+  authors: AuthorSubscriptionItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export type AuthorsListResult = ListAuthorsResult
+
+export interface MarkAuthorReadResult {
+  lastReadPostId: bigint
+  lastReadAt: Date
+  message: string
+}
+
 export interface ReadActionResult {
   reading: boolean
   message: string

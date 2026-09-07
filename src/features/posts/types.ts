@@ -106,20 +106,9 @@ export interface PinPostDTO {
   isPinned?: boolean
 }
 
-export interface FeedQueryDTO {
-  limit?: number
-  offset?: number
-}
-
 export interface UserPostsQueryDTO {
   limit?: number
   offset?: number
-}
-
-export interface FeedResult {
-  posts: PostResponse[]
-  limit: number
-  offset: number
 }
 
 export interface UserPostsResult {
@@ -144,12 +133,6 @@ export interface SavedPostsResult {
 export interface CreateCommentDTO {
   content?: string | null
   parentId?: bigint | null
-  type?: CommentType
-  payload?: Record<string, unknown>
-}
-
-export interface ReplyCommentDTO {
-  content?: string | null
   type?: CommentType
   payload?: Record<string, unknown>
 }

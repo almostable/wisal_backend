@@ -6,10 +6,13 @@ import { onboardingMiddleware } from '../../middleware/onboarding'
 import { getProfileByAccountId } from '../../lib/profile'
 import {
   identityParamSchema,
+  authorParamSchema,
+  markAuthorReadSchema,
   onboardingInputSchema,
   updateProfileInputSchema,
   listMyInvitesQuerySchema,
   listReadersQuerySchema,
+  listAuthorsQuerySchema,
   listBlocksQuerySchema,
   profileFeedQuerySchema,
   profileSearchQuerySchema,
@@ -22,9 +25,9 @@ import {
   checkHandleAvailability,
   getMyInvites,
   getReaders,
-  getReading,
+  getSubscribedAuthors,
+  markAuthorPostsRead,
   getUserReadersByIdentity,
-  getUserReadingByIdentity,
   readProfile,
   unreadProfile,
   blockProfile,
@@ -132,8 +135,8 @@ profileRouter.get(
 )
 
 profileRouter.get(
-  '/reading',
-  zValidator('query', listReadersQuerySchema),
+  '/authors',
+  zValidator('query', listAuthorsQuerySchema),
   async (c) => {
     const account = c.get('account')
     const profile = await getProfileByAccountId(account.id)
@@ -141,7 +144,10 @@ profileRouter.get(
       throw new HTTPException(404, { message: 'Profile not found' })
     }
     const query = c.req.valid('query')
-    const result = await getReading(profile.id, query)
+    const result = await getSubscribedAuthors(
+      { profileId: profile.id, isMale: profile.isMale },
+      query
+    )
 
     return c.json({
       success: true,
@@ -162,16 +168,41 @@ profileRouter.get('/check/:identity', zValidator('param', identityParamSchema), 
 })
 
 profileRouter.post(
-  '/:identity/read',
-  zValidator('param', identityParamSchema),
+  '/:author_id/read',
+  zValidator('param', authorParamSchema),
   async (c) => {
     const account = c.get('account')
     const profile = await getProfileByAccountId(account.id)
     if (!profile) {
       throw new HTTPException(404, { message: 'Profile not found' })
     }
-    const { identity } = c.req.valid('param')
-    const result = await readProfile(profile.id, identity)
+    const { author_id } = c.req.valid('param')
+
+    let body: any = null
+    const contentType = c.req.header('content-type')
+    if (contentType?.includes('application/json')) {
+      try {
+        body = await c.req.json()
+      } catch {
+        // empty or malformed JSON
+      }
+    }
+
+    if (body && (body.last_post_id !== undefined || body.lastPostId !== undefined)) {
+      const parsed = markAuthorReadSchema.safeParse(body)
+      if (!parsed.success) {
+        throw new HTTPException(400, {
+          message: parsed.error.issues[0]?.message ?? 'Invalid last_post_id',
+        })
+      }
+      const result = await markAuthorPostsRead(profile.id, author_id, parsed.data.lastPostId)
+      return c.json({
+        success: true,
+        ...result,
+      })
+    }
+
+    const result = await readProfile(profile.id, author_id)
 
     return c.json({
       success: true,
@@ -181,16 +212,16 @@ profileRouter.post(
 )
 
 profileRouter.delete(
-  '/:identity/read',
-  zValidator('param', identityParamSchema),
+  '/:author_id/read',
+  zValidator('param', authorParamSchema),
   async (c) => {
     const account = c.get('account')
     const profile = await getProfileByAccountId(account.id)
     if (!profile) {
       throw new HTTPException(404, { message: 'Profile not found' })
     }
-    const { identity } = c.req.valid('param')
-    const result = await unreadProfile(profile.id, identity)
+    const { author_id } = c.req.valid('param')
+    const result = await unreadProfile(profile.id, author_id)
 
     return c.json({
       success: true,
@@ -247,24 +278,6 @@ profileRouter.get(
     const { identity } = c.req.valid('param')
     const query = c.req.valid('query')
     const result = await getUserReadersByIdentity(identity, query, profile?.id)
-
-    return c.json({
-      success: true,
-      ...result,
-    })
-  }
-)
-
-profileRouter.get(
-  '/:identity/reading',
-  zValidator('param', identityParamSchema),
-  zValidator('query', listReadersQuerySchema),
-  async (c) => {
-    const account = c.get('account')
-    const profile = await getProfileByAccountId(account.id)
-    const { identity } = c.req.valid('param')
-    const query = c.req.valid('query')
-    const result = await getUserReadingByIdentity(identity, query, profile?.id)
 
     return c.json({
       success: true,
