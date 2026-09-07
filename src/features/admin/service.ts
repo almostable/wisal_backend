@@ -623,8 +623,8 @@ export async function updateUserProfileByAdmin(
         if (oldAvatarKeys.length > 0 || newAvatarKeys.length > 0) {
           await reconcileEntityMedia(tx, {
             entityType: 'avatar',
-            entityId: accountId,
-            userId: accountId,
+            entityId: existingProfile.id,
+            profileId: existingProfile.id,
             newFileKeys: newAvatarKeys,
             oldFileKeys: oldAvatarKeys,
           })
@@ -684,8 +684,8 @@ export async function updateUserProfileByAdmin(
       if (input.avatarKey) {
         await reconcileEntityMedia(tx, {
           entityType: 'avatar',
-          entityId: accountId,
-          userId: accountId,
+          entityId: created.id,
+          profileId: created.id,
           newFileKeys: [input.avatarKey],
           oldFileKeys: [],
         })
@@ -745,7 +745,7 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
       ? or(
           eq(reports.id, BigInt(searchQuery)),
           eq(reports.targetId, BigInt(searchQuery)),
-          eq(reports.reporterId, BigInt(searchQuery)),
+          eq(reports.reporterProfileId, BigInt(searchQuery)),
           ilike(reports.details, searchPattern),
           ilike(reports.modNote, searchPattern),
           ilike(reporterAccounts.email, searchPattern),
@@ -776,12 +776,12 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
     ? db
         .select({ count: count() })
         .from(reports)
-        .leftJoin(reporterAccounts, eq(reports.reporterId, reporterAccounts.id))
-        .leftJoin(reporterProfiles, eq(reports.reporterId, reporterProfiles.accountId))
+        .leftJoin(reporterProfiles, eq(reports.reporterProfileId, reporterProfiles.id))
         .leftJoin(reporterIdentities, eq(reporterProfiles.identityId, reporterIdentities.id))
-        .leftJoin(reportedAccounts, eq(reports.reportedUserId, reportedAccounts.id))
-        .leftJoin(reportedProfiles, eq(reports.reportedUserId, reportedProfiles.accountId))
+        .leftJoin(reporterAccounts, eq(reporterProfiles.accountId, reporterAccounts.id))
+        .leftJoin(reportedProfiles, eq(reports.reportedProfileId, reportedProfiles.id))
         .leftJoin(reportedIdentities, eq(reportedProfiles.identityId, reportedIdentities.id))
+        .leftJoin(reportedAccounts, eq(reportedProfiles.accountId, reportedAccounts.id))
         .leftJoin(resolverAdmins, eq(reports.resolvedById, resolverAdmins.id))
         .where(whereClause)
     : db
@@ -794,7 +794,7 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
       .select({
         report: reports,
         reporter: {
-          id: reporterAccounts.id,
+          id: reporterProfiles.id,
           email: reporterAccounts.email,
         },
         reporterProfile: {
@@ -805,7 +805,7 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
           identity: reporterIdentities.identity,
         },
         reportedUser: {
-          id: reportedAccounts.id,
+          id: reportedProfiles.id,
           email: reportedAccounts.email,
         },
         reportedUserProfile: {
@@ -822,12 +822,12 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
         },
       })
       .from(reports)
-      .leftJoin(reporterAccounts, eq(reports.reporterId, reporterAccounts.id))
-      .leftJoin(reporterProfiles, eq(reports.reporterId, reporterProfiles.accountId))
+      .leftJoin(reporterProfiles, eq(reports.reporterProfileId, reporterProfiles.id))
       .leftJoin(reporterIdentities, eq(reporterProfiles.identityId, reporterIdentities.id))
-      .leftJoin(reportedAccounts, eq(reports.reportedUserId, reportedAccounts.id))
-      .leftJoin(reportedProfiles, eq(reports.reportedUserId, reportedProfiles.accountId))
+      .leftJoin(reporterAccounts, eq(reporterProfiles.accountId, reporterAccounts.id))
+      .leftJoin(reportedProfiles, eq(reports.reportedProfileId, reportedProfiles.id))
       .leftJoin(reportedIdentities, eq(reportedProfiles.identityId, reportedIdentities.id))
+      .leftJoin(reportedAccounts, eq(reportedProfiles.accountId, reportedAccounts.id))
       .leftJoin(resolverAdmins, eq(reports.resolvedById, resolverAdmins.id))
       .where(whereClause)
       .orderBy(desc(reports.createdAt))
@@ -848,7 +848,7 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
       item.reporter && item.reporter.id
         ? {
             id: item.reporter.id,
-            email: item.reporter.email,
+            email: item.reporter.email ?? '',
             name: item.reporterProfile?.name ?? null,
             identity: item.reporterIdentity?.identity ?? null,
             avatarKey: item.reporterProfile?.avatarKey ?? null,
@@ -859,7 +859,7 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
       item.reportedUser && item.reportedUser.id
         ? {
             id: item.reportedUser.id,
-            email: item.reportedUser.email,
+            email: item.reportedUser.email ?? '',
             name: item.reportedUserProfile?.name ?? null,
             identity: item.reportedUserIdentity?.identity ?? null,
             avatarKey: item.reportedUserProfile?.avatarKey ?? null,
@@ -922,7 +922,7 @@ export async function getReportById(reportId: bigint): Promise<AdminReportItem> 
     .select({
       report: reports,
       reporter: {
-        id: reporterAccounts.id,
+        id: reporterProfiles.id,
         email: reporterAccounts.email,
       },
       reporterProfile: {
@@ -933,7 +933,7 @@ export async function getReportById(reportId: bigint): Promise<AdminReportItem> 
         identity: reporterIdentities.identity,
       },
       reportedUser: {
-        id: reportedAccounts.id,
+        id: reportedProfiles.id,
         email: reportedAccounts.email,
       },
       reportedUserProfile: {
@@ -950,12 +950,12 @@ export async function getReportById(reportId: bigint): Promise<AdminReportItem> 
       },
     })
     .from(reports)
-    .leftJoin(reporterAccounts, eq(reports.reporterId, reporterAccounts.id))
-    .leftJoin(reporterProfiles, eq(reports.reporterId, reporterProfiles.accountId))
+    .leftJoin(reporterProfiles, eq(reports.reporterProfileId, reporterProfiles.id))
     .leftJoin(reporterIdentities, eq(reporterProfiles.identityId, reporterIdentities.id))
-    .leftJoin(reportedAccounts, eq(reports.reportedUserId, reportedAccounts.id))
-    .leftJoin(reportedProfiles, eq(reports.reportedUserId, reportedProfiles.accountId))
+    .leftJoin(reporterAccounts, eq(reporterProfiles.accountId, reporterAccounts.id))
+    .leftJoin(reportedProfiles, eq(reports.reportedProfileId, reportedProfiles.id))
     .leftJoin(reportedIdentities, eq(reportedProfiles.identityId, reportedIdentities.id))
+    .leftJoin(reportedAccounts, eq(reportedProfiles.accountId, reportedAccounts.id))
     .leftJoin(resolverAdmins, eq(reports.resolvedById, resolverAdmins.id))
     .where(eq(reports.id, reportId))
 
@@ -967,7 +967,7 @@ export async function getReportById(reportId: bigint): Promise<AdminReportItem> 
     item.reporter && item.reporter.id
       ? {
           id: item.reporter.id,
-          email: item.reporter.email,
+          email: item.reporter.email ?? '',
           name: item.reporterProfile?.name ?? null,
           identity: item.reporterIdentity?.identity ?? null,
           avatarKey: item.reporterProfile?.avatarKey ?? null,
@@ -978,7 +978,7 @@ export async function getReportById(reportId: bigint): Promise<AdminReportItem> 
     item.reportedUser && item.reportedUser.id
       ? {
           id: item.reportedUser.id,
-          email: item.reportedUser.email,
+          email: item.reportedUser.email ?? '',
           name: item.reportedUserProfile?.name ?? null,
           identity: item.reportedUserIdentity?.identity ?? null,
           avatarKey: item.reportedUserProfile?.avatarKey ?? null,

@@ -16,8 +16,8 @@ describe('Profile Utility Tests', () => {
       cityId: null,
       contacts: null,
       identityId: 100n,
-      regularFollowersCount: 0,
-      followersCount: 15,
+      regularReadersCount: 0,
+      readersCount: 15,
       verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -50,8 +50,8 @@ describe('Profile Utility Tests', () => {
       cityId: null,
       contacts: null,
       identityId: 100n,
-      regularFollowersCount: 0,
-      followersCount: 0,
+      regularReadersCount: 0,
+      readersCount: 0,
       verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -79,8 +79,8 @@ describe('Profile Utility Tests', () => {
       cityId: null,
       contacts: null,
       identityId: 100n,
-      regularFollowersCount: 0,
-      followersCount: 0,
+      regularReadersCount: 0,
+      readersCount: 0,
       verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -108,8 +108,8 @@ describe('Profile Utility Tests', () => {
       cityId: null,
       contacts: null,
       identityId: 100n,
-      regularFollowersCount: 0,
-      followersCount: 0,
+      regularReadersCount: 0,
+      readersCount: 0,
       verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -146,8 +146,8 @@ describe('Profile Utility Tests', () => {
       cityId: 'nyc_1',
       contacts: null,
       identityId: 100n,
-      regularFollowersCount: 42,
-      followersCount: 50,
+      regularReadersCount: 42,
+      readersCount: 50,
       verifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -168,12 +168,12 @@ describe('Profile Utility Tests', () => {
     expect(formatted!.shortDescription).toBe('Hi all')
     expect(formatted!.countryCode).toBe('US')
     expect(formatted!.cityId).toBe('nyc_1')
-    expect(formatted!.regularFollowersCount).toBe(42)
-    expect(formatted!.followersCount).toBeUndefined()
+    expect(formatted!.regularReadersCount).toBe(42)
+    expect(formatted!.readersCount).toBeUndefined()
     expect(formatted!.isVerified).toBe(false)
 
-    const formattedWithFollowers = formatProfileResponse(fullProfile, { includeFollowersCount: true })
-    expect(formattedWithFollowers!.followersCount).toBe(50)
+    const formattedWithReaders = formatProfileResponse(fullProfile, { includeReadersCount: true })
+    expect(formattedWithReaders!.readersCount).toBe(50)
 
     const verifiedProfile: ProfileWithIdentity = {
       ...fullProfile,
@@ -183,7 +183,7 @@ describe('Profile Utility Tests', () => {
     expect(formattedVerified!.isVerified).toBe(true)
   })
 
-  it('formatRestrictedProfileResponse sets regularFollowersCount to 0 and calculates isVerified', async () => {
+  it('formatRestrictedProfileResponse sets regularReadersCount to 0 and calculates isVerified', async () => {
     const { formatRestrictedProfileResponse } = await import('../profile')
     const fullProfile: ProfileWithIdentity = {
       id: 1n,
@@ -197,8 +197,8 @@ describe('Profile Utility Tests', () => {
       cityId: 'nyc_1',
       contacts: null,
       identityId: 100n,
-      regularFollowersCount: 42,
-      followersCount: 50,
+      regularReadersCount: 42,
+      readersCount: 50,
       verifiedAt: new Date(),
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -212,7 +212,7 @@ describe('Profile Utility Tests', () => {
 
     const restricted = formatRestrictedProfileResponse(fullProfile, { isBlocked: true })
     expect(restricted).not.toBeNull()
-    expect(restricted!.regularFollowersCount).toBe(0)
+    expect(restricted!.regularReadersCount).toBe(0)
     expect(restricted!.shortDescription).toBeNull()
     expect(restricted!.countryCode).toBeNull()
     expect(restricted!.cityId).toBeNull()
@@ -246,4 +246,3 @@ describe('Profile Utility Tests', () => {
     expect(shortForUnverified.reason).toBe('Identity must be at least 5 characters long')
   })
 })
-

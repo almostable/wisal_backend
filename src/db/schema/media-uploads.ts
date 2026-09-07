@@ -3,7 +3,7 @@ import { sql, relations } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
 import { snowflakeId } from './common'
-import { accounts } from './accounts'
+import { profiles } from './profiles'
 
 export const MEDIA_UPLOAD_STATUSES = ['pending', 'attached', 'deleted', 'purged'] as const
 export type MediaUploadStatus = (typeof MEDIA_UPLOAD_STATUSES)[number]
@@ -15,9 +15,9 @@ export const mediaUploads = pgTable(
   'media_uploads',
   {
     fileKey: varchar('file_key', { length: 512 }).primaryKey(),
-    userId: snowflakeId('user_id')
+    profileId: snowflakeId('profile_id')
       .notNull()
-      .references(() => accounts.id, { onDelete: 'cascade' }),
+      .references(() => profiles.id, { onDelete: 'cascade' }),
     status: varchar('status', { length: 32 }).notNull().default('pending'),
     entityType: varchar('entity_type', { length: 32 }),
     entityId: snowflakeId('entity_id'),
@@ -34,14 +34,14 @@ export const mediaUploads = pgTable(
       .on(table.purgedAt)
       .where(sql`${table.status} = 'purged'`),
     index('idx_media_entity').on(table.entityType, table.entityId),
-    index('idx_media_user_id').on(table.userId),
+    index('idx_media_profile_id').on(table.profileId),
   ]
 )
 
 export const mediaUploadsRelations = relations(mediaUploads, ({ one }) => ({
-  user: one(accounts, {
-    fields: [mediaUploads.userId],
-    references: [accounts.id],
+  profile: one(profiles, {
+    fields: [mediaUploads.profileId],
+    references: [profiles.id],
   }),
 }))
 

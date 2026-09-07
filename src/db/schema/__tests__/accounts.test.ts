@@ -13,11 +13,11 @@ describe('Accounts Schema Tests', () => {
   it('validates account insertion with valid data and lowercases email', () => {
     const parsed = insertAccountSchema.parse({
       email: '  User.Account@Wisal.DEV  ',
-      password: 'UserSecurePass12!',
+      passwordHash: 'UserSecurePass12!',
     })
 
     expect(parsed.email).toBe('user.account@wisal.dev')
-    expect(parsed.password).toBe('UserSecurePass12!')
+    expect(parsed.passwordHash).toBe('UserSecurePass12!')
   })
 
   it('rejects account passwords shorter than 12 characters', () => {
@@ -29,7 +29,7 @@ describe('Accounts Schema Tests', () => {
     expect(() => emailSchema.parse('invalid-email-address')).toThrow()
   })
 
-  it('safeAccountSchema removes password field and parses deletedAt', () => {
+  it('safeAccountSchema removes passwordHash field and parses deletedAt', () => {
     const deletedDate = new Date()
     const safe = safeAccountSchema.parse({
       id: 1000n,
@@ -37,10 +37,10 @@ describe('Accounts Schema Tests', () => {
       deletedAt: deletedDate,
       createdAt: new Date(),
       updatedAt: new Date(),
-      password: 'ShouldBeStrippedOrIgnored',
+      passwordHash: 'ShouldBeStrippedOrIgnored',
     })
 
-    expect((safe as any).password).toBeUndefined()
+    expect((safe as any).passwordHash).toBeUndefined()
     expect(safe.email).toBe('user@wisal.dev')
     expect(safe.deletedAt).toEqual(deletedDate)
   })
@@ -50,7 +50,7 @@ describe('Accounts Schema Tests', () => {
     const active = selectAccountSchema.parse({
       id: 1000n,
       email: 'user@wisal.dev',
-      password: 'hash',
+      passwordHash: 'hash',
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -60,7 +60,7 @@ describe('Accounts Schema Tests', () => {
     const deleted = selectAccountSchema.parse({
       id: 1000n,
       email: '1000@deleted.invalid',
-      password: '!ACCOUNT_DELETED!',
+      passwordHash: '!ACCOUNT_DELETED!',
       deletedAt: now,
       createdAt: now,
       updatedAt: now,
@@ -76,4 +76,3 @@ describe('Accounts Schema Tests', () => {
     expect(indexNames).toContain('accounts_deleted_at_idx')
   })
 })
-

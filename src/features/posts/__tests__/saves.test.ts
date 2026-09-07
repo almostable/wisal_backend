@@ -36,11 +36,11 @@ describe('Posts Saves Feature Unit & Integration Tests', () => {
       isOnboardingCompleted: () => true,
     }))
     mock.module('../service', () => ({
-      getPostById: async (_postId: bigint, viewer: { accountId: bigint; isMale: boolean }) => {
-        const isAuthor = viewer.accountId === authorAccount.id
+      getPostById: async (_postId: bigint, viewer: { profileId: bigint; isMale: boolean }) => {
+        const isAuthor = viewer.profileId === authorProfile.id
         return {
           id: 999999999999991n,
-          authorId: authorAccount.id,
+          authorId: authorProfile.id,
           authorGender: true,
           type: 'text',
           payload: {},
@@ -53,6 +53,7 @@ describe('Posts Saves Feature Unit & Integration Tests', () => {
           isSaved: true,
           createdAt: new Date(),
           updatedAt: new Date(),
+          editedAt: null,
           author: null,
         }
       },

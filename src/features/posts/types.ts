@@ -9,7 +9,7 @@ export interface PostAuthorInfo {
   identity: string | null
   avatarKey: string | null
   isMale: boolean | null
-  isFollowing?: boolean
+  isReading?: boolean
   isDeleted?: boolean
 }
 
@@ -31,6 +31,7 @@ export interface PostResponse {
   isLiked?: boolean
   createdAt: Date
   updatedAt: Date
+  editedAt: Date | null
   author?: PostAuthorInfo | null
 }
 
@@ -45,7 +46,7 @@ export interface CommentAuthorInfo {
   isDeleted?: boolean
 }
 
-export interface ReplyToUserInfo {
+export interface ReplyToProfileInfo {
   id: bigint
   name: string | null
   identity: string | null
@@ -56,11 +57,9 @@ export interface CommentResponse {
   id: bigint
   postId: bigint
   authorId: bigint
-  rootId: bigint | null
-  branchId: bigint | null
   parentId: bigint | null
-  replyToUserId?: bigint | null
-  replyToUser?: ReplyToUserInfo | null
+  replyToCommentId?: bigint | null
+  replyToProfile?: ReplyToProfileInfo | null
   type: CommentType
   payload: Record<string, unknown>
   content: string

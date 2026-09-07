@@ -15,7 +15,7 @@ type DbExecutor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0
 
 export async function generateUploadPresignedUrl(
   input: PresignRequestInput,
-  userId: bigint,
+  profileId: bigint,
   executor: DbExecutor = db
 ): Promise<PresignResponse> {
   const result = await createPresignedUploadUrl({
@@ -27,7 +27,7 @@ export async function generateUploadPresignedUrl(
 
   await executor.insert(mediaUploads).values({
     fileKey: result.fileKey,
-    userId,
+    profileId,
     status: 'pending',
   })
 
@@ -43,7 +43,7 @@ export async function attachMediaFiles(
   executor: DbExecutor,
   options: AttachMediaOptions
 ): Promise<void> {
-  const { fileKeys, userId, entityType, entityId } = options
+  const { fileKeys, profileId, entityType, entityId } = options
   if (fileKeys.length === 0) return
 
   const uniqueKeys = Array.from(new Set(fileKeys))
@@ -63,7 +63,7 @@ export async function attachMediaFiles(
     .where(
       and(
         inArray(mediaUploads.fileKey, uniqueKeys),
-        eq(mediaUploads.userId, userId),
+        eq(mediaUploads.profileId, profileId),
         eq(mediaUploads.status, 'pending')
       )
     )
@@ -117,7 +117,7 @@ export async function reconcileEntityMedia(
   if (toAdd.length > 0) {
     await attachMediaFiles(executor, {
       fileKeys: toAdd,
-      userId: options.userId,
+      profileId: options.profileId,
       entityType: options.entityType,
       entityId: options.entityId,
     })

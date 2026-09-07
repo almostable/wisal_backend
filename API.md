@@ -65,7 +65,7 @@ Header `Authorization: Bearer <token>`.
         "email": null
       },
       "identity": "johndoe",
-      "regularFollowersCount": 0,
+      "regularReadersCount": 0,
       "isVerified": false
     },
     "isOnboardingCompleted": true
@@ -122,7 +122,7 @@ Header `Authorization: Bearer <token>`.
   - Зануляет все поля профиля в `profiles` и удаляет хэндл из таблицы `identities`.
   - Переводит аватар пользователя в статус `deleted` в `media_uploads`.
   - Выполняет soft-delete всех постов пользователя (`deleted_at = NOW()`, `is_pinned = false`) и переводит медиа постов и комментариев под ними в статус `deleted`.
-  - Удаляет закладки пользователя (`post_saves`) и лайки (`post_likes`, с декрементом счетчиков `likes_count` у постов), связи подписок (`follows`, с декрементом счетчиков `followers_count` у авторов) и блокировок (`user_blocks`).
+  - Удаляет закладки пользователя (`post_saves`) и лайки (`post_likes`, с декрементом счетчиков `likes_count` у постов), связи подписок (`readers`, с декрементом счетчиков `readers_count` у авторов) и блокировок (`profile_blocks`).
   - Комментарии пользователя в чужих ветках сохраняются, но полностью обезличиваются (`name: null`, `identity: null`, `avatarKey: null`, `isMale: null`, `isDeleted: true`).
 - **Тело запроса (JSON):**
   - `password` *(string, обязательное)* — текущий пароль пользователя для подтверждения удаления
@@ -161,14 +161,14 @@ Header `Authorization: Bearer <token>`.
       "cityId": null,
       "contacts": null,
       "identity": "johndoe",
-      "regularFollowersCount": 0,
-      "followersCount": 15,
+      "regularReadersCount": 0,
+      "readersCount": 15,
       "isVerified": false
     },
     "isOnboardingCompleted": true
   }
   ```
-  *Примечание:* Поле `followersCount` (общее число подписчиков) является приватным и отдается **только самому владельцу профиля** (в `GET /profile/me` и при просмотре своего профиля в `GET /profile/:identity`). Для других пользователей и в публичных лентах это поле скрыто.
+  *Примечание:* Поле `readersCount` (общее число читателей) является приватным и отдается **только самому владельцу профиля** (в `GET /profile/me` и при просмотре своего профиля в `GET /profile/:identity`). Для других пользователей и в публичных лентах это поле скрыто.
 
 ### `POST /profile/onboarding`
 - **Доступ:** Авторизованный пользователь
@@ -197,7 +197,7 @@ Header `Authorization: Bearer <token>`.
       "cityId": null,
       "contacts": null,
       "identity": "johndoe",
-      "regularFollowersCount": 0,
+      "regularReadersCount": 0,
       "isVerified": false
     }
   }
@@ -236,7 +236,7 @@ Header `Authorization: Bearer <token>`.
         "email": null
       },
       "identity": "johndoe",
-      "regularFollowersCount": 0,
+      "regularReadersCount": 0,
       "isVerified": false
     }
   }
@@ -280,9 +280,9 @@ Header `Authorization: Bearer <token>`.
   }
   ```
 
-### `GET /profile/followers`
+### `GET /profile/readers`
 - **Доступ:** Авторизованный пользователь
-- **Описание:** Возвращает список и количество регулярных читателей (подписчиков, открывавших хотя бы один пост автора за последние 30 дней).
+- **Описание:** Возвращает список и количество регулярных читателей (профилей, открывавших хотя бы один пост автора за последние 30 дней).
 - **Query-параметры:**
   - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
   - `offset` *(number, опционально, по умолчанию: 0)*
@@ -290,14 +290,14 @@ Header `Authorization: Bearer <token>`.
   ```json
   {
     "success": true,
-    "users": [
+    "profiles": [
       {
         "id": "111111111111111",
-        "name": "Follower Name",
+        "name": "Reader Name",
         "avatarKey": null,
         "description": "User bio",
-        "identity": "follower_handle",
-        "followedAt": "2026-08-20T00:00:00.000Z",
+        "identity": "reader_handle",
+        "readAt": "2026-08-20T00:00:00.000Z",
         "lastReadAt": "2026-09-01T12:00:00.000Z"
       }
     ],
@@ -307,7 +307,7 @@ Header `Authorization: Bearer <token>`.
   }
   ```
 
-### `GET /profile/following`
+### `GET /profile/reading`
 - **Доступ:** Авторизованный пользователь
 - **Query-параметры:**
   - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
@@ -316,14 +316,14 @@ Header `Authorization: Bearer <token>`.
   ```json
   {
     "success": true,
-    "users": [
+    "profiles": [
       {
         "id": "222222222222222",
-        "name": "Following Name",
+        "name": "Reading Name",
         "avatarKey": "avatars/user.png",
         "description": "User bio",
-        "identity": "following_handle",
-        "followedAt": "2026-08-20T00:00:00.000Z",
+        "identity": "reading_handle",
+        "readAt": "2026-08-20T00:00:00.000Z",
         "lastReadAt": null
       }
     ],
@@ -333,9 +333,9 @@ Header `Authorization: Bearer <token>`.
   }
   ```
 
-### `GET /profile/:identity/followers`
+### `GET /profile/:identity/readers`
 - **Доступ:** Авторизованный пользователь
-- **Описание:** Возвращает список и количество регулярных читателей автора (подписчиков с активными чтениями за последние 30 дней).
+- **Описание:** Возвращает список и количество регулярных читателей автора (читателей с активными чтениями за последние 30 дней).
 - **URL-параметры:**
   - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
 - **Query-параметры:**
@@ -345,14 +345,14 @@ Header `Authorization: Bearer <token>`.
   ```json
   {
     "success": true,
-    "users": [
+    "profiles": [
       {
         "id": "111111111111111",
-        "name": "Follower Name",
+        "name": "Reader Name",
         "avatarKey": null,
         "description": "User bio",
-        "identity": "follower_handle",
-        "followedAt": "2026-08-20T00:00:00.000Z",
+        "identity": "reader_handle",
+        "readAt": "2026-08-20T00:00:00.000Z",
         "lastReadAt": "2026-09-01T12:00:00.000Z"
       }
     ],
@@ -362,7 +362,7 @@ Header `Authorization: Bearer <token>`.
   }
   ```
 
-### `GET /profile/:identity/following`
+### `GET /profile/:identity/reading`
 - **Доступ:** Авторизованный пользователь
 - **URL-параметры:**
   - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
@@ -373,14 +373,14 @@ Header `Authorization: Bearer <token>`.
   ```json
   {
     "success": true,
-    "users": [
+    "profiles": [
       {
         "id": "222222222222222",
-        "name": "Following Name",
+        "name": "Reading Name",
         "avatarKey": "avatars/user.png",
         "description": "User bio",
-        "identity": "following_handle",
-        "followedAt": "2026-08-20T00:00:00.000Z"
+        "identity": "reading_handle",
+        "readAt": "2026-08-20T00:00:00.000Z"
       }
     ],
     "total": 1,
@@ -389,29 +389,29 @@ Header `Authorization: Bearer <token>`.
   }
   ```
 
-### `POST /profile/:identity/follow`
+### `POST /profile/:identity/read`
 - **Доступ:** Авторизованный пользователь
 - **URL-параметры:**
-  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя, на которого нужно подписаться
+  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя, на профиль которого нужно подписаться
 - **Ответ `200 OK`:**
   ```json
   {
     "success": true,
-    "following": true,
-    "message": "Successfully followed user"
+    "reading": true,
+    "message": "Successfully reading profile"
   }
   ```
 
-### `DELETE /profile/:identity/follow`
+### `DELETE /profile/:identity/read`
 - **Доступ:** Авторизованный пользователь
 - **URL-параметры:**
-  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя, от которого нужно отписаться
+  - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя, от чтения профиля которого нужно отписаться
 - **Ответ `200 OK`:**
   ```json
   {
     "success": true,
-    "following": false,
-    "message": "Successfully unfollowed user"
+    "reading": false,
+    "message": "Successfully stopped reading profile"
   }
   ```
 
@@ -424,7 +424,7 @@ Header `Authorization: Bearer <token>`.
   ```json
   {
     "success": true,
-    "users": [
+    "profiles": [
       {
         "id": "111111111111111",
         "name": "Blocked User",
@@ -443,13 +443,13 @@ Header `Authorization: Bearer <token>`.
 - **Доступ:** Авторизованный пользователь
 - **URL-параметры:**
   - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя для блокировки
-- **Поведение:** Взаимные подписки в `follows` мгновенно удаляются в обоих направлениях в одной транзакции.
+- **Поведение:** Взаимные подписки в `readers` мгновенно удаляются в обоих направлениях в одной транзакции.
 - **Ответ `200 OK`:**
   ```json
   {
     "success": true,
     "blocked": true,
-    "message": "Successfully blocked user"
+    "message": "Successfully blocked profile"
   }
   ```
 
@@ -462,7 +462,7 @@ Header `Authorization: Bearer <token>`.
   {
     "success": true,
     "blocked": false,
-    "message": "Successfully unblocked user"
+    "message": "Successfully unblocked profile"
   }
   ```
 
@@ -483,7 +483,7 @@ Header `Authorization: Bearer <token>`.
 - **Доступ:** Авторизованный пользователь с онбордингом (`authMiddleware` + `onboardingMiddleware`)
 - **Query-параметры:**
   - `type` *(string, опционально, `"recommended" | "random"`, по умолчанию: `"recommended"`)* — вид ленты профилей:
-    - `recommended`: в выборку попадают **только верифицированные** пользователи (`verifiedAt != null`), отсортированные по убыванию постоянных читателей (`regular_followers_count DESC`, затем `id DESC`).
+    - `recommended`: в выборку попадают **только верифицированные** пользователи (`verifiedAt != null`), отсортированные по убыванию постоянных читателей (`regular_readers_count DESC`, затем `id DESC`).
     - `random`: честное псевдослучайное перемешивание профилей через хэш-функцию `hashtext` со стабильной пагинацией по сгенерированному сервером сиду.
   - `seed` *(string, ровно 16 hex-символов `/^[a-f0-9]{16}$/`, опционально)* — сид для стабильной пагинации в режиме `type=random`:
     - **При первом запросе (`offset=0` или не указан):** клиент **не должен** передавать `seed` (попытка передать сид при `offset=0` вернет ошибку `400 Bad Request`). Сервер генерирует уникальный 16-символьный hex-сид автоматически и возвращает его в теле ответа.
@@ -495,9 +495,9 @@ Header `Authorization: Bearer <token>`.
   - Профиль завершил онбординг (заполнены `name`, `is_male`, `identity`).
   - Обязательно заполнены `country_code` и `short_description`.
   - В режиме `recommended` обязательно наличие `verified_at` (`isVerified = true`).
-  - Исключаются пользователи, у которых есть взаимные блокировки со зрителем (`user_blocks`).
+  - Исключаются пользователи, у которых есть взаимные блокировки со зрителем (`profile_blocks`).
   - Исключается профиль самого зрителя.
-  - Поле `followersCount` в ленте не отдается.
+  - Поле `readersCount` в ленте не отдается.
 - **Ответ `200 OK` (режим `recommended`):**
   ```json
   {
@@ -509,7 +509,7 @@ Header `Authorization: Bearer <token>`.
         "avatarKey": "avatars/2026-09-01/111111111111111.jpg",
         "identity": "alexsmith",
         "shortDescription": "Tech writer & engineer",
-        "regularFollowersCount": 42,
+        "regularReadersCount": 42,
         "countryCode": "US",
         "cityId": "nyc",
         "isVerified": true
@@ -531,7 +531,7 @@ Header `Authorization: Bearer <token>`.
         "avatarKey": null,
         "identity": "janedoe",
         "shortDescription": "Designer & explorer",
-        "regularFollowersCount": 15,
+        "regularReadersCount": 15,
         "countryCode": "FR",
         "cityId": "paris",
         "isVerified": false
@@ -565,13 +565,13 @@ Header `Authorization: Bearer <token>`.
   5. **Уровень 5 (Базовый):** Слово найдено только в кратком описании.
 - **Вторичная сортировка внутри уровня:**
   - Сначала идут верифицированные аккаунты (`isVerified: true`).
-  - Затем аккаунты по убыванию числа постоянных читателей (`regularFollowersCount DESC`).
+  - Затем аккаунты по убыванию числа постоянных читателей (`regularReadersCount DESC`).
   - Стабильный порядок по уникальному Snowflake ID (`id DESC`).
 - **Бизнес-правила фильтрации:**
-  - Исключаются пользователи с взаимными блокировками со зрителем (`user_blocks`).
+  - Исключаются пользователи с взаимными блокировками со зрителем (`profile_blocks`).
   - Исключается профиль самого зрителя.
   - Исключаются аккаунты, не завершившие онбординг.
-  - Поле `followersCount` в поисковой выдаче не отдается.
+  - Поле `readersCount` в поисковой выдаче не отдается.
 - **Ответ `200 OK`:**
   ```json
   {
@@ -583,7 +583,7 @@ Header `Authorization: Bearer <token>`.
         "avatarKey": "avatars/2026-09-01/111111111111111.jpg",
         "identity": "alexsmith",
         "shortDescription": "Tech writer & engineer",
-        "regularFollowersCount": 42,
+        "regularReadersCount": 42,
         "countryCode": "US",
         "cityId": "nyc",
         "isVerified": true
@@ -621,9 +621,9 @@ Header `Authorization: Bearer <token>`.
         "email": null
       },
       "identity": "johndoe",
-      "regularFollowersCount": 0,
+      "regularReadersCount": 0,
       "isVerified": false,
-      "isFollowing": true
+      "isReading": true
     }
   }
   ```
@@ -642,9 +642,9 @@ Header `Authorization: Bearer <token>`.
       "cityId": null,
       "contacts": null,
       "identity": "johndoe",
-      "regularFollowersCount": 0,
+      "regularReadersCount": 0,
       "isVerified": false,
-      "isFollowing": false,
+      "isReading": false,
       "isBlocked": true
     }
   }
@@ -709,7 +709,7 @@ Header `Authorization: Bearer <token>`.
     - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (от 1 до 10 файлов)
     - Для `type: "text"`: `{}`
   - `genderScope` *(string, опционально, `"all" | "same_gender"`, по умолчанию: `"all"`)* — охват по полу (`same_gender` — только для своего пола)
-  - `accessLevel` *(string, опционально, `"public" | "followers"`, по умолчанию: `"public"`)* — уровень видимости
+  - `accessLevel` *(string, опционально, `"public" | "readers"`, по умолчанию: `"public"`)* — уровень видимости
   - `isPinned` *(boolean, опционально, по умолчанию: `false`)* — закрепить пост (снимает закреп с других постов пользователя)
 - **Ответ `201 Created`:**
   ```json
@@ -741,6 +741,7 @@ Header `Authorization: Bearer <token>`.
       "isLiked": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
+      "editedAt": null,
       "author": {
         "id": "111111111111111",
         "name": "John Doe",
@@ -759,7 +760,7 @@ Header `Authorization: Bearer <token>`.
 - **Тело запроса (JSON):**
   - `content` *(string, опционально, мин. 1, макс. 5000 симв.)*
   - `genderScope` *(string, опционально, `"all" | "same_gender"`)*
-  - `accessLevel` *(string, опционально, `"public" | "followers"`)*
+  - `accessLevel` *(string, опционально, `"public" | "readers"`)*
   - `isPinned` *(boolean, опционально)*
   - `payload` *(object, опционально)*
 - **Ответ `200 OK`:**
@@ -783,7 +784,8 @@ Header `Authorization: Bearer <token>`.
       "isSaved": false,
       "isLiked": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
-      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:05:00.000Z",
+      "editedAt": "2026-08-20T00:05:00.000Z",
       "author": {
         "id": "111111111111111",
         "name": "John Doe",
@@ -853,6 +855,7 @@ Header `Authorization: Bearer <token>`.
       "isLiked": false,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
+      "editedAt": null,
       "author": {
         "id": "111111111111111",
         "name": "John Doe",
@@ -951,13 +954,14 @@ Header `Authorization: Bearer <token>`.
         "isLiked": false,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
+        "editedAt": null,
         "author": {
           "id": "111111111111111",
           "name": "John Doe",
           "identity": "johndoe",
           "avatarKey": null,
           "isMale": true,
-          "isFollowing": true
+          "isReading": true
         }
       }
     ],
@@ -970,7 +974,7 @@ Header `Authorization: Bearer <token>`.
 
 ### `GET /posts/feed`
 - **Доступ:** Авторизованный пользователь с онбордингом
-- **Поведение:** Отдает исключительно публикации авторов, на которых подписан пользователь (`following`), в обратном хронологическом порядке (`desc(posts.createdAt)`). Общей ленты больше нет.
+- **Поведение:** Отдает исключительно публикации авторов, профили которых читает пользователь (`reading`), в обратном хронологическом порядке (`desc(posts.createdAt)`). Общей ленты больше нет.
 - **Query-параметры:**
   - `limit` *(number, опционально, по умолчанию: 20, макс: 100)*
   - `offset` *(number, опционально, по умолчанию: 0)*
@@ -995,13 +999,14 @@ Header `Authorization: Bearer <token>`.
         "isLiked": true,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
+        "editedAt": null,
         "author": {
           "id": "111111111111111",
           "name": "John Doe",
           "identity": "johndoe",
           "avatarKey": null,
           "isMale": true,
-          "isFollowing": true
+          "isReading": true
         }
       }
     ],
@@ -1036,13 +1041,14 @@ Header `Authorization: Bearer <token>`.
       "isLiked": true,
       "createdAt": "2026-08-20T00:00:00.000Z",
       "updatedAt": "2026-08-20T00:00:00.000Z",
+      "editedAt": null,
       "author": {
         "id": "111111111111111",
         "name": "John Doe",
         "identity": "johndoe",
         "avatarKey": null,
         "isMale": true,
-        "isFollowing": true
+        "isReading": true
       }
     }
   }
@@ -1077,13 +1083,14 @@ Header `Authorization: Bearer <token>`.
         "isLiked": false,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
+        "editedAt": null,
         "author": {
           "id": "111111111111111",
           "name": "John Doe",
           "identity": "johndoe",
           "avatarKey": null,
           "isMale": true,
-          "isFollowing": true
+          "isReading": true
         }
       }
     ],
@@ -1098,9 +1105,9 @@ Header `Authorization: Bearer <token>`.
 ## Комментарии к публикациям (`/posts`)
 
 > **Модель веток комментариев (2-level flat hierarchy):**
-> - **1-й уровень:** Корневые комментарии непосредственно к посту (`parentId = null`, `replyToUser = null`).
+> - **1-й уровень:** Корневые комментарии непосредственно к посту (`parentId = null`, `replyToProfile = null`).
 > - **2-й уровень (реплаи):** Все ответы внутри ветки привязаны к корневому комментарию (`parentId = <rootCommentId>`).
-> - Если пользователь отвечает на конкретный реплай внутри ветки, поле `parentId` автоматически указывает на корневой комментарий ветки, а `replyToCommentId` и `replyToUser` (`{ id, name, identity }`) содержат данные того комментария и автора, которому адресован ответ (для отображения в UI плашки `Reply to @username`).
+> - Если пользователь отвечает на конкретный реплай внутри ветки, поле `parentId` автоматически указывает на корневой комментарий ветки, а `replyToCommentId` и `replyToProfile` (`{ id, name, identity }`) содержат данные того комментария и автора, которому адресован ответ (для отображения в UI плашки `Reply to @username`).
 > - Поле `repliesCount` у корневого комментария отражает **общее число всех ответов в этой ветке**.
 > - Поле `commentsCount` у поста отражает **общее число всех комментариев и ответов под постом**.
 > - **Поведение при блокировке:**
@@ -1109,12 +1116,12 @@ Header `Authorization: Bearer <token>`.
 > - **Поведение при удалении аккаунта автора (PII Scrubbing):**
 >   - Комментарии удаленных пользователей сохраняются в ветках для сохранения контекста диалога.
 >   - Поля авторства в объекте `author` возвращаются пустыми (`name: null`, `identity: null`, `avatarKey: null`, `isMale: null`), и проставляется флаг `isDeleted: true`.
->   - Если адресат ответа (`replyToUser`) был удален, объект содержит `{ id, name: null, identity: null, isDeleted: true }`.
+>   - Если адресат ответа (`replyToProfile`) был удален, объект содержит `{ id, name: null, identity: null, isDeleted: true }`.
 >   - Для активных пользователей флаг `isDeleted` опускается (отсутствует в JSON).
 
 ### `GET /posts/:id/comments`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)
-- **Описание:** Возвращает только комментарии нулевого уровня (Level 0, корневые комментарии к посту). Реплаи Level 1 запрашиваются отдельно через `GET /posts/comments/:id/replies`.
+- **Описание:** Возвращает только комментарии первого уровня (ответы непосредственно на сам пост). Реплаи на комментарии запрашиваются отдельно через `GET /posts/comments/:id/replies`.
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID поста
 - **Query-параметры:**
@@ -1129,11 +1136,9 @@ Header `Authorization: Bearer <token>`.
         "id": "888888888888881",
         "postId": "999999999999991",
         "authorId": "111111111111111",
-        "rootId": null,
-        "branchId": null,
         "parentId": null,
-        "replyToUserId": null,
-        "replyToUser": null,
+        "replyToCommentId": null,
+        "replyToProfile": null,
         "type": "text",
         "payload": {},
         "content": "First comment on post",
@@ -1158,10 +1163,7 @@ Header `Authorization: Bearer <token>`.
 
 ### `GET /posts/comments/:id/replies`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту комментария)
-- **Описание:** Унифицированный эндпоинт получения ответов следующего уровня:
-  - Если передан ID комментария **Level 0 (Root)**: возвращает список комментариев **Level 1 (ветки/branches)**.
-  - Если передан ID комментария **Level 1 (Branch)**: возвращает список комментариев **Level 2 (ответы внутри ветки)**.
-  - Если передан ID комментария **Level 2**: возвращает пустой список (`comments: []`, так как дальнейшей вложенности нет).
+- **Описание:** Возвращает плоский хронологический список всех ответов (реплаев) ветки указанного комментария (`createdAt ASC`). Принимает ID как корневого комментария, так и любого реплая ветки.
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID комментария
 - **Query-параметры:**
@@ -1176,19 +1178,17 @@ Header `Authorization: Bearer <token>`.
         "id": "888888888888882",
         "postId": "999999999999991",
         "authorId": "222222222222222",
-        "rootId": "888888888888881",
-        "branchId": null,
         "parentId": "888888888888881",
-        "replyToUserId": "111111111111111",
-        "replyToUser": {
+        "replyToCommentId": "888888888888881",
+        "replyToProfile": {
           "id": "111111111111111",
           "name": "John Doe",
           "identity": "johndoe"
         },
         "type": "text",
         "payload": {},
-        "content": "Reply to first comment (Level 1 branch)",
-        "repliesCount": 1,
+        "content": "Reply to first comment",
+        "repliesCount": 0,
         "createdAt": "2026-08-20T00:01:00.000Z",
         "updatedAt": "2026-08-20T00:01:00.000Z",
         "editedAt": null,
@@ -1199,9 +1199,35 @@ Header `Authorization: Bearer <token>`.
           "avatarKey": null,
           "isMale": false
         }
+      },
+      {
+        "id": "888888888888883",
+        "postId": "999999999999991",
+        "authorId": "333333333333333",
+        "parentId": "888888888888881",
+        "replyToCommentId": "888888888888882",
+        "replyToProfile": {
+          "id": "222222222222222",
+          "name": "Jane Smith",
+          "identity": "janesmith"
+        },
+        "type": "text",
+        "payload": {},
+        "content": "Reply to Jane inside same thread",
+        "repliesCount": 0,
+        "createdAt": "2026-08-20T00:02:00.000Z",
+        "updatedAt": "2026-08-20T00:02:00.000Z",
+        "editedAt": null,
+        "author": {
+          "id": "333333333333333",
+          "name": "Alex Brown",
+          "identity": "alexbrown",
+          "avatarKey": null,
+          "isMale": true
+        }
       }
     ],
-    "total": 1,
+    "total": 2,
     "limit": 50,
     "offset": 0
   }
@@ -1214,11 +1240,10 @@ Header `Authorization: Bearer <token>`.
 - **Тело запроса (JSON):**
   - `type` *(string, опционально, `"text" | "media"`, по умолчанию: `"text"`)*
   - `content` *(string, обязательное для `type: "text"`, опционально для `type: "media"`, макс. 5000 симв.)* — текст комментария
-  - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*
-  - `parentId` *(string | null, опционально)* — Snowflake ID родительского комментария:
-    - если `null` или не передан — создается комментарий **Level 0 (Root)**;
-    - если указан ID Level 0 — создается ветка **Level 1 (Branch)**;
-    - если указан ID Level 1 или Level 2 — создается ответ **Level 2**.
+  - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*:
+    - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (от 1 до 10 файлов)
+    - Для `type: "text"`: `{}`
+  - `parentId` *(string | null, опционально)* — Snowflake ID родительского комментария (если ответ)
 - **Ответ `201 Created`:**
   ```json
   {
@@ -1227,11 +1252,9 @@ Header `Authorization: Bearer <token>`.
       "id": "888888888888881",
       "postId": "999999999999991",
       "authorId": "111111111111111",
-      "rootId": null,
-      "branchId": null,
       "parentId": null,
-      "replyToUserId": null,
-      "replyToUser": null,
+      "replyToCommentId": null,
+      "replyToProfile": null,
       "type": "text",
       "payload": {},
       "content": "First comment on post",
@@ -1253,7 +1276,7 @@ Header `Authorization: Bearer <token>`.
 ### `POST /posts/comments/:id/reply`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав доступа к посту)
 - **URL-параметры:**
-  - `id` *(string, обязательное)* — Snowflake ID комментария, на который дается ответ
+  - `id` *(string, обязательное)* — Snowflake ID родительского комментария (корневого или реплая)
 - **Тело запроса (JSON):**
   - `type` *(string, опционально, `"text" | "media"`, по умолчанию: `"text"`)*
   - `content` *(string, обязательное для `type: "text"`, опционально для `type: "media"`, макс. 5000 симв.)* — текст ответа
@@ -1266,11 +1289,9 @@ Header `Authorization: Bearer <token>`.
       "id": "888888888888882",
       "postId": "999999999999991",
       "authorId": "222222222222222",
-      "rootId": "888888888888881",
-      "branchId": null,
       "parentId": "888888888888881",
-      "replyToUserId": "111111111111111",
-      "replyToUser": {
+      "replyToCommentId": "888888888888881",
+      "replyToProfile": {
         "id": "111111111111111",
         "name": "John Doe",
         "identity": "johndoe"
@@ -1309,11 +1330,9 @@ Header `Authorization: Bearer <token>`.
       "id": "888888888888881",
       "postId": "999999999999991",
       "authorId": "111111111111111",
-      "rootId": null,
-      "branchId": null,
       "parentId": null,
-      "replyToUserId": null,
-      "replyToUser": null,
+      "replyToCommentId": null,
+      "replyToProfile": null,
       "type": "text",
       "payload": {},
       "content": "Edited comment text",
@@ -1355,7 +1374,7 @@ Header `Authorization: Bearer <token>`.
   - При попытке отправить повторную жалобу на тот же объект с уже использованной ранее причиной возвращается ошибка `409 Conflict`.
   - Запрещено жаловаться на самого себя или на собственный контент (`400 Bad Request`).
 - **Тело запроса (JSON):**
-  - `targetType` *(string, обязательное, `"post" | "comment" | "user"`)* — тип объекта жалобы
+  - `targetType` *(string, обязательное, `"post" | "comment" | "profile"`)* — тип объекта жалобы
   - `targetId` *(string, обязательное)* — Snowflake ID объекта жалобы
   - `reason` *(string, обязательное, `"boundary_violation" | "inappropriate_content" | "toxicity" | "fraud_or_scam" | "spam" | "gender_mismatch" | "other"`)* — причина жалобы
   - `details` *(string, опционально, макс. 1000 симв.)* — комментарий пожаловавшегося
@@ -1365,8 +1384,8 @@ Header `Authorization: Bearer <token>`.
     "success": true,
     "report": {
       "id": "999999999999991",
-      "reporterId": "111111111111111",
-      "reportedUserId": "222222222222222",
+      "reporterProfileId": "111111111111111",
+      "reportedProfileId": "222222222222222",
       "targetType": "post",
       "targetId": "888888888888881",
       "reason": "spam",
@@ -1394,8 +1413,8 @@ Header `Authorization: Bearer <token>`.
     "reports": [
       {
         "id": "999999999999991",
-        "reporterId": "111111111111111",
-        "reportedUserId": "222222222222222",
+        "reporterProfileId": "111111111111111",
+        "reportedProfileId": "222222222222222",
         "targetType": "post",
         "targetId": "888888888888881",
         "reason": "spam",
@@ -1424,8 +1443,8 @@ Header `Authorization: Bearer <token>`.
     "success": true,
     "report": {
       "id": "999999999999991",
-      "reporterId": "111111111111111",
-      "reportedUserId": "222222222222222",
+      "reporterProfileId": "111111111111111",
+      "reportedProfileId": "222222222222222",
       "targetType": "post",
       "targetId": "888888888888881",
       "reason": "spam",
@@ -1677,7 +1696,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
           "cityId": null,
           "contacts": null,
           "identity": null,
-          "regularFollowersCount": 0,
+          "regularReadersCount": 0,
           "isVerified": false
         }
       }
@@ -1712,7 +1731,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         "cityId": null,
         "contacts": null,
         "identity": "username",
-        "regularFollowersCount": 10,
+        "regularReadersCount": 10,
         "isVerified": true
       }
     }
@@ -1754,7 +1773,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         "cityId": null,
         "contacts": null,
         "identity": "updated_user",
-        "regularFollowersCount": 10,
+        "regularReadersCount": 10,
         "isVerified": true
       }
     }
@@ -1769,7 +1788,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
 - **Доступ:** `admin`, `moderator`
 - **Query-параметры:**
   - `status` *(string, опционально, `"all" | "pending" | "resolved" | "rejected"`, по умолчанию: `"all"`)*
-  - `targetType` *(string, опционально, `"all" | "post" | "comment" | "user"`, по умолчанию: `"all"`)*
+  - `targetType` *(string, опционально, `"all" | "post" | "comment" | "profile"`, по умолчанию: `"all"`)*
   - `reason` *(string, опционально, `"all" | "boundary_violation" | "inappropriate_content" | "toxicity" | "fraud_or_scam" | "spam" | "gender_mismatch" | "other"`, по умолчанию: `"all"`)*
   - `q` / `search` *(string, опционально)* — поиск по деталям, заметкам модератора, email/handle авторов и нарушителей
   - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*

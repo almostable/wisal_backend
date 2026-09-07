@@ -45,29 +45,29 @@ export interface ListMyInvitesResult {
   offset: number
 }
 
-export interface FollowUserItem {
+export interface ReaderProfileItem {
   id: bigint
   name: string | null
   avatarKey: string | null
   description: string | null
   identity: string | null
-  followedAt: Date
+  readAt: Date
   lastReadAt?: Date | null
 }
 
-export interface ListFollowsResult {
-  users: FollowUserItem[]
+export interface ListReadersResult {
+  profiles: ReaderProfileItem[]
   total: number
   limit: number
   offset: number
 }
 
-export interface FollowActionResult {
-  following: boolean
+export interface ReadActionResult {
+  reading: boolean
   message: string
 }
 
-export interface BlockedUserItem {
+export interface BlockedProfileItem {
   id: bigint
   name: string | null
   identity: string | null
@@ -76,7 +76,7 @@ export interface BlockedUserItem {
 }
 
 export interface ListBlocksResult {
-  users: BlockedUserItem[]
+  profiles: BlockedProfileItem[]
   total: number
   limit: number
   offset: number
@@ -95,7 +95,7 @@ export interface ProfileFeedItem {
   avatarKey: string | null
   identity: string
   shortDescription: string
-  regularFollowersCount: number
+  regularReadersCount: number
   countryCode: string
   cityId: string | null
   isVerified: boolean
@@ -115,7 +115,7 @@ export interface ProfileSearchItem {
   avatarKey: string | null
   identity: string
   shortDescription: string | null
-  regularFollowersCount: number
+  regularReadersCount: number
   countryCode: string | null
   cityId: string | null
   isVerified: boolean

@@ -20,9 +20,9 @@ export const listMyInvitesQuerySchema = paginationQuerySchema.extend({
 
 export type ListMyInvitesQuery = z.infer<typeof listMyInvitesQuerySchema>
 
-export const listFollowsQuerySchema = paginationQuerySchema
+export const listReadersQuerySchema = paginationQuerySchema
 
-export type ListFollowsQuery = z.infer<typeof listFollowsQuerySchema>
+export type ListReadersQuery = z.infer<typeof listReadersQuerySchema>
 
 export const listBlocksQuerySchema = paginationQuerySchema
 

@@ -37,8 +37,8 @@ describe('Reports Feature Route Tests', () => {
     cityId: null,
     contacts: null,
     identityId: 444444444444444n,
-    regularFollowersCount: 0,
-    followersCount: 0,
+    regularReadersCount: 0,
+    readersCount: 0,
     verifiedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -52,8 +52,8 @@ describe('Reports Feature Route Tests', () => {
 
   const mockReport: Report = {
     id: 999999999999991n,
-    reporterId: userAccount.id,
-    reportedUserId: 555555555555555n,
+    reporterProfileId: userProfile.id,
+    reportedProfileId: 555555555555555n,
     targetType: 'post',
     targetId: 888888888888881n,
     reason: 'spam',
@@ -111,7 +111,7 @@ describe('Reports Feature Route Tests', () => {
     expect(body.report.reason).toBe('spam')
   })
 
-  it('POST /reports creates a report on a user successfully', async () => {
+  it('POST /reports creates a report on a profile successfully', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: userAccount,
@@ -127,7 +127,7 @@ describe('Reports Feature Route Tests', () => {
     mock.module('../service', () => ({
       createReport: async () => ({
         ...mockReport,
-        targetType: 'user',
+        targetType: 'profile',
         targetId: 555555555555555n,
         reason: 'toxicity',
       }),
@@ -140,7 +140,7 @@ describe('Reports Feature Route Tests', () => {
         Authorization: 'Bearer valid_reporter_token',
       },
       body: JSON.stringify({
-        targetType: 'user',
+        targetType: 'profile',
         targetId: '555555555555555',
         reason: 'toxicity',
       }),
@@ -149,7 +149,7 @@ describe('Reports Feature Route Tests', () => {
     expect(res.status).toBe(201)
     const body = (await res.json()) as { success: boolean; report: Report }
     expect(body.success).toBe(true)
-    expect(body.report.targetType).toBe('user')
+    expect(body.report.targetType).toBe('profile')
   })
 
   it('POST /reports rejects self-report with 400', async () => {
@@ -180,8 +180,8 @@ describe('Reports Feature Route Tests', () => {
         Authorization: 'Bearer valid_reporter_token',
       },
       body: JSON.stringify({
-        targetType: 'user',
-        targetId: userAccount.id.toString(),
+        targetType: 'profile',
+        targetId: userProfile.id.toString(),
         reason: 'spam',
       }),
     })

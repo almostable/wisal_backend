@@ -1,13 +1,15 @@
 import { Hono } from 'hono'
+import { HTTPException } from 'hono/http-exception'
 import { zValidator } from '@hono/zod-validator'
 import { authMiddleware } from '../../middleware/auth'
 import { onboardingMiddleware } from '../../middleware/onboarding'
+import { getProfileByAccountId } from '../../lib/profile'
 import {
   identityParamSchema,
   onboardingInputSchema,
   updateProfileInputSchema,
   listMyInvitesQuerySchema,
-  listFollowsQuerySchema,
+  listReadersQuerySchema,
   listBlocksQuerySchema,
   profileFeedQuerySchema,
   profileSearchQuerySchema,
@@ -19,15 +21,15 @@ import {
   getPublicProfile,
   checkHandleAvailability,
   getMyInvites,
-  getFollowers,
-  getFollowing,
-  getUserFollowersByIdentity,
-  getUserFollowingByIdentity,
-  followUser,
-  unfollowUser,
-  blockUser,
-  unblockUser,
-  getBlockedUsers,
+  getReaders,
+  getReading,
+  getUserReadersByIdentity,
+  getUserReadingByIdentity,
+  readProfile,
+  unreadProfile,
+  blockProfile,
+  unblockProfile,
+  getBlockedProfiles,
   getProfileFeed,
   searchProfiles,
 } from './service'
@@ -96,8 +98,12 @@ profileRouter.get(
   zValidator('query', listBlocksQuerySchema),
   async (c) => {
     const account = c.get('account')
+    const profile = await getProfileByAccountId(account.id)
+    if (!profile) {
+      throw new HTTPException(404, { message: 'Profile not found' })
+    }
     const query = c.req.valid('query')
-    const result = await getBlockedUsers(account.id, query)
+    const result = await getBlockedProfiles(profile.id, query)
 
     return c.json({
       success: true,
@@ -107,12 +113,16 @@ profileRouter.get(
 )
 
 profileRouter.get(
-  '/followers',
-  zValidator('query', listFollowsQuerySchema),
+  '/readers',
+  zValidator('query', listReadersQuerySchema),
   async (c) => {
     const account = c.get('account')
+    const profile = await getProfileByAccountId(account.id)
+    if (!profile) {
+      throw new HTTPException(404, { message: 'Profile not found' })
+    }
     const query = c.req.valid('query')
-    const result = await getFollowers(account.id, query)
+    const result = await getReaders(profile.id, query)
 
     return c.json({
       success: true,
@@ -122,12 +132,16 @@ profileRouter.get(
 )
 
 profileRouter.get(
-  '/following',
-  zValidator('query', listFollowsQuerySchema),
+  '/reading',
+  zValidator('query', listReadersQuerySchema),
   async (c) => {
     const account = c.get('account')
+    const profile = await getProfileByAccountId(account.id)
+    if (!profile) {
+      throw new HTTPException(404, { message: 'Profile not found' })
+    }
     const query = c.req.valid('query')
-    const result = await getFollowing(account.id, query)
+    const result = await getReading(profile.id, query)
 
     return c.json({
       success: true,
@@ -148,12 +162,16 @@ profileRouter.get('/check/:identity', zValidator('param', identityParamSchema), 
 })
 
 profileRouter.post(
-  '/:identity/follow',
+  '/:identity/read',
   zValidator('param', identityParamSchema),
   async (c) => {
     const account = c.get('account')
+    const profile = await getProfileByAccountId(account.id)
+    if (!profile) {
+      throw new HTTPException(404, { message: 'Profile not found' })
+    }
     const { identity } = c.req.valid('param')
-    const result = await followUser(account.id, identity)
+    const result = await readProfile(profile.id, identity)
 
     return c.json({
       success: true,
@@ -163,12 +181,16 @@ profileRouter.post(
 )
 
 profileRouter.delete(
-  '/:identity/follow',
+  '/:identity/read',
   zValidator('param', identityParamSchema),
   async (c) => {
     const account = c.get('account')
+    const profile = await getProfileByAccountId(account.id)
+    if (!profile) {
+      throw new HTTPException(404, { message: 'Profile not found' })
+    }
     const { identity } = c.req.valid('param')
-    const result = await unfollowUser(account.id, identity)
+    const result = await unreadProfile(profile.id, identity)
 
     return c.json({
       success: true,
@@ -182,8 +204,12 @@ profileRouter.post(
   zValidator('param', identityParamSchema),
   async (c) => {
     const account = c.get('account')
+    const profile = await getProfileByAccountId(account.id)
+    if (!profile) {
+      throw new HTTPException(404, { message: 'Profile not found' })
+    }
     const { identity } = c.req.valid('param')
-    const result = await blockUser(account.id, identity)
+    const result = await blockProfile(profile.id, identity)
 
     return c.json({
       success: true,
@@ -197,8 +223,12 @@ profileRouter.delete(
   zValidator('param', identityParamSchema),
   async (c) => {
     const account = c.get('account')
+    const profile = await getProfileByAccountId(account.id)
+    if (!profile) {
+      throw new HTTPException(404, { message: 'Profile not found' })
+    }
     const { identity } = c.req.valid('param')
-    const result = await unblockUser(account.id, identity)
+    const result = await unblockProfile(profile.id, identity)
 
     return c.json({
       success: true,
@@ -208,14 +238,15 @@ profileRouter.delete(
 )
 
 profileRouter.get(
-  '/:identity/followers',
+  '/:identity/readers',
   zValidator('param', identityParamSchema),
-  zValidator('query', listFollowsQuerySchema),
+  zValidator('query', listReadersQuerySchema),
   async (c) => {
     const account = c.get('account')
+    const profile = await getProfileByAccountId(account.id)
     const { identity } = c.req.valid('param')
     const query = c.req.valid('query')
-    const result = await getUserFollowersByIdentity(identity, query, account.id)
+    const result = await getUserReadersByIdentity(identity, query, profile?.id)
 
     return c.json({
       success: true,
@@ -225,14 +256,15 @@ profileRouter.get(
 )
 
 profileRouter.get(
-  '/:identity/following',
+  '/:identity/reading',
   zValidator('param', identityParamSchema),
-  zValidator('query', listFollowsQuerySchema),
+  zValidator('query', listReadersQuerySchema),
   async (c) => {
     const account = c.get('account')
+    const profile = await getProfileByAccountId(account.id)
     const { identity } = c.req.valid('param')
     const query = c.req.valid('query')
-    const result = await getUserFollowingByIdentity(identity, query, account.id)
+    const result = await getUserReadingByIdentity(identity, query, profile?.id)
 
     return c.json({
       success: true,
@@ -246,9 +278,9 @@ profileRouter.get(
   onboardingMiddleware,
   zValidator('query', profileFeedQuerySchema),
   async (c) => {
-    const account = c.get('account')
+    const profile = c.get('profile')
     const query = c.req.valid('query')
-    const result = await getProfileFeed(account.id, query)
+    const result = await getProfileFeed(profile.id, query)
 
     return c.json({
       success: true,
@@ -262,9 +294,9 @@ profileRouter.get(
   onboardingMiddleware,
   zValidator('query', profileSearchQuerySchema),
   async (c) => {
-    const account = c.get('account')
+    const profile = c.get('profile')
     const query = c.req.valid('query')
-    const result = await searchProfiles(account.id, query)
+    const result = await searchProfiles(profile.id, query)
 
     return c.json({
       success: true,

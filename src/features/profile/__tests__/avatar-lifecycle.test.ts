@@ -72,7 +72,7 @@ describe('Profile Avatar Lifecycle Integration Tests', () => {
     expect(updatedSet).toEqual({
       status: 'attached',
       entityType: 'avatar',
-      entityId: accountId,
+      entityId: profileId,
     })
   })
 
@@ -99,7 +99,7 @@ describe('Profile Avatar Lifecycle Integration Tests', () => {
                           description: null,
                           contacts: null,
                           identityId,
-                          regularFollowersCount: 0,
+                          regularReadersCount: 0,
                           createdAt: new Date(),
                           updatedAt: new Date(),
                         },
@@ -139,7 +139,7 @@ describe('Profile Avatar Lifecycle Integration Tests', () => {
                         description: null,
                         contacts: null,
                         identityId,
-                        regularFollowersCount: 0,
+                        regularReadersCount: 0,
                         createdAt: new Date(),
                         updatedAt: new Date(),
                       },
@@ -164,7 +164,7 @@ describe('Profile Avatar Lifecycle Integration Tests', () => {
     expect(attachedStatusSet).toEqual({
       status: 'attached',
       entityType: 'avatar',
-      entityId: accountId,
+      entityId: profileId,
     })
   })
 })

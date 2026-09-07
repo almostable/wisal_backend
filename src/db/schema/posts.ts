@@ -3,7 +3,7 @@ import { relations, sql } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
 import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
-import { accounts } from './accounts'
+import { profiles } from './profiles'
 import { postSaves } from './post-saves'
 import { postViews } from './post-views'
 import { postLikes } from './post-likes'
@@ -24,7 +24,7 @@ export interface MediaPayload {
 export const GENDER_SCOPES = ['all', 'same_gender'] as const
 export type GenderScope = (typeof GENDER_SCOPES)[number]
 
-export const ACCESS_LEVELS = ['public', 'followers'] as const
+export const ACCESS_LEVELS = ['public', 'readers'] as const
 export type AccessLevel = (typeof ACCESS_LEVELS)[number]
 
 export const posts = pgTable(
@@ -33,7 +33,7 @@ export const posts = pgTable(
     id: snowflakePrimaryKey(),
     authorId: snowflakeId('author_id')
       .notNull()
-      .references(() => accounts.id, { onDelete: 'cascade' }),
+      .references(() => profiles.id, { onDelete: 'cascade' }),
     authorGender: boolean('author_gender').notNull(),
     type: varchar('type', { length: 32 }).notNull().default('text'),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
@@ -47,6 +47,7 @@ export const posts = pgTable(
     viewsCount: integer('views_count').notNull().default(0),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
     ...timestamps,
+    editedAt: timestamp('edited_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     index('posts_author_id_idx').on(table.authorId),
@@ -66,9 +67,9 @@ export const posts = pgTable(
 )
 
 export const postsRelations = relations(posts, ({ one, many }) => ({
-  author: one(accounts, {
+  author: one(profiles, {
     fields: [posts.authorId],
-    references: [accounts.id],
+    references: [profiles.id],
   }),
   saves: many(postSaves),
   views: many(postViews),

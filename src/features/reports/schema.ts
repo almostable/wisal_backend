@@ -11,7 +11,7 @@ import { paginationQuerySchema, snowflakeParamSchema } from '../../db/schema/com
 
 export const createReportSchema = z.object({
   targetType: z.enum(REPORT_TARGET_TYPES, {
-    message: 'targetType must be one of: post, comment, user',
+    message: 'targetType must be one of: post, comment, profile',
   }),
   targetId: z
     .string()

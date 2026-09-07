@@ -17,16 +17,15 @@ import { HTTPException } from 'hono/http-exception'
 import { db } from '../../db'
 import { posts, type Post, type PostType, type GenderScope, type AccessLevel } from '../../db/schema/posts'
 import { comments, type Comment, type CommentType } from '../../db/schema/comments'
-import { userBlocks } from '../../db/schema/user-blocks'
+import { profileBlocks } from '../../db/schema/profile-blocks'
 import { postSaves } from '../../db/schema/post-saves'
 import { postLikes } from '../../db/schema/post-likes'
 import { accounts } from '../../db/schema/accounts'
 import { profiles } from '../../db/schema/profiles'
 import { identities } from '../../db/schema/identities'
-import { follows } from '../../db/schema/follows'
+import { readers } from '../../db/schema/readers'
 import { postViews } from '../../db/schema/post-views'
-import { getAccountIdByIdentity } from '../profile/service'
-import { getProfileByAccountId } from '../../lib/profile'
+import { getProfileByIdentity } from '../../lib/profile'
 import {
   attachMediaFiles,
   markEntityMediaDeleted,
@@ -49,7 +48,7 @@ import type {
   LikeActionResult,
   CommentResponse,
   CommentAuthorInfo,
-  ReplyToUserInfo,
+  ReplyToProfileInfo,
   CreateCommentDTO,
   ReplyCommentDTO,
   UpdateCommentDTO,
@@ -60,48 +59,50 @@ import type {
 } from './types'
 
 const authorSelectFields = {
-  authorAccount: { id: accounts.id, deletedAt: accounts.deletedAt },
   authorProfile: {
+    id: profiles.id,
     name: profiles.name,
     avatarKey: profiles.avatarKey,
     isMale: profiles.isMale,
   },
+  authorAccount: { deletedAt: accounts.deletedAt },
   authorIdentity: { identity: identities.identity },
 }
 
 type AuthorSelectResult = {
-  authorAccount: { id: bigint; deletedAt?: Date | null }
   authorProfile: {
+    id: bigint
     name: string | null
     avatarKey: string | null
     isMale: boolean | null
   } | null
+  authorAccount: { deletedAt?: Date | null } | null
   authorIdentity: { identity: string | null } | null
 }
 
-const viewerFollows = alias(follows, 'viewer_follows')
+const viewerReaders = alias(readers, 'viewer_readers')
 
-const replyToAccounts = alias(accounts, 'reply_to_accounts')
 const replyToProfiles = alias(profiles, 'reply_to_profiles')
+const replyToAccounts = alias(accounts, 'reply_to_accounts')
 const replyToIdentities = alias(identities, 'reply_to_identities')
 
-const replyToUserSelectFields = {
-  replyToAccount: { id: replyToAccounts.id, deletedAt: replyToAccounts.deletedAt },
-  replyToProfile: { name: replyToProfiles.name },
+const replyToProfileSelectFields = {
+  replyToProfile: { id: replyToProfiles.id, name: replyToProfiles.name },
+  replyToAccount: { deletedAt: replyToAccounts.deletedAt },
   replyToIdentity: { identity: replyToIdentities.identity },
 }
 
-type ReplyToUserSelectResult = {
-  replyToAccount: { id: bigint | null; deletedAt?: Date | null } | null
-  replyToProfile: { name: string | null } | null
+type ReplyToProfileSelectResult = {
+  replyToProfile: { id: bigint; name: string | null } | null
+  replyToAccount: { deletedAt?: Date | null } | null
   replyToIdentity: { identity: string | null } | null
 }
 
-function mapAuthor(data: AuthorSelectResult, isFollowing?: boolean): PostAuthorInfo {
-  const isDeleted = Boolean(data.authorAccount.deletedAt)
-  if (isDeleted) {
+function mapAuthor(data: AuthorSelectResult, isReading?: boolean): PostAuthorInfo {
+  const isDeleted = Boolean(data.authorAccount?.deletedAt)
+  if (isDeleted || !data.authorProfile) {
     return {
-      id: data.authorAccount.id,
+      id: data.authorProfile?.id ?? 0n,
       name: null,
       identity: null,
       avatarKey: null,
@@ -111,31 +112,31 @@ function mapAuthor(data: AuthorSelectResult, isFollowing?: boolean): PostAuthorI
   }
 
   return {
-    id: data.authorAccount.id,
-    name: data.authorProfile?.name ?? null,
-    avatarKey: data.authorProfile?.avatarKey ?? null,
+    id: data.authorProfile.id,
+    name: data.authorProfile.name ?? null,
+    avatarKey: data.authorProfile.avatarKey ?? null,
     identity: data.authorIdentity?.identity ?? null,
-    isMale: data.authorProfile?.isMale ?? null,
-    ...(isFollowing !== undefined ? { isFollowing } : {}),
+    isMale: data.authorProfile.isMale ?? null,
+    ...(isReading !== undefined ? { isReading } : {}),
   }
 }
 
-function mapReplyToUser(data: ReplyToUserSelectResult | null | undefined): ReplyToUserInfo | null {
-  if (!data || !data.replyToAccount || !data.replyToAccount.id) {
+function mapReplyToProfile(data: ReplyToProfileSelectResult | null | undefined): ReplyToProfileInfo | null {
+  if (!data || !data.replyToProfile || !data.replyToProfile.id) {
     return null
   }
-  const isDeleted = Boolean(data.replyToAccount.deletedAt)
+  const isDeleted = Boolean(data.replyToAccount?.deletedAt)
   if (isDeleted) {
     return {
-      id: data.replyToAccount.id,
+      id: data.replyToProfile.id,
       name: null,
       identity: null,
       isDeleted: true,
     }
   }
   return {
-    id: data.replyToAccount.id,
-    name: data.replyToProfile?.name ?? null,
+    id: data.replyToProfile.id,
+    name: data.replyToProfile.name ?? null,
     identity: data.replyToIdentity?.identity ?? null,
   }
 }
@@ -169,6 +170,7 @@ function formatPost(
     ...(isLiked !== undefined ? { isLiked } : {}),
     createdAt: post.createdAt,
     updatedAt: post.updatedAt,
+    editedAt: post.editedAt ?? null,
     author: author ?? null,
   }
 }
@@ -176,17 +178,15 @@ function formatPost(
 function formatComment(
   comment: Comment,
   author?: CommentAuthorInfo | null,
-  replyToUser?: ReplyToUserInfo | null
+  replyToProfile?: ReplyToProfileInfo | null
 ): CommentResponse {
   return {
     id: comment.id,
     postId: comment.postId,
     authorId: comment.authorId,
-    rootId: comment.rootId ?? null,
-    branchId: comment.branchId ?? null,
     parentId: comment.parentId ?? null,
-    replyToUserId: comment.replyToUserId ?? null,
-    replyToUser: replyToUser ?? null,
+    replyToCommentId: comment.replyToCommentId ?? null,
+    replyToProfile: replyToProfile ?? null,
     type: comment.type as CommentType,
     payload: (comment.payload as Record<string, unknown>) ?? {},
     content: comment.content,
@@ -201,7 +201,7 @@ function formatComment(
 async function checkPostAccess(
   executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0],
   postId: bigint,
-  viewer: { accountId: bigint; isMale: boolean }
+  viewer: { profileId: bigint; isMale: boolean }
 ): Promise<Post> {
   const post = await executor.query.posts.findFirst({
     where: and(eq(posts.id, postId), isNull(posts.deletedAt)),
@@ -211,21 +211,21 @@ async function checkPostAccess(
     throw new HTTPException(404, { message: 'Post not found' })
   }
 
-  const isAuthor = viewer.accountId === post.authorId
+  const isAuthor = viewer.profileId === post.authorId
 
   if (!isAuthor) {
     const [blockRecord] = await executor
-      .select({ blockerId: userBlocks.blockerId })
-      .from(userBlocks)
+      .select({ blockerProfileId: profileBlocks.blockerProfileId })
+      .from(profileBlocks)
       .where(
         or(
           and(
-            eq(userBlocks.blockerId, viewer.accountId),
-            eq(userBlocks.blockedId, post.authorId)
+            eq(profileBlocks.blockerProfileId, viewer.profileId),
+            eq(profileBlocks.blockedProfileId, post.authorId)
           ),
           and(
-            eq(userBlocks.blockerId, post.authorId),
-            eq(userBlocks.blockedId, viewer.accountId)
+            eq(profileBlocks.blockerProfileId, post.authorId),
+            eq(profileBlocks.blockedProfileId, viewer.profileId)
           )
         )
       )
@@ -239,19 +239,19 @@ async function checkPostAccess(
       throw new HTTPException(404, { message: 'Post not found' })
     }
 
-    if (post.accessLevel === 'followers') { 
-      const [followRecord] = await executor
-        .select({ followerId: follows.followerId })
-        .from(follows)
+    if (post.accessLevel === 'readers') {
+      const [readerRecord] = await executor
+        .select({ readerProfileId: readers.readerProfileId })
+        .from(readers)
         .where(
           and(
-            eq(follows.followerId, viewer.accountId),
-            eq(follows.followingId, post.authorId)
+            eq(readers.readerProfileId, viewer.profileId),
+            eq(readers.authorProfileId, post.authorId)
           )
         )
         .limit(1)
 
-      if (!followRecord) {
+      if (!readerRecord) {
         throw new HTTPException(404, { message: 'Post not found' })
       }
     }
@@ -261,7 +261,7 @@ async function checkPostAccess(
 }
 
 export async function createPost(
-  authorAccountId: bigint,
+  authorProfileId: bigint,
   authorGender: boolean,
   input: CreatePostDTO
 ): Promise<PostResponse> {
@@ -274,7 +274,7 @@ export async function createPost(
         .set({ isPinned: false })
         .where(
           and(
-            eq(posts.authorId, authorAccountId),
+            eq(posts.authorId, authorProfileId),
             eq(posts.isPinned, true),
             isNull(posts.deletedAt)
           )
@@ -288,7 +288,7 @@ export async function createPost(
     const [created] = await tx
       .insert(posts)
       .values({
-        authorId: authorAccountId,
+        authorId: authorProfileId,
         authorGender,
         type: postType,
         payload,
@@ -311,7 +311,7 @@ export async function createPost(
       if (fileKeys.length > 0) {
         await attachMediaFiles(tx, {
           fileKeys,
-          userId: authorAccountId,
+          profileId: authorProfileId,
           entityType: 'post',
           entityId: created.id,
         })
@@ -320,10 +320,10 @@ export async function createPost(
 
     const [authorData] = await tx
       .select(authorSelectFields)
-      .from(accounts)
-      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .from(profiles)
       .leftJoin(identities, eq(profiles.identityId, identities.id))
-      .where(eq(accounts.id, authorAccountId))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(eq(profiles.id, authorProfileId))
       .limit(1)
 
     return formatPost(created, authorData ? mapAuthor(authorData) : null, false, true, false)
@@ -331,7 +331,7 @@ export async function createPost(
 }
 
 export async function updatePost(
-  authorAccountId: bigint,
+  authorProfileId: bigint,
   postId: bigint,
   input: UpdatePostDTO
 ): Promise<PostResponse> {
@@ -344,7 +344,7 @@ export async function updatePost(
       throw new HTTPException(404, { message: 'Post not found' })
     }
 
-    if (existing.authorId !== authorAccountId) {
+    if (existing.authorId !== authorProfileId) {
       throw new HTTPException(403, { message: 'You can only edit your own posts' })
     }
 
@@ -360,7 +360,7 @@ export async function updatePost(
         .set({ isPinned: false })
         .where(
           and(
-            eq(posts.authorId, authorAccountId),
+            eq(posts.authorId, authorProfileId),
             eq(posts.isPinned, true),
             ne(posts.id, postId),
             isNull(posts.deletedAt)
@@ -368,7 +368,10 @@ export async function updatePost(
         )
     }
 
-    const updateData: Partial<typeof posts.$inferInsert> = {}
+    const updateData: Partial<typeof posts.$inferInsert> = {
+      updatedAt: new Date(),
+      editedAt: new Date(),
+    }
 
     if (input.content !== undefined) {
       updateData.content = input.content ? input.content.trim() : ''
@@ -406,7 +409,7 @@ export async function updatePost(
         await reconcileEntityMedia(tx, {
           entityType: 'post',
           entityId: postId,
-          userId: authorAccountId,
+          profileId: authorProfileId,
           newFileKeys,
           oldFileKeys,
         })
@@ -421,10 +424,10 @@ export async function updatePost(
 
     const [authorData] = await tx
       .select(authorSelectFields)
-      .from(accounts)
-      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .from(profiles)
       .leftJoin(identities, eq(profiles.identityId, identities.id))
-      .where(eq(accounts.id, authorAccountId))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(eq(profiles.id, authorProfileId))
       .limit(1)
 
     const [savedRecord] = await tx
@@ -433,7 +436,7 @@ export async function updatePost(
       .where(
         and(
           eq(postSaves.postId, postId),
-          eq(postSaves.userId, authorAccountId)
+          eq(postSaves.profileId, authorProfileId)
         )
       )
       .limit(1)
@@ -444,7 +447,7 @@ export async function updatePost(
       .where(
         and(
           eq(postLikes.postId, postId),
-          eq(postLikes.userId, authorAccountId)
+          eq(postLikes.profileId, authorProfileId)
         )
       )
       .limit(1)
@@ -460,7 +463,7 @@ export async function updatePost(
 }
 
 export async function deletePost(
-  authorAccountId: bigint,
+  authorProfileId: bigint,
   postId: bigint
 ): Promise<{ success: boolean; message: string }> {
   return await db.transaction(async (tx) => {
@@ -472,7 +475,7 @@ export async function deletePost(
       throw new HTTPException(404, { message: 'Post not found' })
     }
 
-    if (existing.authorId !== authorAccountId) {
+    if (existing.authorId !== authorProfileId) {
       throw new HTTPException(403, { message: 'You can only delete your own posts' })
     }
 
@@ -507,7 +510,7 @@ export async function deletePost(
 }
 
 export async function pinPost(
-  authorAccountId: bigint,
+  authorProfileId: bigint,
   postId: bigint,
   input: PinPostDTO
 ): Promise<PostResponse> {
@@ -522,7 +525,7 @@ export async function pinPost(
       throw new HTTPException(404, { message: 'Post not found' })
     }
 
-    if (existing.authorId !== authorAccountId) {
+    if (existing.authorId !== authorProfileId) {
       throw new HTTPException(403, { message: 'You can only pin your own posts' })
     }
 
@@ -532,7 +535,7 @@ export async function pinPost(
         .set({ isPinned: false })
         .where(
           and(
-            eq(posts.authorId, authorAccountId),
+            eq(posts.authorId, authorProfileId),
             eq(posts.isPinned, true),
             ne(posts.id, postId),
             isNull(posts.deletedAt)
@@ -548,10 +551,10 @@ export async function pinPost(
 
     const [authorData] = await tx
       .select(authorSelectFields)
-      .from(accounts)
-      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .from(profiles)
       .leftJoin(identities, eq(profiles.identityId, identities.id))
-      .where(eq(accounts.id, authorAccountId))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(eq(profiles.id, authorProfileId))
       .limit(1)
 
     const [savedRecord] = await tx
@@ -560,7 +563,7 @@ export async function pinPost(
       .where(
         and(
           eq(postSaves.postId, postId),
-          eq(postSaves.userId, authorAccountId)
+          eq(postSaves.profileId, authorProfileId)
         )
       )
       .limit(1)
@@ -571,7 +574,7 @@ export async function pinPost(
       .where(
         and(
           eq(postLikes.postId, postId),
-          eq(postLikes.userId, authorAccountId)
+          eq(postLikes.profileId, authorProfileId)
         )
       )
       .limit(1)
@@ -588,17 +591,17 @@ export async function pinPost(
 
 export async function savePost(
   postId: bigint,
-  viewer: { accountId: bigint; isMale: boolean }
+  viewer: { profileId: bigint; isMale: boolean }
 ): Promise<SaveActionResult> {
   return await db.transaction(async (tx) => {
     const post = await checkPostAccess(tx, postId, viewer)
-    const isAuthor = viewer.accountId === post.authorId
+    const isAuthor = viewer.profileId === post.authorId
 
     const inserted = await tx
       .insert(postSaves)
       .values({
         postId,
-        userId: viewer.accountId,
+        profileId: viewer.profileId,
       })
       .onConflictDoNothing()
       .returning()
@@ -626,18 +629,18 @@ export async function savePost(
 
 export async function unsavePost(
   postId: bigint,
-  viewer: { accountId: bigint; isMale: boolean }
+  viewer: { profileId: bigint; isMale: boolean }
 ): Promise<SaveActionResult> {
   return await db.transaction(async (tx) => {
     const post = await checkPostAccess(tx, postId, viewer)
-    const isAuthor = viewer.accountId === post.authorId
+    const isAuthor = viewer.profileId === post.authorId
 
     const deleted = await tx
       .delete(postSaves)
       .where(
         and(
           eq(postSaves.postId, postId),
-          eq(postSaves.userId, viewer.accountId)
+          eq(postSaves.profileId, viewer.profileId)
         )
       )
       .returning()
@@ -665,17 +668,17 @@ export async function unsavePost(
 
 export async function likePost(
   postId: bigint,
-  viewer: { accountId: bigint; isMale: boolean }
+  viewer: { profileId: bigint; isMale: boolean }
 ): Promise<LikeActionResult> {
   return await db.transaction(async (tx) => {
     const post = await checkPostAccess(tx, postId, viewer)
-    const isAuthor = viewer.accountId === post.authorId
+    const isAuthor = viewer.profileId === post.authorId
 
     const inserted = await tx
       .insert(postLikes)
       .values({
         postId,
-        userId: viewer.accountId,
+        profileId: viewer.profileId,
       })
       .onConflictDoNothing()
       .returning()
@@ -703,18 +706,18 @@ export async function likePost(
 
 export async function unlikePost(
   postId: bigint,
-  viewer: { accountId: bigint; isMale: boolean }
+  viewer: { profileId: bigint; isMale: boolean }
 ): Promise<LikeActionResult> {
   return await db.transaction(async (tx) => {
     const post = await checkPostAccess(tx, postId, viewer)
-    const isAuthor = viewer.accountId === post.authorId
+    const isAuthor = viewer.profileId === post.authorId
 
     const deleted = await tx
       .delete(postLikes)
       .where(
         and(
           eq(postLikes.postId, postId),
-          eq(postLikes.userId, viewer.accountId)
+          eq(postLikes.profileId, viewer.profileId)
         )
       )
       .returning()
@@ -741,20 +744,22 @@ export async function unlikePost(
 }
 
 export async function recordAuthorPostRead(
-  readerAccountId: bigint,
-  authorAccountId: bigint,
+  readerProfileId: bigint,
+  authorProfileId: bigint,
   executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0] = db
 ): Promise<void> {
   await executor
-    .update(follows)
-    .set({ lastReadAt: sql`NOW()` })
+    .update(readers)
+    .set({
+      lastReadAt: new Date(),
+    })
     .where(
       and(
-        eq(follows.followingId, authorAccountId),
-        eq(follows.followerId, readerAccountId),
+        eq(readers.authorProfileId, authorProfileId),
+        eq(readers.readerProfileId, readerProfileId),
         or(
-          lt(follows.lastReadAt, sql`NOW() - INTERVAL '1 day'`),
-          isNull(follows.lastReadAt)
+          lt(readers.lastReadAt, sql`NOW() - INTERVAL '1 day'`),
+          isNull(readers.lastReadAt)
         )
       )
     )
@@ -762,113 +767,79 @@ export async function recordAuthorPostRead(
 
 export async function getPostById(
   postId: bigint,
-  viewer: { accountId: bigint; isMale: boolean }
+  viewer: { profileId: bigint; isMale: boolean }
 ): Promise<PostResponse> {
+  const post = await checkPostAccess(db, postId, viewer)
+
+  if (viewer.profileId !== post.authorId) {
+    await recordAuthorPostRead(viewer.profileId, post.authorId)
+  }
+
   const [result] = await db
     .select({
       post: posts,
       ...authorSelectFields,
-      isSaved: sql<boolean>`CASE WHEN ${postSaves.userId} IS NOT NULL THEN true ELSE false END`,
-      isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
-      isFollowingAuthor: sql<boolean>`CASE WHEN ${viewerFollows.followingId} IS NOT NULL THEN true ELSE false END`,
+      isSaved: sql<boolean>`CASE WHEN ${postSaves.profileId} IS NOT NULL THEN true ELSE false END`,
+      isLiked: sql<boolean>`CASE WHEN ${postLikes.profileId} IS NOT NULL THEN true ELSE false END`,
+      isReadingAuthor: sql<boolean>`CASE WHEN ${viewerReaders.authorProfileId} IS NOT NULL THEN true ELSE false END`,
     })
     .from(posts)
-    .innerJoin(accounts, eq(posts.authorId, accounts.id))
-    .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+    .innerJoin(profiles, eq(posts.authorId, profiles.id))
     .leftJoin(identities, eq(profiles.identityId, identities.id))
+    .leftJoin(accounts, eq(profiles.accountId, accounts.id))
     .leftJoin(
       postSaves,
       and(
         eq(postSaves.postId, posts.id),
-        eq(postSaves.userId, viewer.accountId)
+        eq(postSaves.profileId, viewer.profileId)
       )
     )
     .leftJoin(
       postLikes,
       and(
         eq(postLikes.postId, posts.id),
-        eq(postLikes.userId, viewer.accountId)
+        eq(postLikes.profileId, viewer.profileId)
       )
     )
     .leftJoin(
-      viewerFollows,
+      viewerReaders,
       and(
-        eq(viewerFollows.followerId, viewer.accountId),
-        eq(viewerFollows.followingId, posts.authorId)
+        eq(viewerReaders.readerProfileId, viewer.profileId),
+        eq(viewerReaders.authorProfileId, posts.authorId)
       )
     )
-    .where(and(eq(posts.id, postId), isNull(posts.deletedAt)))
+    .where(eq(posts.id, postId))
     .limit(1)
-
-  if (!result || !result.post) {
-    throw new HTTPException(404, { message: 'Post not found' })
-  }
-
-  const post = result.post
-  const isAuthor = viewer.accountId === post.authorId
-
-  if (!isAuthor) {
-    const [blockRecord] = await db
-      .select({ blockerId: userBlocks.blockerId })
-      .from(userBlocks)
-      .where(
-        or(
-          and(
-            eq(userBlocks.blockerId, viewer.accountId),
-            eq(userBlocks.blockedId, post.authorId)
-          ),
-          and(
-            eq(userBlocks.blockerId, post.authorId),
-            eq(userBlocks.blockedId, viewer.accountId)
-          )
-        )
-      )
-      .limit(1)
-
-    if (blockRecord) {
-      throw new HTTPException(404, { message: 'Post not found' })
-    }
-
-    if (post.genderScope === 'same_gender' && post.authorGender !== viewer.isMale) {
-      throw new HTTPException(404, { message: 'Post not found' })
-    }
-
-    if (post.accessLevel === 'followers' && !result.isFollowingAuthor) {
-      throw new HTTPException(404, { message: 'Post not found' })
-    }
-
-    await recordAuthorPostRead(viewer.accountId, post.authorId, db)
-  }
 
   return formatPost(
     result.post,
-    mapAuthor(result, Boolean(result.isFollowingAuthor)),
+    mapAuthor(result, Boolean(result.isReadingAuthor)),
     Boolean(result.isSaved),
-    isAuthor,
+    viewer.profileId === result.post.authorId,
     Boolean(result.isLiked)
   )
 }
 
 export async function getFeed(
-  viewer: { accountId: bigint; isMale: boolean },
+  viewer: { profileId: bigint; isMale: boolean },
   query: FeedQueryDTO
 ): Promise<FeedResult> {
   const limit = Math.min(Math.max(query.limit ?? 20, 1), 100)
   const offset = Math.max(query.offset ?? 0, 0)
 
   const notBlockedCondition = sql`NOT EXISTS (
-    SELECT 1 FROM ${userBlocks}
-    WHERE (${userBlocks.blockerId} = ${viewer.accountId} AND ${userBlocks.blockedId} = ${posts.authorId})
-       OR (${userBlocks.blockerId} = ${posts.authorId} AND ${userBlocks.blockedId} = ${viewer.accountId})
+    SELECT 1 FROM ${profileBlocks}
+    WHERE (${profileBlocks.blockerProfileId} = ${viewer.profileId} AND ${profileBlocks.blockedProfileId} = ${posts.authorId})
+       OR (${profileBlocks.blockerProfileId} = ${posts.authorId} AND ${profileBlocks.blockedProfileId} = ${viewer.profileId})
   )`
 
   const whereCondition = and(
     isNull(posts.deletedAt),
     notBlockedCondition,
     sql`EXISTS (
-      SELECT 1 FROM ${follows}
-      WHERE ${follows.followerId} = ${viewer.accountId}
-        AND ${follows.followingId} = ${posts.authorId}
+      SELECT 1 FROM ${readers}
+      WHERE ${readers.readerProfileId} = ${viewer.profileId}
+        AND ${readers.authorProfileId} = ${posts.authorId}
     )`,
     sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`
   )!
@@ -877,33 +848,33 @@ export async function getFeed(
     .select({
       post: posts,
       ...authorSelectFields,
-      isSaved: sql<boolean>`CASE WHEN ${postSaves.userId} IS NOT NULL THEN true ELSE false END`,
-      isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
-      isFollowingAuthor: sql<boolean>`CASE WHEN ${viewerFollows.followingId} IS NOT NULL THEN true ELSE false END`,
+      isSaved: sql<boolean>`CASE WHEN ${postSaves.profileId} IS NOT NULL THEN true ELSE false END`,
+      isLiked: sql<boolean>`CASE WHEN ${postLikes.profileId} IS NOT NULL THEN true ELSE false END`,
+      isReadingAuthor: sql<boolean>`CASE WHEN ${viewerReaders.authorProfileId} IS NOT NULL THEN true ELSE false END`,
     })
     .from(posts)
-    .innerJoin(accounts, eq(posts.authorId, accounts.id))
-    .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+    .innerJoin(profiles, eq(posts.authorId, profiles.id))
     .leftJoin(identities, eq(profiles.identityId, identities.id))
+    .leftJoin(accounts, eq(profiles.accountId, accounts.id))
     .leftJoin(
       postSaves,
       and(
         eq(postSaves.postId, posts.id),
-        eq(postSaves.userId, viewer.accountId)
+        eq(postSaves.profileId, viewer.profileId)
       )
     )
     .leftJoin(
       postLikes,
       and(
         eq(postLikes.postId, posts.id),
-        eq(postLikes.userId, viewer.accountId)
+        eq(postLikes.profileId, viewer.profileId)
       )
     )
     .leftJoin(
-      viewerFollows,
+      viewerReaders,
       and(
-        eq(viewerFollows.followerId, viewer.accountId),
-        eq(viewerFollows.followingId, posts.authorId)
+        eq(viewerReaders.readerProfileId, viewer.profileId),
+        eq(viewerReaders.authorProfileId, posts.authorId)
       )
     )
     .where(whereCondition)
@@ -914,9 +885,9 @@ export async function getFeed(
   const formattedPosts = items.map((item) =>
     formatPost(
       item.post,
-      mapAuthor(item, Boolean(item.isFollowingAuthor)),
+      mapAuthor(item, Boolean(item.isReadingAuthor)),
       Boolean(item.isSaved),
-      viewer.accountId === item.post.authorId,
+      viewer.profileId === item.post.authorId,
       Boolean(item.isLiked)
     )
   )
@@ -930,37 +901,32 @@ export async function getFeed(
 
 export async function getUserPosts(
   targetIdentity: string,
-  viewer: { accountId: bigint; isMale: boolean },
+  viewer: { profileId: bigint; isMale: boolean },
   query: UserPostsQueryDTO
 ): Promise<UserPostsResult> {
   const limit = Math.min(Math.max(query.limit ?? 20, 1), 100)
   const offset = Math.max(query.offset ?? 0, 0)
 
-  const targetAccountId = await getAccountIdByIdentity(targetIdentity)
-  if (!targetAccountId) {
-    throw new HTTPException(404, { message: 'Profile not found' })
-  }
-
-  const targetProfile = await getProfileByAccountId(targetAccountId)
+  const targetProfile = await getProfileByIdentity(targetIdentity)
   if (!targetProfile) {
     throw new HTTPException(404, { message: 'Profile not found' })
   }
 
-  const isAuthor = viewer.accountId === targetAccountId
+  const isAuthor = viewer.profileId === targetProfile.id
 
   if (!isAuthor) {
     const [blockRecord] = await db
-      .select({ blockerId: userBlocks.blockerId })
-      .from(userBlocks)
+      .select({ blockerProfileId: profileBlocks.blockerProfileId })
+      .from(profileBlocks)
       .where(
         or(
           and(
-            eq(userBlocks.blockerId, viewer.accountId),
-            eq(userBlocks.blockedId, targetAccountId)
+            eq(profileBlocks.blockerProfileId, viewer.profileId),
+            eq(profileBlocks.blockedProfileId, targetProfile.id)
           ),
           and(
-            eq(userBlocks.blockerId, targetAccountId),
-            eq(userBlocks.blockedId, viewer.accountId)
+            eq(profileBlocks.blockerProfileId, targetProfile.id),
+            eq(profileBlocks.blockedProfileId, viewer.profileId)
           )
         )
       )
@@ -976,25 +942,25 @@ export async function getUserPosts(
     }
   }
 
-  let isFollowing = false
+  let isReading = false
   if (!isAuthor) {
-    const [follow] = await db
-      .select({ followerId: follows.followerId })
-      .from(follows)
+    const [reader] = await db
+      .select({ readerProfileId: readers.readerProfileId })
+      .from(readers)
       .where(
         and(
-          eq(follows.followerId, viewer.accountId),
-          eq(follows.followingId, targetAccountId)
+          eq(readers.readerProfileId, viewer.profileId),
+          eq(readers.authorProfileId, targetProfile.id)
         )
       )
       .limit(1)
-    isFollowing = Boolean(follow)
+    isReading = Boolean(reader)
   }
 
   const isSameGender = viewer.isMale === targetProfile.isMale
 
   const conditions: SQL[] = [
-    eq(posts.authorId, targetAccountId),
+    eq(posts.authorId, targetProfile.id),
     isNull(posts.deletedAt),
   ]
 
@@ -1002,55 +968,55 @@ export async function getUserPosts(
     if (!isSameGender) {
       conditions.push(eq(posts.genderScope, 'all'))
     }
-    if (!isFollowing) {
+    if (!isReading) {
       conditions.push(eq(posts.accessLevel, 'public'))
     }
   }
 
-  const whereClause = and(...conditions)
+  const whereCondition = and(...conditions)!
 
   const [items, totalResult] = await Promise.all([
     db
       .select({
         post: posts,
         ...authorSelectFields,
-        isSaved: sql<boolean>`CASE WHEN ${postSaves.userId} IS NOT NULL THEN true ELSE false END`,
-        isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
+        isSaved: sql<boolean>`CASE WHEN ${postSaves.profileId} IS NOT NULL THEN true ELSE false END`,
+        isLiked: sql<boolean>`CASE WHEN ${postLikes.profileId} IS NOT NULL THEN true ELSE false END`,
       })
       .from(posts)
-      .innerJoin(accounts, eq(posts.authorId, accounts.id))
-      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .innerJoin(profiles, eq(posts.authorId, profiles.id))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
       .leftJoin(
         postSaves,
         and(
           eq(postSaves.postId, posts.id),
-          eq(postSaves.userId, viewer.accountId)
+          eq(postSaves.profileId, viewer.profileId)
         )
       )
       .leftJoin(
         postLikes,
         and(
           eq(postLikes.postId, posts.id),
-          eq(postLikes.userId, viewer.accountId)
+          eq(postLikes.profileId, viewer.profileId)
         )
       )
-      .where(whereClause)
+      .where(whereCondition)
       .orderBy(desc(posts.isPinned), desc(posts.createdAt))
       .limit(limit)
       .offset(offset),
     db
       .select({ count: count() })
       .from(posts)
-      .where(whereClause),
+      .where(whereCondition),
   ])
 
   const formattedPosts = items.map((item) =>
     formatPost(
       item.post,
-      mapAuthor(item, isFollowing),
+      mapAuthor(item, isAuthor ? undefined : isReading),
       Boolean(item.isSaved),
-      viewer.accountId === item.post.authorId,
+      isAuthor,
       Boolean(item.isLiked)
     )
   )
@@ -1064,29 +1030,29 @@ export async function getUserPosts(
 }
 
 export async function getSavedPosts(
-  viewer: { accountId: bigint; isMale: boolean },
+  viewer: { profileId: bigint; isMale: boolean },
   query: SavedPostsQueryDTO
 ): Promise<SavedPostsResult> {
   const limit = Math.min(Math.max(query.limit ?? 20, 1), 100)
   const offset = Math.max(query.offset ?? 0, 0)
 
   const notBlockedCondition = sql`NOT EXISTS (
-    SELECT 1 FROM ${userBlocks}
-    WHERE (${userBlocks.blockerId} = ${viewer.accountId} AND ${userBlocks.blockedId} = ${posts.authorId})
-       OR (${userBlocks.blockerId} = ${posts.authorId} AND ${userBlocks.blockedId} = ${viewer.accountId})
+    SELECT 1 FROM ${profileBlocks}
+    WHERE (${profileBlocks.blockerProfileId} = ${viewer.profileId} AND ${profileBlocks.blockedProfileId} = ${posts.authorId})
+       OR (${profileBlocks.blockerProfileId} = ${posts.authorId} AND ${profileBlocks.blockedProfileId} = ${viewer.profileId})
   )`
 
   const whereCondition = and(
-    eq(postSaves.userId, viewer.accountId),
+    eq(postSaves.profileId, viewer.profileId),
     isNull(posts.deletedAt),
     notBlockedCondition,
-    sql`(${posts.authorId} = ${viewer.accountId} OR (
+    sql`(${posts.authorId} = ${viewer.profileId} OR (
       (${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))
       AND
       (${posts.accessLevel} = 'public' OR EXISTS (
-        SELECT 1 FROM ${follows}
-        WHERE ${follows.followerId} = ${viewer.accountId}
-          AND ${follows.followingId} = ${posts.authorId}
+        SELECT 1 FROM ${readers}
+        WHERE ${readers.readerProfileId} = ${viewer.profileId}
+          AND ${readers.authorProfileId} = ${posts.authorId}
       ))
     ))`
   )!
@@ -1096,26 +1062,26 @@ export async function getSavedPosts(
       .select({
         post: posts,
         ...authorSelectFields,
-        isFollowingAuthor: sql<boolean>`CASE WHEN ${viewerFollows.followingId} IS NOT NULL THEN true ELSE false END`,
-        isLiked: sql<boolean>`CASE WHEN ${postLikes.userId} IS NOT NULL THEN true ELSE false END`,
+        isReadingAuthor: sql<boolean>`CASE WHEN ${viewerReaders.authorProfileId} IS NOT NULL THEN true ELSE false END`,
+        isLiked: sql<boolean>`CASE WHEN ${postLikes.profileId} IS NOT NULL THEN true ELSE false END`,
       })
       .from(postSaves)
       .innerJoin(posts, eq(postSaves.postId, posts.id))
-      .innerJoin(accounts, eq(posts.authorId, accounts.id))
-      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .innerJoin(profiles, eq(posts.authorId, profiles.id))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
       .leftJoin(
-        viewerFollows,
+        viewerReaders,
         and(
-          eq(viewerFollows.followerId, viewer.accountId),
-          eq(viewerFollows.followingId, posts.authorId)
+          eq(viewerReaders.readerProfileId, viewer.profileId),
+          eq(viewerReaders.authorProfileId, posts.authorId)
         )
       )
       .leftJoin(
         postLikes,
         and(
           eq(postLikes.postId, posts.id),
-          eq(postLikes.userId, viewer.accountId)
+          eq(postLikes.profileId, viewer.profileId)
         )
       )
       .where(whereCondition)
@@ -1132,9 +1098,9 @@ export async function getSavedPosts(
   const formattedPosts = items.map((item) =>
     formatPost(
       item.post,
-      mapAuthor(item, Boolean(item.isFollowingAuthor)),
+      mapAuthor(item, Boolean(item.isReadingAuthor)),
       true,
-      viewer.accountId === item.post.authorId,
+      viewer.profileId === item.post.authorId,
       Boolean(item.isLiked)
     )
   )
@@ -1149,7 +1115,7 @@ export async function getSavedPosts(
 
 export async function getPostComments(
   postId: bigint,
-  viewer: { accountId: bigint; isMale: boolean },
+  viewer: { profileId: bigint; isMale: boolean },
   query: ListCommentsQueryDTO
 ): Promise<ListCommentsResult> {
   await checkPostAccess(db, postId, viewer)
@@ -1159,7 +1125,7 @@ export async function getPostComments(
 
   const whereClause = and(
     eq(comments.postId, postId),
-    isNull(comments.rootId),
+    isNull(comments.parentId),
     isNull(comments.deletedAt)
   )
 
@@ -1170,9 +1136,9 @@ export async function getPostComments(
         ...authorSelectFields,
       })
       .from(comments)
-      .innerJoin(accounts, eq(comments.authorId, accounts.id))
-      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .innerJoin(profiles, eq(comments.authorId, profiles.id))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
       .where(whereClause)
       .orderBy(asc(comments.createdAt))
       .limit(limit)
@@ -1186,8 +1152,8 @@ export async function getPostComments(
   const otherAuthorIds = Array.from(
     new Set(
       items
-        .map((item) => item.authorAccount.id)
-        .filter((id) => id !== viewer.accountId)
+        .map((item) => item.authorProfile.id)
+        .filter((id) => id !== viewer.profileId)
     )
   )
 
@@ -1197,44 +1163,42 @@ export async function getPostComments(
   if (otherAuthorIds.length > 0) {
     const blockRows = await db
       .select({
-        blockerId: userBlocks.blockerId,
-        blockedId: userBlocks.blockedId,
+        blockerProfileId: profileBlocks.blockerProfileId,
+        blockedProfileId: profileBlocks.blockedProfileId,
       })
-      .from(userBlocks)
+      .from(profileBlocks)
       .where(
         or(
           and(
-            eq(userBlocks.blockerId, viewer.accountId),
-            inArray(userBlocks.blockedId, otherAuthorIds)
+            eq(profileBlocks.blockerProfileId, viewer.profileId),
+            inArray(profileBlocks.blockedProfileId, otherAuthorIds)
           ),
           and(
-            eq(userBlocks.blockedId, viewer.accountId),
-            inArray(userBlocks.blockerId, otherAuthorIds)
+            eq(profileBlocks.blockedProfileId, viewer.profileId),
+            inArray(profileBlocks.blockerProfileId, otherAuthorIds)
           )
         )
       )
 
     for (const row of blockRows) {
-      if (row.blockerId === viewer.accountId) {
-        blockedByViewer.add(row.blockedId)
+      if (row.blockerProfileId === viewer.profileId) {
+        blockedByViewer.add(row.blockedProfileId)
       } else {
-        blockedViewer.add(row.blockerId)
+        blockedViewer.add(row.blockerProfileId)
       }
     }
   }
 
   const formattedComments = items.map((item) => {
-    const isDeleted = Boolean(item.authorAccount.deletedAt)
+    const isDeleted = Boolean(item.authorAccount?.deletedAt)
     if (isDeleted) {
       return {
         id: item.comment.id,
         postId: item.comment.postId,
         authorId: item.comment.authorId,
-        rootId: item.comment.rootId ?? null,
-        branchId: item.comment.branchId ?? null,
         parentId: item.comment.parentId ?? null,
-        replyToUserId: null,
-        replyToUser: null,
+        replyToCommentId: null,
+        replyToProfile: null,
         type: item.comment.type as CommentType,
         payload: (item.comment.payload as Record<string, unknown>) ?? {},
         content: item.comment.content,
@@ -1243,7 +1207,7 @@ export async function getPostComments(
         updatedAt: item.comment.updatedAt,
         editedAt: item.comment.editedAt ?? null,
         author: {
-          id: item.authorAccount.id,
+          id: item.authorProfile.id,
           name: null,
           identity: null,
           avatarKey: null,
@@ -1253,19 +1217,17 @@ export async function getPostComments(
       }
     }
 
-    const isBlocked = blockedByViewer.has(item.authorAccount.id)
-    const isHidden = blockedViewer.has(item.authorAccount.id)
+    const isBlocked = blockedByViewer.has(item.authorProfile.id)
+    const isHidden = blockedViewer.has(item.authorProfile.id)
 
     if (isBlocked || isHidden) {
       return {
         id: item.comment.id,
         postId: item.comment.postId,
         authorId: item.comment.authorId,
-        rootId: item.comment.rootId ?? null,
-        branchId: item.comment.branchId ?? null,
         parentId: item.comment.parentId ?? null,
-        replyToUserId: null,
-        replyToUser: null,
+        replyToCommentId: null,
+        replyToProfile: null,
         type: item.comment.type as CommentType,
         payload: (item.comment.payload as Record<string, unknown>) ?? {},
         content: item.comment.content,
@@ -1274,7 +1236,7 @@ export async function getPostComments(
         updatedAt: item.comment.updatedAt,
         editedAt: item.comment.editedAt ?? null,
         author: {
-          id: item.authorAccount.id,
+          id: item.authorProfile.id,
           name: item.authorProfile?.name ?? null,
           avatarKey: null,
           identity: item.authorIdentity?.identity ?? null,
@@ -1300,7 +1262,7 @@ export async function getPostComments(
 
 export async function getCommentReplies(
   commentId: bigint,
-  viewer: { accountId: bigint; isMale: boolean },
+  viewer: { profileId: bigint; isMale: boolean },
   query: ListCommentsQueryDTO
 ): Promise<ListCommentsResult> {
   const targetComment = await db.query.comments.findFirst({
@@ -1316,40 +1278,27 @@ export async function getCommentReplies(
   const limit = Math.min(Math.max(query.limit ?? 50, 1), 100)
   const offset = Math.max(query.offset ?? 0, 0)
 
-  if (targetComment.branchId !== null) {
-    return {
-      comments: [],
-      total: 0,
-      limit,
-      offset,
-    }
-  }
+  const threadRootId = targetComment.parentId ?? targetComment.id
 
-  const whereClause = targetComment.rootId === null
-    ? and(
-        eq(comments.rootId, targetComment.id),
-        isNull(comments.branchId),
-        isNull(comments.deletedAt)
-      )
-    : and(
-        eq(comments.branchId, targetComment.id),
-        isNull(comments.deletedAt)
-      )
+  const whereClause = and(
+    eq(comments.parentId, threadRootId),
+    isNull(comments.deletedAt)
+  )
 
   const [items, totalResult] = await Promise.all([
     db
       .select({
         comment: comments,
         ...authorSelectFields,
-        ...replyToUserSelectFields,
+        ...replyToProfileSelectFields,
       })
       .from(comments)
-      .innerJoin(accounts, eq(comments.authorId, accounts.id))
-      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .innerJoin(profiles, eq(comments.authorId, profiles.id))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
-      .leftJoin(replyToAccounts, eq(comments.replyToUserId, replyToAccounts.id))
-      .leftJoin(replyToProfiles, eq(replyToAccounts.id, replyToProfiles.accountId))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .leftJoin(replyToProfiles, eq(comments.replyToProfileId, replyToProfiles.id))
       .leftJoin(replyToIdentities, eq(replyToProfiles.identityId, replyToIdentities.id))
+      .leftJoin(replyToAccounts, eq(replyToProfiles.accountId, replyToAccounts.id))
       .where(whereClause)
       .orderBy(asc(comments.createdAt))
       .limit(limit)
@@ -1363,8 +1312,8 @@ export async function getCommentReplies(
   const otherAuthorIds = Array.from(
     new Set(
       items
-        .map((item) => item.authorAccount.id)
-        .filter((id) => id !== viewer.accountId)
+        .map((item) => item.authorProfile.id)
+        .filter((id) => id !== viewer.profileId)
     )
   )
 
@@ -1374,46 +1323,44 @@ export async function getCommentReplies(
   if (otherAuthorIds.length > 0) {
     const blockRows = await db
       .select({
-        blockerId: userBlocks.blockerId,
-        blockedId: userBlocks.blockedId,
+        blockerProfileId: profileBlocks.blockerProfileId,
+        blockedProfileId: profileBlocks.blockedProfileId,
       })
-      .from(userBlocks)
+      .from(profileBlocks)
       .where(
         or(
           and(
-            eq(userBlocks.blockerId, viewer.accountId),
-            inArray(userBlocks.blockedId, otherAuthorIds)
+            eq(profileBlocks.blockerProfileId, viewer.profileId),
+            inArray(profileBlocks.blockedProfileId, otherAuthorIds)
           ),
           and(
-            eq(userBlocks.blockedId, viewer.accountId),
-            inArray(userBlocks.blockerId, otherAuthorIds)
+            eq(profileBlocks.blockedProfileId, viewer.profileId),
+            inArray(profileBlocks.blockerProfileId, otherAuthorIds)
           )
         )
       )
 
     for (const row of blockRows) {
-      if (row.blockerId === viewer.accountId) {
-        blockedByViewer.add(row.blockedId)
+      if (row.blockerProfileId === viewer.profileId) {
+        blockedByViewer.add(row.blockedProfileId)
       } else {
-        blockedViewer.add(row.blockerId)
+        blockedViewer.add(row.blockerProfileId)
       }
     }
   }
 
   const formattedReplies = items.map((item) => {
-    const isDeleted = Boolean(item.authorAccount.deletedAt)
-    const mappedReplyToUser = mapReplyToUser(item)
+    const isDeleted = Boolean(item.authorAccount?.deletedAt)
+    const mappedReplyToProfileInfo = mapReplyToProfile(item)
 
     if (isDeleted) {
       return {
         id: item.comment.id,
         postId: item.comment.postId,
         authorId: item.comment.authorId,
-        rootId: item.comment.rootId ?? null,
-        branchId: item.comment.branchId ?? null,
         parentId: item.comment.parentId ?? null,
-        replyToUserId: item.comment.replyToUserId ?? null,
-        replyToUser: mappedReplyToUser,
+        replyToCommentId: item.comment.replyToCommentId ?? null,
+        replyToProfile: mappedReplyToProfileInfo,
         type: item.comment.type as CommentType,
         payload: (item.comment.payload as Record<string, unknown>) ?? {},
         content: item.comment.content,
@@ -1422,7 +1369,7 @@ export async function getCommentReplies(
         updatedAt: item.comment.updatedAt,
         editedAt: item.comment.editedAt ?? null,
         author: {
-          id: item.authorAccount.id,
+          id: item.authorProfile.id,
           name: null,
           identity: null,
           avatarKey: null,
@@ -1432,19 +1379,17 @@ export async function getCommentReplies(
       }
     }
 
-    const isBlocked = blockedByViewer.has(item.authorAccount.id)
-    const isHidden = blockedViewer.has(item.authorAccount.id)
+    const isBlocked = blockedByViewer.has(item.authorProfile.id)
+    const isHidden = blockedViewer.has(item.authorProfile.id)
 
     if (isBlocked || isHidden) {
       return {
         id: item.comment.id,
         postId: item.comment.postId,
         authorId: item.comment.authorId,
-        rootId: item.comment.rootId ?? null,
-        branchId: item.comment.branchId ?? null,
         parentId: item.comment.parentId ?? null,
-        replyToUserId: item.comment.replyToUserId ?? null,
-        replyToUser: mappedReplyToUser,
+        replyToCommentId: item.comment.replyToCommentId ?? null,
+        replyToProfile: mappedReplyToProfileInfo,
         type: item.comment.type as CommentType,
         payload: (item.comment.payload as Record<string, unknown>) ?? {},
         content: item.comment.content,
@@ -1453,7 +1398,7 @@ export async function getCommentReplies(
         updatedAt: item.comment.updatedAt,
         editedAt: item.comment.editedAt ?? null,
         author: {
-          id: item.authorAccount.id,
+          id: item.authorProfile.id,
           name: item.authorProfile?.name ?? null,
           avatarKey: null,
           identity: item.authorIdentity?.identity ?? null,
@@ -1466,7 +1411,7 @@ export async function getCommentReplies(
       }
     }
 
-    return formatComment(item.comment, mapAuthor(item), mappedReplyToUser)
+    return formatComment(item.comment, mapAuthor(item), mappedReplyToProfileInfo)
   })
 
   return {
@@ -1479,17 +1424,16 @@ export async function getCommentReplies(
 
 export async function createComment(
   postId: bigint,
-  authorAccountId: bigint,
-  viewer: { accountId: bigint; isMale: boolean },
+  authorProfileId: bigint,
+  viewer: { profileId: bigint; isMale: boolean },
   input: CreateCommentDTO
 ): Promise<CommentResponse> {
   return await db.transaction(async (tx) => {
     await checkPostAccess(tx, postId, viewer)
 
-    let rootId: bigint | null = null
-    let branchId: bigint | null = null
-    let parentId: bigint | null = null
-    let replyToUserId: bigint | null = null
+    let threadRootId: bigint | null = null
+    let replyToCommentId: bigint | null = null
+    let replyToProfileId: bigint | null = null
 
     if (input.parentId) {
       const targetComment = await tx.query.comments.findFirst({
@@ -1503,25 +1447,15 @@ export async function createComment(
         throw new HTTPException(404, { message: 'Parent comment not found' })
       }
 
-      parentId = targetComment.id
-      replyToUserId = targetComment.authorId
-
-      if (targetComment.rootId === null) {
-        rootId = targetComment.id
-        branchId = null
-      } else if (targetComment.branchId === null) {
-        rootId = targetComment.rootId
-        branchId = targetComment.id
-      } else {
-        rootId = targetComment.rootId
-        branchId = targetComment.branchId
-      }
+      threadRootId = targetComment.parentId ?? targetComment.id
+      replyToCommentId = targetComment.id
+      replyToProfileId = targetComment.authorId
 
       const targetAuthorIds: bigint[] = [targetComment.authorId]
-      if (rootId && rootId !== targetComment.id) {
+      if (threadRootId !== targetComment.id) {
         const rootComment = await tx.query.comments.findFirst({
           where: and(
-            eq(comments.id, rootId),
+            eq(comments.id, threadRootId),
             isNull(comments.deletedAt)
           ),
         })
@@ -1529,40 +1463,29 @@ export async function createComment(
           targetAuthorIds.push(rootComment.authorId)
         }
       }
-      if (branchId && branchId !== targetComment.id && branchId !== rootId) {
-        const branchComment = await tx.query.comments.findFirst({
-          where: and(
-            eq(comments.id, branchId),
-            isNull(comments.deletedAt)
-          ),
-        })
-        if (branchComment && !targetAuthorIds.includes(branchComment.authorId)) {
-          targetAuthorIds.push(branchComment.authorId)
-        }
-      }
 
-      const otherTargetAuthorIds = targetAuthorIds.filter((id) => id !== authorAccountId)
+      const otherTargetAuthorIds = targetAuthorIds.filter((id) => id !== authorProfileId)
 
       if (otherTargetAuthorIds.length > 0) {
         const [blockRecord] = await tx
-          .select({ blockerId: userBlocks.blockerId })
-          .from(userBlocks)
+          .select({ blockerProfileId: profileBlocks.blockerProfileId })
+          .from(profileBlocks)
           .where(
             or(
               and(
-                eq(userBlocks.blockerId, authorAccountId),
-                inArray(userBlocks.blockedId, otherTargetAuthorIds)
+                eq(profileBlocks.blockerProfileId, authorProfileId),
+                inArray(profileBlocks.blockedProfileId, otherTargetAuthorIds)
               ),
               and(
-                inArray(userBlocks.blockerId, otherTargetAuthorIds),
-                eq(userBlocks.blockedId, authorAccountId)
+                inArray(profileBlocks.blockerProfileId, otherTargetAuthorIds),
+                eq(profileBlocks.blockedProfileId, authorProfileId)
               )
             )
           )
           .limit(1)
 
         if (blockRecord) {
-          throw new HTTPException(400, { message: 'Cannot reply to a blocked user' })
+          throw new HTTPException(400, { message: 'Cannot reply to a blocked profile' })
         }
       }
 
@@ -1571,16 +1494,7 @@ export async function createComment(
         .set({
           repliesCount: sql`${comments.repliesCount} + 1`,
         })
-        .where(eq(comments.id, rootId))
-
-      if (branchId) {
-        await tx
-          .update(comments)
-          .set({
-            repliesCount: sql`${comments.repliesCount} + 1`,
-          })
-          .where(eq(comments.id, branchId))
-      }
+        .where(eq(comments.id, threadRootId))
     }
 
     const content = input.content ? input.content.trim() : ''
@@ -1591,11 +1505,10 @@ export async function createComment(
       .insert(comments)
       .values({
         postId,
-        authorId: authorAccountId,
-        rootId,
-        branchId,
-        parentId,
-        replyToUserId,
+        authorId: authorProfileId,
+        parentId: threadRootId,
+        replyToCommentId,
+        replyToProfileId,
         type: commentType,
         payload,
         content,
@@ -1614,7 +1527,7 @@ export async function createComment(
       if (fileKeys.length > 0) {
         await attachMediaFiles(tx, {
           fileKeys,
-          userId: authorAccountId,
+          profileId: authorProfileId,
           entityType: 'comment',
           entityId: created.id,
         })
@@ -1630,30 +1543,28 @@ export async function createComment(
 
     const [authorData] = await tx
       .select(authorSelectFields)
-      .from(accounts)
-      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .from(profiles)
       .leftJoin(identities, eq(profiles.identityId, identities.id))
-      .where(eq(accounts.id, authorAccountId))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(eq(profiles.id, authorProfileId))
       .limit(1)
 
-    let replyToUserData: ReplyToUserInfo | null = null
-    if (replyToUserId) {
+    let replyToProfileData: ReplyToProfileInfo | null = null
+    if (replyToProfileId) {
       const [replyToRow] = await tx
         .select({
-          account: { id: accounts.id },
-          profile: { name: profiles.name },
+          profile: { id: profiles.id, name: profiles.name },
           identity: { identity: identities.identity },
         })
-        .from(accounts)
-        .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+        .from(profiles)
         .leftJoin(identities, eq(profiles.identityId, identities.id))
-        .where(eq(accounts.id, replyToUserId))
+        .where(eq(profiles.id, replyToProfileId))
         .limit(1)
 
       if (replyToRow) {
-        replyToUserData = {
-          id: replyToRow.account.id,
-          name: replyToRow.profile?.name ?? null,
+        replyToProfileData = {
+          id: replyToRow.profile.id,
+          name: replyToRow.profile.name ?? null,
           identity: replyToRow.identity?.identity ?? null,
         }
       }
@@ -1662,15 +1573,15 @@ export async function createComment(
     return formatComment(
       created,
       authorData ? mapAuthor(authorData) : null,
-      replyToUserData
+      replyToProfileData
     )
   })
 }
 
 export async function replyToComment(
   commentId: bigint,
-  authorAccountId: bigint,
-  viewer: { accountId: bigint; isMale: boolean },
+  authorProfileId: bigint,
+  viewer: { profileId: bigint; isMale: boolean },
   input: ReplyCommentDTO
 ): Promise<CommentResponse> {
   return await db.transaction(async (tx) => {
@@ -1687,7 +1598,7 @@ export async function replyToComment(
 
     return await createComment(
       parentComment.postId,
-      authorAccountId,
+      authorProfileId,
       viewer,
       {
         content: input.content,
@@ -1700,7 +1611,7 @@ export async function replyToComment(
 }
 
 export async function deleteComment(
-  authorAccountId: bigint,
+  authorProfileId: bigint,
   commentId: bigint
 ): Promise<DeleteCommentResult> {
   return await db.transaction(async (tx) => {
@@ -1712,17 +1623,17 @@ export async function deleteComment(
       throw new HTTPException(404, { message: 'Comment not found' })
     }
 
-    if (existing.authorId !== authorAccountId) {
+    if (existing.authorId !== authorProfileId) {
       throw new HTTPException(403, { message: 'You can only delete your own comments' })
     }
 
     let toDeleteIds: bigint[] = [existing.id]
 
-    if (existing.rootId === null) {
+    if (existing.parentId === null) {
       const descendants = await tx
         .select({ id: comments.id })
         .from(comments)
-        .where(and(eq(comments.rootId, existing.id), isNull(comments.deletedAt)))
+        .where(and(eq(comments.parentId, existing.id), isNull(comments.deletedAt)))
 
       toDeleteIds = [existing.id, ...descendants.map((d) => d.id)]
 
@@ -1737,32 +1648,6 @@ export async function deleteComment(
           commentsCount: sql`GREATEST(0, ${posts.commentsCount} - ${toDeleteIds.length})`,
         })
         .where(eq(posts.id, existing.postId))
-    } else if (existing.branchId === null) {
-      const branchDescendants = await tx
-        .select({ id: comments.id })
-        .from(comments)
-        .where(and(eq(comments.branchId, existing.id), isNull(comments.deletedAt)))
-
-      toDeleteIds = [existing.id, ...branchDescendants.map((d) => d.id)]
-
-      await tx
-        .update(comments)
-        .set({ deletedAt: new Date() })
-        .where(inArray(comments.id, toDeleteIds))
-
-      await tx
-        .update(posts)
-        .set({
-          commentsCount: sql`GREATEST(0, ${posts.commentsCount} - ${toDeleteIds.length})`,
-        })
-        .where(eq(posts.id, existing.postId))
-
-      await tx
-        .update(comments)
-        .set({
-          repliesCount: sql`GREATEST(0, ${comments.repliesCount} - ${toDeleteIds.length})`,
-        })
-        .where(eq(comments.id, existing.rootId))
     } else {
       await tx
         .update(comments)
@@ -1781,14 +1666,7 @@ export async function deleteComment(
         .set({
           repliesCount: sql`GREATEST(0, ${comments.repliesCount} - 1)`,
         })
-        .where(eq(comments.id, existing.rootId))
-
-      await tx
-        .update(comments)
-        .set({
-          repliesCount: sql`GREATEST(0, ${comments.repliesCount} - 1)`,
-        })
-        .where(eq(comments.id, existing.branchId))
+        .where(eq(comments.id, existing.parentId))
     }
 
     for (const id of toDeleteIds) {
@@ -1806,7 +1684,7 @@ export async function deleteComment(
 }
 
 export async function updateComment(
-  authorAccountId: bigint,
+  authorProfileId: bigint,
   commentId: bigint,
   input: UpdateCommentDTO
 ): Promise<CommentResponse> {
@@ -1819,7 +1697,7 @@ export async function updateComment(
       throw new HTTPException(404, { message: 'Comment not found' })
     }
 
-    if (existing.authorId !== authorAccountId) {
+    if (existing.authorId !== authorProfileId) {
       throw new HTTPException(403, { message: 'You can only edit your own comments' })
     }
 
@@ -1858,7 +1736,7 @@ export async function updateComment(
         await reconcileEntityMedia(tx, {
           entityType: 'comment',
           entityId: commentId,
-          userId: authorAccountId,
+          profileId: authorProfileId,
           newFileKeys,
           oldFileKeys,
         })
@@ -1873,30 +1751,28 @@ export async function updateComment(
 
     const [authorData] = await tx
       .select(authorSelectFields)
-      .from(accounts)
-      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .from(profiles)
       .leftJoin(identities, eq(profiles.identityId, identities.id))
-      .where(eq(accounts.id, authorAccountId))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(eq(profiles.id, authorProfileId))
       .limit(1)
 
-    let replyToUserData: ReplyToUserInfo | null = null
-    if (updated.replyToUserId) {
+    let replyToProfileData: ReplyToProfileInfo | null = null
+    if (updated.replyToProfileId) {
       const [replyToRow] = await tx
         .select({
-          account: { id: accounts.id },
-          profile: { name: profiles.name },
+          profile: { id: profiles.id, name: profiles.name },
           identity: { identity: identities.identity },
         })
-        .from(accounts)
-        .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+        .from(profiles)
         .leftJoin(identities, eq(profiles.identityId, identities.id))
-        .where(eq(accounts.id, updated.replyToUserId))
+        .where(eq(profiles.id, updated.replyToProfileId))
         .limit(1)
 
       if (replyToRow) {
-        replyToUserData = {
-          id: replyToRow.account.id,
-          name: replyToRow.profile?.name ?? null,
+        replyToProfileData = {
+          id: replyToRow.profile.id,
+          name: replyToRow.profile.name ?? null,
           identity: replyToRow.identity?.identity ?? null,
         }
       }
@@ -1905,13 +1781,13 @@ export async function updateComment(
     return formatComment(
       updated,
       authorData ? mapAuthor(authorData) : null,
-      replyToUserData
+      replyToProfileData
     )
   })
 }
 
 export async function recordPostViews(
-  viewer: { accountId: bigint; isMale: boolean },
+  viewer: { profileId: bigint; isMale: boolean },
   postIds: bigint[],
   executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0] = db
 ): Promise<RecordViewsResult> {
@@ -1932,17 +1808,17 @@ export async function recordPostViews(
         inArray(posts.id, uniquePostIds),
         isNull(posts.deletedAt),
         or(
-          eq(posts.authorId, viewer.accountId),
+          eq(posts.authorId, viewer.profileId),
           and(
             sql`NOT EXISTS (
-              SELECT 1 FROM ${userBlocks}
-              WHERE (${userBlocks.blockerId} = ${viewer.accountId} AND ${userBlocks.blockedId} = ${posts.authorId})
-                 OR (${userBlocks.blockerId} = ${posts.authorId} AND ${userBlocks.blockedId} = ${viewer.accountId})
+              SELECT 1 FROM ${profileBlocks}
+              WHERE (${profileBlocks.blockerProfileId} = ${viewer.profileId} AND ${profileBlocks.blockedProfileId} = ${posts.authorId})
+                 OR (${profileBlocks.blockerProfileId} = ${posts.authorId} AND ${profileBlocks.blockedProfileId} = ${viewer.profileId})
             )`,
             sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`,
             sql`(${posts.accessLevel} = 'public' OR EXISTS (
-              SELECT 1 FROM ${follows}
-              WHERE ${follows.followerId} = ${viewer.accountId} AND ${follows.followingId} = ${posts.authorId}
+              SELECT 1 FROM ${readers}
+              WHERE ${readers.readerProfileId} = ${viewer.profileId} AND ${readers.authorProfileId} = ${posts.authorId}
             ))`
           )
         )
@@ -1955,7 +1831,7 @@ export async function recordPostViews(
 
   const rowsToInsert = accessiblePosts.map((p) => ({
     postId: p.id,
-    userId: viewer.accountId,
+    profileId: viewer.profileId,
   }))
 
   const insertedViews = await executor

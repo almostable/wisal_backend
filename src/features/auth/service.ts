@@ -9,8 +9,8 @@ import { sessions } from '../../db/schema/sessions'
 import { posts } from '../../db/schema/posts'
 import { postSaves } from '../../db/schema/post-saves'
 import { postLikes } from '../../db/schema/post-likes'
-import { follows } from '../../db/schema/follows'
-import { userBlocks } from '../../db/schema/user-blocks'
+import { readers } from '../../db/schema/readers'
+import { profileBlocks } from '../../db/schema/profile-blocks'
 import { mediaUploads } from '../../db/schema/media-uploads'
 import { markEntityMediaDeleted } from '../uploads/service'
 import { hashPassword, verifyPassword } from '../../lib/password'
@@ -43,22 +43,23 @@ import type {
 
 export async function registerUser(input: RegisterInput): Promise<AuthSessionResult> {
   const normalizedEmail = input.email.trim().toLowerCase()
-  const normalizedInviteCode = input.inviteCode.trim().toUpperCase()
 
   const existingAccount = await db.query.accounts.findFirst({
     where: eq(sql`lower(${accounts.email})`, normalizedEmail),
   })
 
   if (existingAccount) {
-    throw new HTTPException(409, { message: 'Account with this email already exists' })
+    throw new HTTPException(409, { message: 'Email already in use' })
   }
 
+  const normalizedCode = input.inviteCode.trim()
+
   const invite = await db.query.invites.findFirst({
-    where: eq(invites.code, normalizedInviteCode),
+    where: eq(invites.code, normalizedCode),
   })
 
   if (!invite) {
-    throw new HTTPException(400, { message: 'Invalid or expired invite code' })
+    throw new HTTPException(400, { message: 'Invalid invite code' })
   }
 
   if (invite.usedAt !== null || invite.usedById !== null) {
@@ -90,7 +91,7 @@ export async function registerUser(input: RegisterInput): Promise<AuthSessionRes
       .insert(accounts)
       .values({
         email: normalizedEmail,
-        password: passwordHash,
+        passwordHash,
       })
       .returning()
 
@@ -141,9 +142,8 @@ export async function registerUser(input: RegisterInput): Promise<AuthSessionRes
 
     return {
       createdAccount,
-      createdSession,
       sessionToken,
-      profile: initialProfile ? { ...initialProfile, identity: null } : null,
+      profile: initialProfile,
     }
   })
 
@@ -166,7 +166,7 @@ export async function loginUser(input: LoginInput): Promise<AuthSessionResult> {
     throw new HTTPException(401, { message: 'Invalid email or password' })
   }
 
-  const isPasswordValid = await verifyPassword(account.password, input.password)
+  const isPasswordValid = await verifyPassword(account.passwordHash, input.password)
 
   if (!isPasswordValid) {
     throw new HTTPException(401, { message: 'Invalid email or password' })
@@ -189,11 +189,13 @@ export async function logoutUser(sessionId: bigint): Promise<void> {
   await invalidateSession(sessionId)
 }
 
-export async function logoutAllSessions(accountId: bigint): Promise<void> {
+export async function logoutAllUserSessions(accountId: bigint): Promise<void> {
   await invalidateAllAccountSessions(accountId)
 }
 
-export async function getAuthMe(accountId: bigint): Promise<AuthMeResult> {
+export const logoutAllSessions = logoutAllUserSessions
+
+export async function getMe(accountId: bigint): Promise<AuthMeResult> {
   const account = await db.query.accounts.findFirst({
     where: and(eq(accounts.id, accountId), isNull(accounts.deletedAt)),
   })
@@ -203,17 +205,20 @@ export async function getAuthMe(accountId: bigint): Promise<AuthMeResult> {
   }
 
   const profile = await getProfileByAccountId(accountId)
+  const completed = isOnboardingCompleted(profile)
 
   return {
     account: safeAccountSchema.parse(account),
-    isOnboardingCompleted: isOnboardingCompleted(profile),
+    isOnboardingCompleted: completed,
   }
 }
+
+export const getAuthMe = getMe
 
 export async function deleteAccount(
   accountId: bigint,
   input: DeleteAccountInput,
-  executor: typeof db = db
+  executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0] = db
 ): Promise<DeleteAccountResult> {
   return await executor.transaction(async (tx) => {
     const account = await tx.query.accounts.findFirst({
@@ -224,7 +229,7 @@ export async function deleteAccount(
       throw new HTTPException(404, { message: 'Account not found' })
     }
 
-    const isPasswordValid = await verifyPassword(account.password, input.password)
+    const isPasswordValid = await verifyPassword(account.passwordHash, input.password)
     if (!isPasswordValid) {
       throw new HTTPException(401, { message: 'Invalid password' })
     }
@@ -234,7 +239,7 @@ export async function deleteAccount(
       .set({
         deletedAt: new Date(),
         email: `${accountId}@deleted.invalid`,
-        password: '!ACCOUNT_DELETED!',
+        passwordHash: '!ACCOUNT_DELETED!',
       })
       .where(eq(accounts.id, accountId))
 
@@ -257,8 +262,8 @@ export async function deleteAccount(
           cityId: null,
           contacts: null,
           verifiedAt: null,
-          regularFollowersCount: 0,
-          followersCount: 0,
+          regularReadersCount: 0,
+          readersCount: 0,
         })
         .where(eq(profiles.id, existingProfile.id))
 
@@ -271,103 +276,103 @@ export async function deleteAccount(
       if (existingProfile.avatarKey) {
         await markEntityMediaDeleted(tx, {
           entityType: 'avatar',
-          entityId: accountId,
+          entityId: existingProfile.id,
         })
       }
+
+      const userPosts = await tx
+        .select({ id: posts.id })
+        .from(posts)
+        .where(and(eq(posts.authorId, existingProfile.id), isNull(posts.deletedAt)))
+
+      if (userPosts.length > 0) {
+        const postIds = userPosts.map((p) => p.id)
+
+        await tx
+          .update(posts)
+          .set({
+            deletedAt: new Date(),
+            isPinned: false,
+          })
+          .where(and(eq(posts.authorId, existingProfile.id), isNull(posts.deletedAt)))
+
+        await tx
+          .update(mediaUploads)
+          .set({ status: 'deleted' })
+          .where(
+            and(
+              eq(mediaUploads.entityType, 'post'),
+              inArray(mediaUploads.entityId, postIds),
+              eq(mediaUploads.status, 'attached')
+            )
+          )
+
+        await tx.execute(sql`
+          UPDATE media_uploads
+          SET status = 'deleted'
+          WHERE entity_type = 'comment'
+            AND status = 'attached'
+            AND entity_id IN (
+              SELECT id FROM comments WHERE post_id IN (${sql.join(postIds, sql`, `)})
+            )
+        `)
+      }
+
+      const userSaves = await tx
+        .delete(postSaves)
+        .where(eq(postSaves.profileId, existingProfile.id))
+        .returning({ postId: postSaves.postId })
+
+      if (userSaves.length > 0) {
+        const postIds = Array.from(new Set(userSaves.map((s) => s.postId)))
+        await tx
+          .update(posts)
+          .set({
+            savesCount: sql`GREATEST(0, ${posts.savesCount} - 1)`,
+          })
+          .where(inArray(posts.id, postIds))
+      }
+
+      const userLikes = await tx
+        .delete(postLikes)
+        .where(eq(postLikes.profileId, existingProfile.id))
+        .returning({ postId: postLikes.postId })
+
+      if (userLikes.length > 0) {
+        const postIds = Array.from(new Set(userLikes.map((s) => s.postId)))
+        await tx
+          .update(posts)
+          .set({
+            likesCount: sql`GREATEST(0, ${posts.likesCount} - 1)`,
+          })
+          .where(inArray(posts.id, postIds))
+      }
+
+      const userReading = await tx
+        .select({ authorProfileId: readers.authorProfileId })
+        .from(readers)
+        .where(eq(readers.readerProfileId, existingProfile.id))
+
+      if (userReading.length > 0) {
+        const authorProfileIds = Array.from(new Set(userReading.map((item) => item.authorProfileId)))
+        await tx
+          .update(profiles)
+          .set({
+            readersCount: sql`GREATEST(0, ${profiles.readersCount} - 1)`,
+          })
+          .where(inArray(profiles.id, authorProfileIds))
+      }
+
+      await tx
+        .delete(readers)
+        .where(or(eq(readers.readerProfileId, existingProfile.id), eq(readers.authorProfileId, existingProfile.id)))
+
+      await tx
+        .delete(profileBlocks)
+        .where(or(eq(profileBlocks.blockerProfileId, existingProfile.id), eq(profileBlocks.blockedProfileId, existingProfile.id)))
     }
 
     await tx.delete(sessions).where(eq(sessions.accountId, accountId))
-
-    const userPosts = await tx
-      .select({ id: posts.id })
-      .from(posts)
-      .where(and(eq(posts.authorId, accountId), isNull(posts.deletedAt)))
-
-    if (userPosts.length > 0) {
-      const postIds = userPosts.map((p) => p.id)
-
-      await tx
-        .update(posts)
-        .set({
-          deletedAt: new Date(),
-          isPinned: false,
-        })
-        .where(and(eq(posts.authorId, accountId), isNull(posts.deletedAt)))
-
-      await tx
-        .update(mediaUploads)
-        .set({ status: 'deleted' })
-        .where(
-          and(
-            eq(mediaUploads.entityType, 'post'),
-            inArray(mediaUploads.entityId, postIds),
-            eq(mediaUploads.status, 'attached')
-          )
-        )
-
-      await tx.execute(sql`
-        UPDATE media_uploads
-        SET status = 'deleted'
-        WHERE entity_type = 'comment'
-          AND status = 'attached'
-          AND entity_id IN (
-            SELECT id FROM comments WHERE post_id IN (${sql.join(postIds, sql`, `)})
-          )
-      `)
-    }
-
-    const userSaves = await tx
-      .delete(postSaves)
-      .where(eq(postSaves.userId, accountId))
-      .returning({ postId: postSaves.postId })
-
-    if (userSaves.length > 0) {
-      const postIds = Array.from(new Set(userSaves.map((s) => s.postId)))
-      await tx
-        .update(posts)
-        .set({
-          savesCount: sql`GREATEST(0, ${posts.savesCount} - 1)`,
-        })
-        .where(inArray(posts.id, postIds))
-    }
-
-    const userLikes = await tx
-      .delete(postLikes)
-      .where(eq(postLikes.userId, accountId))
-      .returning({ postId: postLikes.postId })
-
-    if (userLikes.length > 0) {
-      const postIds = Array.from(new Set(userLikes.map((s) => s.postId)))
-      await tx
-        .update(posts)
-        .set({
-          likesCount: sql`GREATEST(0, ${posts.likesCount} - 1)`,
-        })
-        .where(inArray(posts.id, postIds))
-    }
-
-    const userFollowing = await tx
-      .select({ followingId: follows.followingId })
-      .from(follows)
-      .where(eq(follows.followerId, accountId))
-
-    if (userFollowing.length > 0) {
-      const followingIds = Array.from(new Set(userFollowing.map((item) => item.followingId)))
-      await tx
-        .update(profiles)
-        .set({
-          followersCount: sql`GREATEST(0, ${profiles.followersCount} - 1)`,
-        })
-        .where(inArray(profiles.accountId, followingIds))
-    }
-
-    await tx
-      .delete(follows)
-      .where(or(eq(follows.followerId, accountId), eq(follows.followingId, accountId)))
-
-    await tx
-      .delete(userBlocks)
-      .where(or(eq(userBlocks.blockerId, accountId), eq(userBlocks.blockedId, accountId)))
 
     return {
       success: true,

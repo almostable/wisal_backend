@@ -35,8 +35,8 @@ describe('Uploads Feature Route Tests', () => {
     cityId: null,
     contacts: null,
     identityId: 444444444444444n,
-    regularFollowersCount: 0,
-    followersCount: 0,
+    regularReadersCount: 0,
+    readersCount: 0,
     verifiedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -130,7 +130,7 @@ describe('Uploads Feature Route Tests', () => {
 
     expect(insertedMediaRecord).not.toBeNull()
     expect(insertedMediaRecord.fileKey).toBe(body.fileKey)
-    expect(insertedMediaRecord.userId).toBe(userAccount.id)
+    expect(insertedMediaRecord.profileId).toBe(userProfile.id)
     expect(insertedMediaRecord.status).toBe('pending')
   })
 

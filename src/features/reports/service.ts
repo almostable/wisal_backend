@@ -2,7 +2,7 @@ import { eq, and, desc, count, isNull, type SQL } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../../db'
 import { reports, type Report } from '../../db/schema/reports'
-import { accounts } from '../../db/schema/accounts'
+import { profiles } from '../../db/schema/profiles'
 import { posts } from '../../db/schema/posts'
 import { comments } from '../../db/schema/comments'
 import type {
@@ -12,23 +12,23 @@ import type {
 } from './types'
 
 export async function createReport(
-  reporterId: bigint,
+  reporterProfileId: bigint,
   input: CreateReportInput
 ): Promise<Report> {
   const { targetType, targetId, reason, details } = input
 
-  let reportedUserId: bigint
+  let reportedProfileId: bigint
 
-  if (targetType === 'user') {
-    const user = await db.query.accounts.findFirst({
-      where: eq(accounts.id, targetId),
+  if (targetType === 'profile') {
+    const profile = await db.query.profiles.findFirst({
+      where: eq(profiles.id, targetId),
     })
 
-    if (!user) {
-      throw new HTTPException(404, { message: 'Reported user not found' })
+    if (!profile) {
+      throw new HTTPException(404, { message: 'Reported profile not found' })
     }
 
-    reportedUserId = targetId
+    reportedProfileId = targetId
   } else if (targetType === 'post') {
     const post = await db.query.posts.findFirst({
       where: and(eq(posts.id, targetId), isNull(posts.deletedAt)),
@@ -38,7 +38,7 @@ export async function createReport(
       throw new HTTPException(404, { message: 'Reported post not found' })
     }
 
-    reportedUserId = post.authorId
+    reportedProfileId = post.authorId
   } else if (targetType === 'comment') {
     const comment = await db.query.comments.findFirst({
       where: and(eq(comments.id, targetId), isNull(comments.deletedAt)),
@@ -48,12 +48,12 @@ export async function createReport(
       throw new HTTPException(404, { message: 'Reported comment not found' })
     }
 
-    reportedUserId = comment.authorId
+    reportedProfileId = comment.authorId
   } else {
     throw new HTTPException(400, { message: 'Invalid target type' })
   }
 
-  if (reportedUserId === reporterId) {
+  if (reportedProfileId === reporterProfileId) {
     throw new HTTPException(400, {
       message: 'You cannot report yourself or your own content',
     })
@@ -61,7 +61,7 @@ export async function createReport(
 
   const existingReport = await db.query.reports.findFirst({
     where: and(
-      eq(reports.reporterId, reporterId),
+      eq(reports.reporterProfileId, reporterProfileId),
       eq(reports.targetType, targetType),
       eq(reports.targetId, targetId),
       eq(reports.reason, reason)
@@ -77,8 +77,8 @@ export async function createReport(
   const [newReport] = await db
     .insert(reports)
     .values({
-      reporterId,
-      reportedUserId,
+      reporterProfileId,
+      reportedProfileId,
       targetType,
       targetId,
       reason,
@@ -95,14 +95,14 @@ export async function createReport(
 }
 
 export async function listUserReports(
-  reporterId: bigint,
+  reporterProfileId: bigint,
   options: ListUserReportsOptions = {}
 ): Promise<ListUserReportsResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
   const status = options.status ?? 'all'
 
-  const conditions: SQL[] = [eq(reports.reporterId, reporterId)]
+  const conditions: SQL[] = [eq(reports.reporterProfileId, reporterProfileId)]
 
   if (status !== 'all') {
     conditions.push(eq(reports.status, status))
@@ -129,11 +129,11 @@ export async function listUserReports(
 }
 
 export async function getUserReportById(
-  reporterId: bigint,
+  reporterProfileId: bigint,
   reportId: bigint
 ): Promise<Report> {
   const report = await db.query.reports.findFirst({
-    where: and(eq(reports.id, reportId), eq(reports.reporterId, reporterId)),
+    where: and(eq(reports.id, reportId), eq(reports.reporterProfileId, reporterProfileId)),
   })
 
   if (!report) {

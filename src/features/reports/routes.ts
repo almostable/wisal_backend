@@ -19,10 +19,10 @@ export const reportsRouter = new Hono()
 reportsRouter.use('*', authMiddleware, onboardingMiddleware)
 
 reportsRouter.post('/', zValidator('json', createReportSchema), async (c) => {
-  const account = c.get('account')
+  const profile = c.get('profile')
   const data = c.req.valid('json')
 
-  const report = await createReport(account.id, data)
+  const report = await createReport(profile.id, data)
 
   return c.json(
     {
@@ -34,10 +34,10 @@ reportsRouter.post('/', zValidator('json', createReportSchema), async (c) => {
 })
 
 reportsRouter.get('/', zValidator('query', listUserReportsQuerySchema), async (c) => {
-  const account = c.get('account')
+  const profile = c.get('profile')
   const query = c.req.valid('query')
 
-  const result = await listUserReports(account.id, query)
+  const result = await listUserReports(profile.id, query)
 
   return c.json({
     success: true,
@@ -46,11 +46,11 @@ reportsRouter.get('/', zValidator('query', listUserReportsQuerySchema), async (c
 })
 
 reportsRouter.get('/:id', zValidator('param', reportIdParamSchema), async (c) => {
-  const account = c.get('account')
+  const profile = c.get('profile')
   const { id } = c.req.valid('param')
   const reportId = stringToSnowflake(id)
 
-  const report = await getUserReportById(account.id, reportId)
+  const report = await getUserReportById(profile.id, reportId)
 
   return c.json({
     success: true,

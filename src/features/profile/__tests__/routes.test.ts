@@ -41,7 +41,7 @@ describe('Profile Feature Route Tests', () => {
       email: null,
     },
     identity: 'wisaluser',
-    regularFollowersCount: 0,
+    regularReadersCount: 0,
     isVerified: false,
   }
 
@@ -59,7 +59,7 @@ describe('Profile Feature Route Tests', () => {
 
     mock.module('../service', () => ({
       getMyProfile: async () => ({
-        profile: { ...mockProfile, followersCount: 10 },
+        profile: { ...mockProfile, readersCount: 10 },
         isOnboardingCompleted: true,
       }),
     }))
@@ -80,7 +80,7 @@ describe('Profile Feature Route Tests', () => {
     expect(body.success).toBe(true)
     expect(body.profile.name).toBe('Wisal User')
     expect(body.profile.identity).toBe('wisaluser')
-    expect(body.profile.followersCount).toBe(10)
+    expect(body.profile.readersCount).toBe(10)
     expect((body.profile as any).identityId).toBeUndefined()
     expect(body.isOnboardingCompleted).toBe(true)
   })
@@ -564,7 +564,7 @@ describe('Profile Feature Route Tests', () => {
     expect(body2.reason).toBe('Identity is already taken')
   })
 
-  it('GET /profile/:identity returns public profile of another user with isFollowing', async () => {
+  it('GET /profile/:identity returns public profile of another user with isReading', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -577,14 +577,14 @@ describe('Profile Feature Route Tests', () => {
         if (handle === 'wisaluser') {
           return {
             ...mockPublicProfile,
-            isFollowing: true,
+            isReading: true,
           }
         }
         if (handle === 'notfollowed') {
           return {
             ...mockPublicProfile,
             identity: 'notfollowed',
-            isFollowing: false,
+            isReading: false,
           }
         }
         throw new HTTPException(404, { message: 'Profile not found' })
@@ -600,8 +600,8 @@ describe('Profile Feature Route Tests', () => {
     expect(bodyFollowed.success).toBe(true)
     expect(bodyFollowed.profile.name).toBe('Wisal User')
     expect(bodyFollowed.profile.identity).toBe('wisaluser')
-    expect(bodyFollowed.profile.isFollowing).toBe(true)
-    expect((bodyFollowed.profile as any).followersCount).toBeUndefined()
+    expect(bodyFollowed.profile.isReading).toBe(true)
+    expect((bodyFollowed.profile as any).readersCount).toBeUndefined()
     expect((bodyFollowed.profile as any).identityId).toBeUndefined()
 
     const resNotFollowed = await app.request('/profile/notfollowed', {
@@ -611,7 +611,7 @@ describe('Profile Feature Route Tests', () => {
     expect(resNotFollowed.status).toBe(200)
     const bodyNotFollowed = (await resNotFollowed.json()) as { success: boolean; profile: PublicProfile }
     expect(bodyNotFollowed.success).toBe(true)
-    expect(bodyNotFollowed.profile.isFollowing).toBe(false)
+    expect(bodyNotFollowed.profile.isReading).toBe(false)
   })
 
   it('GET /profile/:identity returns 401 when token is missing', async () => {
@@ -706,7 +706,7 @@ describe('Profile Feature Route Tests', () => {
     expect(body.error).toBe('Missing or malformed Authorization header')
   })
 
-  it('GET /profile/followers returns list of user followers', async () => {
+  it('GET /profile/readers returns list of user readers', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -714,8 +714,13 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => mockProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
     mock.module('../service', () => ({
-      getFollowers: async () => ({
+      getReaders: async () => ({
         users: [
           {
             id: 999999999999999n,
@@ -723,7 +728,7 @@ describe('Profile Feature Route Tests', () => {
             avatarKey: null,
             description: 'Fan of Wisal',
             identity: 'follower1',
-            followedAt: new Date(),
+            readAt: new Date(),
             lastReadAt: new Date(),
           },
         ],
@@ -733,7 +738,7 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
-    const res = await app.request('/profile/followers', {
+    const res = await app.request('/profile/readers', {
       method: 'GET',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -753,7 +758,7 @@ describe('Profile Feature Route Tests', () => {
     expect(body.users[0].identity).toBe('follower1')
   })
 
-  it('GET /profile/following returns list of accounts user follows', async () => {
+  it('GET /profile/reading returns list of accounts user reads', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -761,8 +766,13 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => mockProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
     mock.module('../service', () => ({
-      getFollowing: async () => ({
+      getReading: async () => ({
         users: [
           {
             id: 888888888888888n,
@@ -770,7 +780,7 @@ describe('Profile Feature Route Tests', () => {
             avatarKey: 'avatar.png',
             description: 'Leader',
             identity: 'following1',
-            followedAt: new Date(),
+            readAt: new Date(),
           },
         ],
         total: 1,
@@ -779,7 +789,7 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
-    const res = await app.request('/profile/following', {
+    const res = await app.request('/profile/reading', {
       method: 'GET',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -799,7 +809,7 @@ describe('Profile Feature Route Tests', () => {
     expect(body.users[0].identity).toBe('following1')
   })
 
-  it('GET /profile/:identity/followers and GET /profile/:identity/following return public lists', async () => {
+  it('GET /profile/:identity/readers and GET /profile/:identity/reading return public lists', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -807,8 +817,13 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => mockProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
     mock.module('../service', () => ({
-      getUserFollowersByIdentity: async (handle: string) => {
+      getUserReadersByIdentity: async (handle: string) => {
         if (handle === 'targetuser') {
           return {
             users: [
@@ -818,7 +833,7 @@ describe('Profile Feature Route Tests', () => {
                 avatarKey: null,
                 description: null,
                 identity: 'publicfan',
-                followedAt: new Date(),
+                readAt: new Date(),
                 lastReadAt: new Date(),
               },
             ],
@@ -829,7 +844,7 @@ describe('Profile Feature Route Tests', () => {
         }
         throw new HTTPException(404, { message: 'Profile not found' })
       },
-      getUserFollowingByIdentity: async (handle: string) => {
+      getUserReadingByIdentity: async (handle: string) => {
         if (handle === 'targetuser') {
           return {
             users: [],
@@ -842,7 +857,7 @@ describe('Profile Feature Route Tests', () => {
       },
     }))
 
-    const resFollowers = await app.request('/profile/targetuser/followers', {
+    const resFollowers = await app.request('/profile/targetuser/readers', {
       method: 'GET',
       headers: { Authorization: 'Bearer valid_user_token' },
     })
@@ -852,7 +867,7 @@ describe('Profile Feature Route Tests', () => {
     expect(bodyFollowers.users.length).toBe(1)
     expect(bodyFollowers.users[0].identity).toBe('publicfan')
 
-    const resFollowing = await app.request('/profile/targetuser/following', {
+    const resFollowing = await app.request('/profile/targetuser/reading', {
       method: 'GET',
       headers: { Authorization: 'Bearer valid_user_token' },
     })
@@ -861,14 +876,14 @@ describe('Profile Feature Route Tests', () => {
     expect(bodyFollowing.success).toBe(true)
     expect(bodyFollowing.total).toBe(0)
 
-    const res404 = await app.request('/profile/nonexistent/followers', {
+    const res404 = await app.request('/profile/nonexistent/readers', {
       method: 'GET',
       headers: { Authorization: 'Bearer valid_user_token' },
     })
     expect(res404.status).toBe(404)
   })
 
-  it('POST /profile/:identity/follow follows user and handles self-follow error', async () => {
+  it('POST /profile/:identity/read reads user and handles self-read error', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -876,33 +891,38 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => mockProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
     mock.module('../service', () => ({
-      followUser: async (_followerId: bigint, handle: string) => {
+      readProfile: async (_readerProfileId: bigint, handle: string) => {
         if (handle === 'myself') {
-          throw new HTTPException(400, { message: 'Users cannot follow themselves' })
+          throw new HTTPException(400, { message: 'Profiles cannot read themselves' })
         }
         if (handle === 'nonexistent') {
           throw new HTTPException(404, { message: 'Profile not found' })
         }
         return {
-          following: true,
-          message: 'Successfully followed user',
+          reading: true,
+          message: 'Successfully reading profile',
         }
       },
     }))
 
-    const resValid = await app.request('/profile/otheruser/follow', {
+    const resValid = await app.request('/profile/otheruser/read', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_user_token',
       },
     })
     expect(resValid.status).toBe(200)
-    const bodyValid = (await resValid.json()) as { success: boolean; following: boolean }
+    const bodyValid = (await resValid.json()) as { success: boolean; reading: boolean }
     expect(bodyValid.success).toBe(true)
-    expect(bodyValid.following).toBe(true)
+    expect(bodyValid.reading).toBe(true)
 
-    const resSelf = await app.request('/profile/myself/follow', {
+    const resSelf = await app.request('/profile/myself/read', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -910,9 +930,9 @@ describe('Profile Feature Route Tests', () => {
     })
     expect(resSelf.status).toBe(400)
     const bodySelf = (await resSelf.json()) as { error: string }
-    expect(bodySelf.error).toBe('Users cannot follow themselves')
+    expect(bodySelf.error).toBe('Profiles cannot read themselves')
 
-    const resNotFound = await app.request('/profile/nonexistent/follow', {
+    const resNotFound = await app.request('/profile/nonexistent/read', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -921,7 +941,7 @@ describe('Profile Feature Route Tests', () => {
     expect(resNotFound.status).toBe(404)
   })
 
-  it('DELETE /profile/:identity/follow unfollows user successfully', async () => {
+  it('DELETE /profile/:identity/read unreads user successfully', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -929,33 +949,38 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => mockProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
     mock.module('../service', () => ({
-      unfollowUser: async (_followerId: bigint, handle: string) => {
+      unreadProfile: async (_readerProfileId: bigint, handle: string) => {
         if (handle === 'myself') {
-          throw new HTTPException(400, { message: 'Users cannot unfollow themselves' })
+          throw new HTTPException(400, { message: 'Profiles cannot unread themselves' })
         }
         if (handle === 'nonexistent') {
           throw new HTTPException(404, { message: 'Profile not found' })
         }
         return {
-          following: false,
-          message: 'Successfully unfollowed user',
+          reading: false,
+          message: 'Successfully unread profile',
         }
       },
     }))
 
-    const resValid = await app.request('/profile/otheruser/follow', {
+    const resValid = await app.request('/profile/otheruser/read', {
       method: 'DELETE',
       headers: {
         Authorization: 'Bearer valid_user_token',
       },
     })
     expect(resValid.status).toBe(200)
-    const bodyValid = (await resValid.json()) as { success: boolean; following: boolean }
+    const bodyValid = (await resValid.json()) as { success: boolean; reading: boolean }
     expect(bodyValid.success).toBe(true)
-    expect(bodyValid.following).toBe(false)
+    expect(bodyValid.reading).toBe(false)
 
-    const resSelf = await app.request('/profile/myself/follow', {
+    const resSelf = await app.request('/profile/myself/read', {
       method: 'DELETE',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -963,7 +988,7 @@ describe('Profile Feature Route Tests', () => {
     })
     expect(resSelf.status).toBe(400)
     const bodySelf = (await resSelf.json()) as { error: string }
-    expect(bodySelf.error).toBe('Users cannot unfollow themselves')
+    expect(bodySelf.error).toBe('Profiles cannot unread themselves')
   })
 
   it('GET /profile/blocks returns list of blocked users', async () => {
@@ -974,9 +999,14 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => mockProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
     mock.module('../service', () => ({
-      getBlockedUsers: async (_accountId: bigint, _options: any) => ({
-        users: [
+      getBlockedProfiles: async (_profileId: bigint, _options: any) => ({
+        profiles: [
           {
             id: 999999999999999n,
             name: 'Blocked User',
@@ -999,11 +1029,11 @@ describe('Profile Feature Route Tests', () => {
     })
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { success: boolean; users: any[]; total: number }
+    const body = (await res.json()) as { success: boolean; profiles: any[]; total: number }
     expect(body.success).toBe(true)
-    expect(body.users.length).toBe(1)
-    expect(body.users[0].identity).toBe('blockeduser')
-    expect(body.users[0].avatarKey).toBeUndefined()
+    expect(body.profiles.length).toBe(1)
+    expect(body.profiles[0].identity).toBe('blockeduser')
+    expect(body.profiles[0].avatarKey).toBeUndefined()
   })
 
   it('POST /profile/:identity/block blocks a user and rejects self block', async () => {
@@ -1014,10 +1044,15 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => mockProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
     mock.module('../service', () => ({
-      blockUser: async (_blockerId: bigint, handle: string) => {
+      blockProfile: async (_blockerProfileId: bigint, handle: string) => {
         if (handle === 'myself') {
-          throw new HTTPException(400, { message: 'Users cannot block themselves' })
+          throw new HTTPException(400, { message: 'Profiles cannot block themselves' })
         }
         return {
           blocked: true,
@@ -1055,8 +1090,13 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => mockProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
     mock.module('../service', () => ({
-      unblockUser: async (_blockerId: bigint, _handle: string) => ({
+      unblockProfile: async (_blockerProfileId: bigint, _handle: string) => ({
         blocked: false,
         message: 'Successfully unblocked user',
       }),
@@ -1143,7 +1183,7 @@ describe('Profile Feature Route Tests', () => {
     expect(bodyHidden.profile.updatedAt).toBeUndefined()
   })
 
-  it('GET /profile/:identity/followers and following return empty list when blocked', async () => {
+  it('GET /profile/:identity/readers and reading return empty list when blocked', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -1151,14 +1191,19 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => mockProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
     mock.module('../service', () => ({
-      getUserFollowersByIdentity: async () => ({
+      getUserReadersByIdentity: async () => ({
         users: [],
         total: 0,
         limit: 50,
         offset: 0,
       }),
-      getUserFollowingByIdentity: async () => ({
+      getUserReadingByIdentity: async () => ({
         users: [],
         total: 0,
         limit: 50,
@@ -1166,7 +1211,7 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
-    const resFollowers = await app.request('/profile/blockeduser/followers', {
+    const resFollowers = await app.request('/profile/blockeduser/readers', {
       method: 'GET',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -1177,7 +1222,7 @@ describe('Profile Feature Route Tests', () => {
     expect(bodyFollowers.users).toEqual([])
     expect(bodyFollowers.total).toBe(0)
 
-    const resFollowing = await app.request('/profile/blockeduser/following', {
+    const resFollowing = await app.request('/profile/blockeduser/reading', {
       method: 'GET',
       headers: {
         Authorization: 'Bearer valid_user_token',

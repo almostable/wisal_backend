@@ -3,10 +3,10 @@ import { sql, relations } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
 import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
-import { accounts } from './accounts'
+import { profiles } from './profiles'
 import { admins } from './admins'
 
-export const REPORT_TARGET_TYPES = ['post', 'comment', 'user'] as const
+export const REPORT_TARGET_TYPES = ['post', 'comment', 'profile'] as const
 export type ReportTargetType = (typeof REPORT_TARGET_TYPES)[number]
 
 export const REPORT_REASONS = [
@@ -27,12 +27,12 @@ export const reports = pgTable(
   'reports',
   {
     id: snowflakePrimaryKey(),
-    reporterId: snowflakeId('reporter_id')
+    reporterProfileId: snowflakeId('reporter_profile_id')
       .notNull()
-      .references(() => accounts.id, { onDelete: 'cascade' }),
-    reportedUserId: snowflakeId('reported_user_id')
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    reportedProfileId: snowflakeId('reported_profile_id')
       .notNull()
-      .references(() => accounts.id, { onDelete: 'cascade' }),
+      .references(() => profiles.id, { onDelete: 'cascade' }),
     targetType: varchar('target_type', { length: 32 }).notNull(),
     targetId: snowflakeId('target_id').notNull(),
     reason: varchar('reason', { length: 64 }).notNull(),
@@ -46,29 +46,29 @@ export const reports = pgTable(
   },
   (table) => [
     unique('uq_reporter_target_reason').on(
-      table.reporterId,
+      table.reporterProfileId,
       table.targetType,
       table.targetId,
       table.reason
     ),
-    index('idx_reports_reported_user').on(table.reportedUserId),
+    index('idx_reports_reported_profile').on(table.reportedProfileId),
     index('reports_status_idx').on(table.status),
     index('reports_created_at_idx').on(table.createdAt),
     index('reports_target_idx').on(table.targetType, table.targetId),
-    check('reports_prevent_self_report_check', sql`${table.reporterId} != ${table.reportedUserId}`),
+    check('reports_prevent_self_report_check', sql`${table.reporterProfileId} != ${table.reportedProfileId}`),
   ]
 )
 
 export const reportsRelations = relations(reports, ({ one }) => ({
-  reporter: one(accounts, {
-    fields: [reports.reporterId],
-    references: [accounts.id],
+  reporter: one(profiles, {
+    fields: [reports.reporterProfileId],
+    references: [profiles.id],
     relationName: 'reporter',
   }),
-  reportedUser: one(accounts, {
-    fields: [reports.reportedUserId],
-    references: [accounts.id],
-    relationName: 'reportedUser',
+  reportedProfile: one(profiles, {
+    fields: [reports.reportedProfileId],
+    references: [profiles.id],
+    relationName: 'reportedProfile',
   }),
   resolvedBy: one(admins, {
     fields: [reports.resolvedById],
@@ -97,9 +97,9 @@ export const insertReportSchema = createInsertSchema(reports, {
   status: () => reportStatusSchema.default('pending'),
   details: () => reportDetailsSchema.nullable().optional(),
   modNote: () => reportModNoteSchema.nullable().optional(),
-}).refine((data) => data.reporterId !== data.reportedUserId, {
-  message: 'Users cannot report themselves',
-  path: ['reportedUserId'],
+}).refine((data) => data.reporterProfileId !== data.reportedProfileId, {
+  message: 'Profiles cannot report themselves',
+  path: ['reportedProfileId'],
 })
 
 export const selectReportSchema = createSelectSchema(reports)

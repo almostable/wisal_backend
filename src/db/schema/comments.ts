@@ -3,7 +3,7 @@ import { relations } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
 import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
-import { accounts } from './accounts'
+import { profiles } from './profiles'
 import { posts } from './posts'
 
 export const COMMENT_TYPES = ['text', 'media'] as const
@@ -18,17 +18,14 @@ export const comments = pgTable(
       .references(() => posts.id, { onDelete: 'cascade' }),
     authorId: snowflakeId('author_id')
       .notNull()
-      .references(() => accounts.id, { onDelete: 'cascade' }),
-    rootId: snowflakeId('root_id').references((): any => comments.id, {
-      onDelete: 'cascade',
-    }),
-    branchId: snowflakeId('branch_id').references((): any => comments.id, {
-      onDelete: 'cascade',
-    }),
+      .references(() => profiles.id, { onDelete: 'cascade' }),
     parentId: snowflakeId('parent_id').references((): any => comments.id, {
       onDelete: 'cascade',
     }),
-    replyToUserId: snowflakeId('reply_to_user_id').references(() => accounts.id, {
+    replyToCommentId: snowflakeId('reply_to_comment_id').references((): any => comments.id, {
+      onDelete: 'set null',
+    }),
+    replyToProfileId: snowflakeId('reply_to_profile_id').references(() => profiles.id, {
       onDelete: 'set null',
     }),
     type: varchar('type', { length: 32 }).notNull().default('text'),
@@ -42,10 +39,9 @@ export const comments = pgTable(
   (table) => [
     index('comments_post_id_idx').on(table.postId),
     index('comments_author_id_idx').on(table.authorId),
-    index('comments_root_id_idx').on(table.rootId),
-    index('comments_branch_id_idx').on(table.branchId),
     index('comments_parent_id_idx').on(table.parentId),
-    index('comments_reply_to_user_id_idx').on(table.replyToUserId),
+    index('comments_reply_to_comment_id_idx').on(table.replyToCommentId),
+    index('comments_reply_to_profile_id_idx').on(table.replyToProfileId),
     index('comments_replies_count_idx').on(table.repliesCount),
     index('comments_created_at_idx').on(table.createdAt),
     index('comments_deleted_at_idx').on(table.deletedAt),
@@ -57,19 +53,9 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
     fields: [comments.postId],
     references: [posts.id],
   }),
-  author: one(accounts, {
+  author: one(profiles, {
     fields: [comments.authorId],
-    references: [accounts.id],
-  }),
-  root: one(comments, {
-    fields: [comments.rootId],
-    references: [comments.id],
-    relationName: 'comment_root',
-  }),
-  branch: one(comments, {
-    fields: [comments.branchId],
-    references: [comments.id],
-    relationName: 'comment_branch',
+    references: [profiles.id],
   }),
   parent: one(comments, {
     fields: [comments.parentId],
@@ -79,9 +65,14 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
   replies: many(comments, {
     relationName: 'comment_replies',
   }),
-  replyToUser: one(accounts, {
-    fields: [comments.replyToUserId],
-    references: [accounts.id],
+  replyToComment: one(comments, {
+    fields: [comments.replyToCommentId],
+    references: [comments.id],
+    relationName: 'comment_target',
+  }),
+  replyToProfile: one(profiles, {
+    fields: [comments.replyToProfileId],
+    references: [profiles.id],
   }),
 }))
 

@@ -17,8 +17,8 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
     cityId: 'nyc',
     contacts: null,
     identityId: 300000000000003n,
-    regularFollowersCount: 25,
-    followersCount: 150,
+    regularReadersCount: 25,
+    readersCount: 150,
     verifiedAt: new Date('2026-01-01T00:00:00Z'),
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -30,21 +30,21 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
     },
   }
 
-  it('formatProfileResponse includes followersCount ONLY when includeFollowersCount is true', () => {
+  it('formatProfileResponse includes readersCount ONLY when includeReadersCount is true', () => {
     const publicView = formatProfileResponse(baseProfile)
     expect(publicView).not.toBeNull()
-    expect(publicView!.followersCount).toBeUndefined()
+    expect(publicView!.readersCount).toBeUndefined()
 
-    const otherUserView = formatProfileResponse(baseProfile, { includeFollowersCount: false })
-    expect(otherUserView!.followersCount).toBeUndefined()
+    const otherUserView = formatProfileResponse(baseProfile, { includeReadersCount: false })
+    expect(otherUserView!.readersCount).toBeUndefined()
 
-    const authorSelfView = formatProfileResponse(baseProfile, { includeFollowersCount: true })
-    expect(authorSelfView!.followersCount).toBe(150)
-    expect(authorSelfView!.regularFollowersCount).toBe(25)
+    const authorSelfView = formatProfileResponse(baseProfile, { includeReadersCount: true })
+    expect(authorSelfView!.readersCount).toBe(150)
+    expect(authorSelfView!.regularReadersCount).toBe(25)
     expect(authorSelfView!.isVerified).toBe(true)
   })
 
-  it('GET /profile/:identity does not expose followersCount when viewed by another user', async () => {
+  it('GET /profile/:identity does not expose readersCount when viewed by another user', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: { id: 999999999999999n, email: 'other@wisal.dev' },
@@ -55,7 +55,7 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
     mock.module('../service', () => ({
       getPublicProfile: async (handle: string, viewerAccountId: bigint) => {
         const isSelf = viewerAccountId === baseProfile.accountId
-        return formatProfileResponse(baseProfile, { includeFollowersCount: isSelf })!
+        return formatProfileResponse(baseProfile, { includeReadersCount: isSelf })!
       },
     }))
 
@@ -68,10 +68,10 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
     const body = (await res.json()) as { success: boolean; profile: any }
     expect(body.success).toBe(true)
     expect(body.profile.identity).toBe('test_author')
-    expect(body.profile.followersCount).toBeUndefined()
+    expect(body.profile.readersCount).toBeUndefined()
   })
 
-  it('GET /profile/:identity exposes followersCount when viewed by author themselves', async () => {
+  it('GET /profile/:identity exposes readersCount when viewed by author themselves', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: { id: baseProfile.accountId, email: 'author@wisal.dev' },
@@ -82,7 +82,7 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
     mock.module('../service', () => ({
       getPublicProfile: async (handle: string, viewerAccountId: bigint) => {
         const isSelf = viewerAccountId === baseProfile.accountId
-        return formatProfileResponse(baseProfile, { includeFollowersCount: isSelf })!
+        return formatProfileResponse(baseProfile, { includeReadersCount: isSelf })!
       },
     }))
 
@@ -95,7 +95,7 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
     const body = (await res.json()) as { success: boolean; profile: any }
     expect(body.success).toBe(true)
     expect(body.profile.identity).toBe('test_author')
-    expect(body.profile.followersCount).toBe(150)
+    expect(body.profile.readersCount).toBe(150)
   })
 
   it('GET /profile/feed default type is recommended', async () => {

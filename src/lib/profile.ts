@@ -16,10 +16,10 @@ export interface SafeProfile {
   cityId: string | null
   contacts: Contacts | null
   identity: string | null
-  regularFollowersCount: number
-  followersCount?: number
+  regularReadersCount: number
+  readersCount?: number
   isVerified: boolean
-  isFollowing?: boolean
+  isReading?: boolean
   isBlocked?: boolean
   isHidden?: boolean
 }
@@ -31,7 +31,7 @@ export type ProfileRecord = Omit<Profile, 'identity' | 'searchText'> & {
 
 export function formatProfileResponse(
   profile: ProfileRecord | null,
-  flags?: { isFollowing?: boolean; includeFollowersCount?: boolean }
+  flags?: { isReading?: boolean; includeReadersCount?: boolean }
 ): SafeProfile | null {
   if (!profile) return null
 
@@ -51,16 +51,16 @@ export function formatProfileResponse(
     cityId: profile.cityId ?? null,
     contacts: profile.contacts ?? null,
     identity: identityStr,
-    regularFollowersCount: profile.regularFollowersCount ?? 0,
+    regularReadersCount: profile.regularReadersCount ?? 0,
     isVerified: Boolean(profile.verifiedAt),
   }
 
-  if (flags?.includeFollowersCount) {
-    res.followersCount = profile.followersCount ?? 0
+  if (flags?.includeReadersCount) {
+    res.readersCount = profile.readersCount ?? 0
   }
 
-  if (flags?.isFollowing !== undefined) {
-    res.isFollowing = flags.isFollowing
+  if (flags?.isReading !== undefined) {
+    res.isReading = flags.isReading
   }
 
   return res
@@ -68,7 +68,7 @@ export function formatProfileResponse(
 
 export function formatRestrictedProfileResponse(
   profile: ProfileRecord | null,
-  flags: { isBlocked?: boolean; isHidden?: boolean; isFollowing?: boolean }
+  flags: { isBlocked?: boolean; isHidden?: boolean; isReading?: boolean }
 ): SafeProfile | null {
   if (!profile) return null
 
@@ -88,7 +88,7 @@ export function formatRestrictedProfileResponse(
     cityId: null,
     contacts: null,
     identity: identityStr,
-    regularFollowersCount: 0,
+    regularReadersCount: 0,
     isVerified: Boolean(profile.verifiedAt),
   }
 
@@ -98,8 +98,8 @@ export function formatRestrictedProfileResponse(
   if (flags.isHidden) {
     res.isHidden = true
   }
-  if (flags.isFollowing !== undefined) {
-    res.isFollowing = flags.isFollowing
+  if (flags.isReading !== undefined) {
+    res.isReading = flags.isReading
   }
 
   return res
@@ -232,9 +232,9 @@ export async function completeOnboarding(
     if (input.avatarKey) {
       await attachMediaFiles(tx, {
         fileKeys: [input.avatarKey],
-        userId: accountId,
+        profileId: finalProfile.id,
         entityType: 'avatar',
-        entityId: accountId,
+        entityId: finalProfile.id,
       })
     }
 
@@ -330,8 +330,8 @@ export async function updateProfile(
       if (oldAvatarKeys.length > 0 || newAvatarKeys.length > 0) {
         await reconcileEntityMedia(tx, {
           entityType: 'avatar',
-          entityId: accountId,
-          userId: accountId,
+          entityId: existingProfile.id,
+          profileId: existingProfile.id,
           newFileKeys: newAvatarKeys,
           oldFileKeys: oldAvatarKeys,
         })

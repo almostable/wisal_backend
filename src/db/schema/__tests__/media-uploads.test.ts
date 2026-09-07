@@ -12,12 +12,12 @@ describe('Media Uploads Schema Tests', () => {
   it('validates a valid media upload insertion payload with minimal fields', () => {
     const validData = {
       fileKey: 'media/2026-09-04/111111111111111.jpg',
-      userId: 100000000000001n,
+      profileId: 100000000000001n,
     }
 
     const parsed = insertMediaUploadSchema.parse(validData)
     expect(parsed.fileKey).toBe('media/2026-09-04/111111111111111.jpg')
-    expect(parsed.userId).toBe(100000000000001n)
+    expect(parsed.profileId).toBe(100000000000001n)
     expect(parsed.status).toBe('pending')
     expect(parsed.entityType).toBeUndefined()
     expect(parsed.entityId).toBeUndefined()
@@ -26,7 +26,7 @@ describe('Media Uploads Schema Tests', () => {
   it('validates a full media upload insertion payload with all fields', () => {
     const validData = {
       fileKey: 'media/2026-09-04/222222222222222.png',
-      userId: 100000000000001n,
+      profileId: 100000000000001n,
       status: 'attached' as const,
       entityType: 'post' as const,
       entityId: 300000000000003n,
@@ -34,7 +34,7 @@ describe('Media Uploads Schema Tests', () => {
 
     const parsed = insertMediaUploadSchema.parse(validData)
     expect(parsed.fileKey).toBe('media/2026-09-04/222222222222222.png')
-    expect(parsed.userId).toBe(100000000000001n)
+    expect(parsed.profileId).toBe(100000000000001n)
     expect(parsed.status).toBe('attached')
     expect(parsed.entityType).toBe('post')
     expect(parsed.entityId).toBe(300000000000003n)
@@ -43,7 +43,7 @@ describe('Media Uploads Schema Tests', () => {
   it('validates selectMediaUploadSchema with all fields including nullable ones', () => {
     const selectData = {
       fileKey: 'media/2026-09-04/333333333333333.webp',
-      userId: 100000000000001n,
+      profileId: 100000000000001n,
       status: 'purged',
       entityType: null,
       entityId: null,
@@ -53,7 +53,7 @@ describe('Media Uploads Schema Tests', () => {
 
     const parsed = selectMediaUploadSchema.parse(selectData)
     expect(parsed.fileKey).toBe('media/2026-09-04/333333333333333.webp')
-    expect(parsed.userId).toBe(100000000000001n)
+    expect(parsed.profileId).toBe(100000000000001n)
     expect(parsed.status).toBe('purged')
     expect(parsed.entityType).toBeNull()
     expect(parsed.entityId).toBeNull()
@@ -66,11 +66,11 @@ describe('Media Uploads Schema Tests', () => {
     expect(primaryKeys).toEqual(['file_key'])
   })
 
-  it('has required column user_id in table definition', () => {
+  it('has required column profile_id in table definition', () => {
     const config = getTableConfig(mediaUploads)
-    const userCol = config.columns.find((c) => c.name === 'user_id')
-    expect(userCol).toBeDefined()
-    expect(userCol?.notNull).toBe(true)
+    const profileCol = config.columns.find((c) => c.name === 'profile_id')
+    expect(profileCol).toBeDefined()
+    expect(profileCol?.notNull).toBe(true)
   })
 
   it('has partial GC index on (status, created_at) with condition', () => {
@@ -96,13 +96,13 @@ describe('Media Uploads Schema Tests', () => {
     ])
   })
 
-  it('has user_id index for lookups and deletion cascade', () => {
+  it('has profile_id index for lookups and deletion cascade', () => {
     const config = getTableConfig(mediaUploads)
-    const userIndex = config.indexes.find(
-      (idx) => idx.config.name === 'idx_media_user_id'
+    const profileIndex = config.indexes.find(
+      (idx) => idx.config.name === 'idx_media_profile_id'
     )
-    expect(userIndex).toBeDefined()
-    expect(userIndex?.config.columns.map((c: any) => c.name)).toEqual(['user_id'])
+    expect(profileIndex).toBeDefined()
+    expect(profileIndex?.config.columns.map((c: any) => c.name)).toEqual(['profile_id'])
   })
 
   it('has expected enum constants defined', () => {

@@ -5,7 +5,7 @@ import { postViews } from '../../../db/schema/post-views'
 
 describe('recordPostViews Service Unit Tests', () => {
   const viewer = {
-    accountId: 100000000000001n,
+    profileId: 100000000000001n,
     isMale: true,
   }
 
@@ -84,8 +84,8 @@ describe('recordPostViews Service Unit Tests', () => {
     expect(result.updatedCount).toBe(2)
     expect(insertedTable).toBe(postViews)
     expect(insertedValues).toEqual([
-      { postId: 200000000000001n, userId: viewer.accountId },
-      { postId: 200000000000002n, userId: viewer.accountId },
+      { postId: 200000000000001n, profileId: viewer.profileId },
+      { postId: 200000000000002n, profileId: viewer.profileId },
     ])
     expect(updatedTable).toBe(posts)
   })

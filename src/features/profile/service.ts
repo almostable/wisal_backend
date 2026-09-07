@@ -20,8 +20,8 @@ import { invites } from '../../db/schema/invites'
 import { accounts } from '../../db/schema/accounts'
 import { profiles } from '../../db/schema/profiles'
 import { identities } from '../../db/schema/identities'
-import { follows } from '../../db/schema/follows'
-import { userBlocks } from '../../db/schema/user-blocks'
+import { readers } from '../../db/schema/readers'
+import { profileBlocks } from '../../db/schema/profile-blocks'
 import {
   getProfileByAccountId,
   getProfileByIdentity,
@@ -34,13 +34,12 @@ import {
   type SafeProfile,
 } from '../../lib/profile'
 import type {
-  ProfileWithIdentity,
   OnboardingInput,
   UpdateProfileInput,
 } from '../../db/schema/profiles'
 import type {
   ListMyInvitesQuery,
-  ListFollowsQuery,
+  ListReadersQuery,
   ListBlocksQuery,
   ProfileFeedQuery,
   ProfileSearchQuery,
@@ -52,10 +51,10 @@ import type {
   MyInviteItem,
   MyInviteUsedBy,
   ListMyInvitesResult,
-  FollowUserItem,
-  ListFollowsResult,
-  FollowActionResult,
-  BlockedUserItem,
+  ReaderProfileItem,
+  ListReadersResult,
+  ReadActionResult,
+  BlockedProfileItem,
   ListBlocksResult,
   BlockActionResult,
   ProfileFeedResult,
@@ -73,7 +72,7 @@ export async function getMyProfile(accountId: bigint): Promise<MyProfileResult> 
   }
 
   return {
-    profile: formatProfileResponse(profile, { includeFollowersCount: true })!,
+    profile: formatProfileResponse(profile, { includeReadersCount: true })!,
     isOnboardingCompleted: isOnboardingCompleted(profile),
   }
 }
@@ -98,61 +97,62 @@ export async function getPublicProfile(
   identityHandle: string,
   viewerAccountId: bigint
 ): Promise<PublicProfile> {
-  const profile = await getProfileByIdentity(identityHandle)
+  const targetProfile = await getProfileByIdentity(identityHandle)
 
-  if (!profile || !profile.identity) {
+  if (!targetProfile || !targetProfile.identity) {
     throw new HTTPException(404, { message: 'Profile not found' })
   }
 
-  let isFollowing = false
+  const viewerProfile = await getProfileByAccountId(viewerAccountId)
+  let isReading = false
 
-  if (viewerAccountId !== profile.accountId) {
-    const [[blockRecord], [followRecord]] = await Promise.all([
+  if (viewerProfile && viewerProfile.id !== targetProfile.id) {
+    const [[blockRecord], [readerRecord]] = await Promise.all([
       db
         .select({
-          isBlocked: sql<boolean>`CASE WHEN ${userBlocks.blockerId} = ${viewerAccountId} AND ${userBlocks.blockedId} = ${profile.accountId} THEN true ELSE false END`,
-          isHidden: sql<boolean>`CASE WHEN ${userBlocks.blockerId} = ${profile.accountId} AND ${userBlocks.blockedId} = ${viewerAccountId} THEN true ELSE false END`,
+          isBlocked: sql<boolean>`CASE WHEN ${profileBlocks.blockerProfileId} = ${viewerProfile.id} AND ${profileBlocks.blockedProfileId} = ${targetProfile.id} THEN true ELSE false END`,
+          isHidden: sql<boolean>`CASE WHEN ${profileBlocks.blockerProfileId} = ${targetProfile.id} AND ${profileBlocks.blockedProfileId} = ${viewerProfile.id} THEN true ELSE false END`,
         })
-        .from(userBlocks)
+        .from(profileBlocks)
         .where(
           or(
             and(
-              eq(userBlocks.blockerId, viewerAccountId),
-              eq(userBlocks.blockedId, profile.accountId)
+              eq(profileBlocks.blockerProfileId, viewerProfile.id),
+              eq(profileBlocks.blockedProfileId, targetProfile.id)
             ),
             and(
-              eq(userBlocks.blockerId, profile.accountId),
-              eq(userBlocks.blockedId, viewerAccountId)
+              eq(profileBlocks.blockerProfileId, targetProfile.id),
+              eq(profileBlocks.blockedProfileId, viewerProfile.id)
             )
           )
         )
         .limit(1),
       db
-        .select({ followingId: follows.followingId })
-        .from(follows)
+        .select({ authorProfileId: readers.authorProfileId })
+        .from(readers)
         .where(
           and(
-            eq(follows.followerId, viewerAccountId),
-            eq(follows.followingId, profile.accountId)
+            eq(readers.readerProfileId, viewerProfile.id),
+            eq(readers.authorProfileId, targetProfile.id)
           )
         )
         .limit(1),
     ])
 
     if (blockRecord) {
-      return formatRestrictedProfileResponse(profile, {
+      return formatRestrictedProfileResponse(targetProfile, {
         isBlocked: Boolean(blockRecord.isBlocked),
         isHidden: Boolean(blockRecord.isHidden),
-        isFollowing: false,
+        isReading: false,
       })!
     }
 
-    isFollowing = Boolean(followRecord)
+    isReading = Boolean(readerRecord)
   }
 
-  return formatProfileResponse(profile, {
-    isFollowing,
-    includeFollowersCount: viewerAccountId === profile.accountId,
+  return formatProfileResponse(targetProfile, {
+    isReading,
+    includeReadersCount: viewerProfile?.id === targetProfile.id,
   })!
 }
 
@@ -275,54 +275,53 @@ export async function getMyInvites(
   }
 }
 
-export async function getAccountIdByIdentity(identityHandle: string): Promise<bigint | null> {
+export async function getProfileIdByIdentity(identityHandle: string): Promise<bigint | null> {
   const normalized = identityHandle.trim().toLowerCase()
   const [result] = await db
-    .select({ accountId: profiles.accountId })
+    .select({ profileId: profiles.id })
     .from(identities)
     .innerJoin(profiles, eq(identities.id, profiles.identityId))
     .where(eq(sql`lower(${identities.identity})`, normalized))
     .limit(1)
 
-  return result?.accountId ?? null
+  return result?.profileId ?? null
 }
 
-async function fetchFollowList(
-  type: 'followers' | 'following',
-  targetAccountId: bigint,
-  options: ListFollowsQuery = { limit: 50, offset: 0 }
-): Promise<ListFollowsResult> {
+async function fetchReaderList(
+  type: 'readers' | 'reading',
+  targetProfileId: bigint,
+  options: ListReadersQuery = { limit: 50, offset: 0 }
+): Promise<ListReadersResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
-  const joinCol = type === 'followers' ? follows.followerId : follows.followingId
+  const joinCol = type === 'readers' ? readers.readerProfileId : readers.authorProfileId
 
   const whereClause =
-    type === 'followers'
+    type === 'readers'
       ? and(
-          eq(follows.followingId, targetAccountId),
-          gte(follows.lastReadAt, sql`NOW() - INTERVAL '30 days'`)
+          eq(readers.authorProfileId, targetProfileId),
+          gte(readers.lastReadAt, sql`NOW() - INTERVAL '30 days'`)
         )
-      : eq(follows.followerId, targetAccountId)
+      : eq(readers.readerProfileId, targetProfileId)
 
   const orderClause =
-    type === 'followers'
-      ? desc(follows.lastReadAt)
-      : desc(follows.createdAt)
+    type === 'readers'
+      ? desc(readers.lastReadAt)
+      : desc(readers.createdAt)
 
   const [items, totalResult] = await Promise.all([
     db
       .select({
-        accountId: accounts.id,
+        profileId: profiles.id,
         name: profiles.name,
         avatarKey: profiles.avatarKey,
         description: profiles.description,
         identity: identities.identity,
-        followedAt: follows.createdAt,
-        lastReadAt: follows.lastReadAt,
+        readAt: readers.createdAt,
+        lastReadAt: readers.lastReadAt,
       })
-      .from(follows)
-      .innerJoin(accounts, eq(joinCol, accounts.id))
-      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .from(readers)
+      .innerJoin(profiles, eq(joinCol, profiles.id))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
       .where(whereClause)
       .orderBy(orderClause)
@@ -330,18 +329,18 @@ async function fetchFollowList(
       .offset(offset),
     db
       .select({ count: count() })
-      .from(follows)
+      .from(readers)
       .where(whereClause),
   ])
 
   return {
-    users: items.map((item) => ({
-      id: item.accountId,
+    profiles: items.map((item) => ({
+      id: item.profileId,
       name: item.name,
       avatarKey: item.avatarKey,
       description: item.description,
       identity: item.identity,
-      followedAt: item.followedAt,
+      readAt: item.readAt,
       lastReadAt: item.lastReadAt,
     })),
     total: totalResult[0]?.count ?? 0,
@@ -350,36 +349,36 @@ async function fetchFollowList(
   }
 }
 
-export async function getFollowers(
-  targetAccountId: bigint,
-  options: ListFollowsQuery = { limit: 50, offset: 0 }
-): Promise<ListFollowsResult> {
-  return fetchFollowList('followers', targetAccountId, options)
+export async function getReaders(
+  targetProfileId: bigint,
+  options: ListReadersQuery = { limit: 50, offset: 0 }
+): Promise<ListReadersResult> {
+  return fetchReaderList('readers', targetProfileId, options)
 }
 
-export async function getFollowing(
-  targetAccountId: bigint,
-  options: ListFollowsQuery = { limit: 50, offset: 0 }
-): Promise<ListFollowsResult> {
-  return fetchFollowList('following', targetAccountId, options)
+export async function getReading(
+  targetProfileId: bigint,
+  options: ListReadersQuery = { limit: 50, offset: 0 }
+): Promise<ListReadersResult> {
+  return fetchReaderList('reading', targetProfileId, options)
 }
 
 export async function checkBlockExists(
-  accountIdA: bigint,
-  accountIdB: bigint
+  profileIdA: bigint,
+  profileIdB: bigint
 ): Promise<boolean> {
   const [record] = await db
-    .select({ blockerId: userBlocks.blockerId })
-    .from(userBlocks)
+    .select({ blockerProfileId: profileBlocks.blockerProfileId })
+    .from(profileBlocks)
     .where(
       or(
         and(
-          eq(userBlocks.blockerId, accountIdA),
-          eq(userBlocks.blockedId, accountIdB)
+          eq(profileBlocks.blockerProfileId, profileIdA),
+          eq(profileBlocks.blockedProfileId, profileIdB)
         ),
         and(
-          eq(userBlocks.blockerId, accountIdB),
-          eq(userBlocks.blockedId, accountIdA)
+          eq(profileBlocks.blockerProfileId, profileIdB),
+          eq(profileBlocks.blockedProfileId, profileIdA)
         )
       )
     )
@@ -388,22 +387,22 @@ export async function checkBlockExists(
   return Boolean(record)
 }
 
-async function getUserFollowListByIdentity(
-  type: 'followers' | 'following',
+async function getUserReaderListByIdentity(
+  type: 'readers' | 'reading',
   identityHandle: string,
-  options: ListFollowsQuery = { limit: 50, offset: 0 },
-  viewerAccountId: bigint
-): Promise<ListFollowsResult> {
-  const targetAccountId = await getAccountIdByIdentity(identityHandle)
-  if (!targetAccountId) {
+  options: ListReadersQuery = { limit: 50, offset: 0 },
+  viewerProfileId?: bigint
+): Promise<ListReadersResult> {
+  const targetProfileId = await getProfileIdByIdentity(identityHandle)
+  if (!targetProfileId) {
     throw new HTTPException(404, { message: 'Profile not found' })
   }
 
-  if (viewerAccountId !== targetAccountId) {
-    const isBlocked = await checkBlockExists(viewerAccountId, targetAccountId)
+  if (viewerProfileId && viewerProfileId !== targetProfileId) {
+    const isBlocked = await checkBlockExists(viewerProfileId, targetProfileId)
     if (isBlocked) {
       return {
-        users: [],
+        profiles: [],
         total: 0,
         limit: Math.min(Math.max(options.limit ?? 50, 1), 100),
         offset: Math.max(options.offset ?? 0, 0),
@@ -411,235 +410,234 @@ async function getUserFollowListByIdentity(
     }
   }
 
-  return fetchFollowList(type, targetAccountId, options)
+  return fetchReaderList(type, targetProfileId, options)
 }
 
-export async function getUserFollowersByIdentity(
+export async function getUserReadersByIdentity(
   identityHandle: string,
-  options: ListFollowsQuery = { limit: 50, offset: 0 },
-  viewerAccountId: bigint
-): Promise<ListFollowsResult> {
-  return getUserFollowListByIdentity('followers', identityHandle, options, viewerAccountId)
+  options: ListReadersQuery = { limit: 50, offset: 0 },
+  viewerProfileId?: bigint
+): Promise<ListReadersResult> {
+  return getUserReaderListByIdentity('readers', identityHandle, options, viewerProfileId)
 }
 
-export async function getUserFollowingByIdentity(
+export async function getUserReadingByIdentity(
   identityHandle: string,
-  options: ListFollowsQuery = { limit: 50, offset: 0 },
-  viewerAccountId: bigint
-): Promise<ListFollowsResult> {
-  return getUserFollowListByIdentity('following', identityHandle, options, viewerAccountId)
+  options: ListReadersQuery = { limit: 50, offset: 0 },
+  viewerProfileId?: bigint
+): Promise<ListReadersResult> {
+  return getUserReaderListByIdentity('reading', identityHandle, options, viewerProfileId)
 }
 
-async function resolveTargetAccount(
-  actorAccountId: bigint,
+async function resolveTargetProfile(
+  actorProfileId: bigint,
   targetIdentity: string,
   selfErrorMessage: string
 ): Promise<bigint> {
-  const targetAccountId = await getAccountIdByIdentity(targetIdentity)
-  if (!targetAccountId) {
+  const targetProfileId = await getProfileIdByIdentity(targetIdentity)
+  if (!targetProfileId) {
     throw new HTTPException(404, { message: 'Profile not found' })
   }
 
-  if (actorAccountId === targetAccountId) {
+  if (actorProfileId === targetProfileId) {
     throw new HTTPException(400, { message: selfErrorMessage })
   }
 
-  return targetAccountId
+  return targetProfileId
 }
 
-export async function followUser(
-  followerAccountId: bigint,
+export async function readProfile(
+  readerProfileId: bigint,
   targetIdentity: string
-): Promise<FollowActionResult> {
-  const targetAccountId = await resolveTargetAccount(
-    followerAccountId,
+): Promise<ReadActionResult> {
+  const targetProfileId = await resolveTargetProfile(
+    readerProfileId,
     targetIdentity,
-    'Users cannot follow themselves'
+    'Profiles cannot read themselves'
   )
 
-  const isBlocked = await checkBlockExists(followerAccountId, targetAccountId)
+  const isBlocked = await checkBlockExists(readerProfileId, targetProfileId)
   if (isBlocked) {
-    throw new HTTPException(400, { message: 'Cannot follow a blocked user' })
+    throw new HTTPException(400, { message: 'Cannot read a blocked profile' })
   }
 
   return await db.transaction(async (tx) => {
     const inserted = await tx
-      .insert(follows)
+      .insert(readers)
       .values({
-        followerId: followerAccountId,
-        followingId: targetAccountId,
+        readerProfileId,
+        authorProfileId: targetProfileId,
         lastReadAt: new Date(),
       })
       .onConflictDoNothing()
-      .returning({ followerId: follows.followerId })
+      .returning({ readerProfileId: readers.readerProfileId })
 
     if (inserted.length > 0) {
       await tx
         .update(profiles)
         .set({
-          followersCount: sql`${profiles.followersCount} + 1`,
+          readersCount: sql`${profiles.readersCount} + 1`,
         })
-        .where(eq(profiles.accountId, targetAccountId))
+        .where(eq(profiles.id, targetProfileId))
     }
 
     return {
-      following: true,
-      message: 'Successfully followed user',
+      reading: true,
+      message: 'Successfully reading profile',
     }
   })
 }
 
-export async function unfollowUser(
-  followerAccountId: bigint,
+export async function unreadProfile(
+  readerProfileId: bigint,
   targetIdentity: string
-): Promise<FollowActionResult> {
-  const targetAccountId = await resolveTargetAccount(
-    followerAccountId,
+): Promise<ReadActionResult> {
+  const targetProfileId = await resolveTargetProfile(
+    readerProfileId,
     targetIdentity,
-    'Users cannot unfollow themselves'
+    'Profiles cannot unread themselves'
   )
 
   return await db.transaction(async (tx) => {
     const deleted = await tx
-      .delete(follows)
+      .delete(readers)
       .where(
         and(
-          eq(follows.followerId, followerAccountId),
-          eq(follows.followingId, targetAccountId)
+          eq(readers.readerProfileId, readerProfileId),
+          eq(readers.authorProfileId, targetProfileId)
         )
       )
-      .returning({ followerId: follows.followerId })
+      .returning({ readerProfileId: readers.readerProfileId })
 
     if (deleted.length > 0) {
       await tx
         .update(profiles)
         .set({
-          followersCount: sql`GREATEST(0, ${profiles.followersCount} - 1)`,
+          readersCount: sql`GREATEST(0, ${profiles.readersCount} - 1)`,
         })
-        .where(eq(profiles.accountId, targetAccountId))
+        .where(eq(profiles.id, targetProfileId))
     }
 
     return {
-      following: false,
-      message: 'Successfully unfollowed user',
+      reading: false,
+      message: 'Successfully stopped reading profile',
     }
   })
 }
 
-export async function blockUser(
-  blockerAccountId: bigint,
+export async function blockProfile(
+  blockerProfileId: bigint,
   targetIdentity: string
 ): Promise<BlockActionResult> {
-  const targetAccountId = await resolveTargetAccount(
-    blockerAccountId,
+  const targetProfileId = await resolveTargetProfile(
+    blockerProfileId,
     targetIdentity,
-    'Users cannot block themselves'
+    'Profiles cannot block themselves'
   )
 
   return await db.transaction(async (tx) => {
     await tx
-      .insert(userBlocks)
+      .insert(profileBlocks)
       .values({
-        blockerId: blockerAccountId,
-        blockedId: targetAccountId,
+        blockerProfileId,
+        blockedProfileId: targetProfileId,
       })
       .onConflictDoNothing()
 
-    const deletedFollows = await tx
-      .delete(follows)
+    const deletedReaders = await tx
+      .delete(readers)
       .where(
         or(
           and(
-            eq(follows.followerId, blockerAccountId),
-            eq(follows.followingId, targetAccountId)
+            eq(readers.readerProfileId, blockerProfileId),
+            eq(readers.authorProfileId, targetProfileId)
           ),
           and(
-            eq(follows.followerId, targetAccountId),
-            eq(follows.followingId, blockerAccountId)
+            eq(readers.readerProfileId, targetProfileId),
+            eq(readers.authorProfileId, blockerProfileId)
           )
         )
       )
       .returning({
-        followerId: follows.followerId,
-        followingId: follows.followingId,
+        readerProfileId: readers.readerProfileId,
+        authorProfileId: readers.authorProfileId,
       })
 
-    for (const rel of deletedFollows) {
+    for (const rel of deletedReaders) {
       await tx
         .update(profiles)
         .set({
-          followersCount: sql`GREATEST(0, ${profiles.followersCount} - 1)`,
+          readersCount: sql`GREATEST(0, ${profiles.readersCount} - 1)`,
         })
-        .where(eq(profiles.accountId, rel.followingId))
+        .where(eq(profiles.id, rel.authorProfileId))
     }
 
     return {
       blocked: true,
-      message: 'Successfully blocked user',
+      message: 'Successfully blocked profile',
     }
   })
 }
 
-export async function unblockUser(
-  blockerAccountId: bigint,
+export async function unblockProfile(
+  blockerProfileId: bigint,
   targetIdentity: string
 ): Promise<BlockActionResult> {
-  const targetAccountId = await resolveTargetAccount(
-    blockerAccountId,
+  const targetProfileId = await resolveTargetProfile(
+    blockerProfileId,
     targetIdentity,
-    'Users cannot unblock themselves'
+    'Profiles cannot unblock themselves'
   )
 
   await db
-    .delete(userBlocks)
+    .delete(profileBlocks)
     .where(
       and(
-        eq(userBlocks.blockerId, blockerAccountId),
-        eq(userBlocks.blockedId, targetAccountId)
+        eq(profileBlocks.blockerProfileId, blockerProfileId),
+        eq(profileBlocks.blockedProfileId, targetProfileId)
       )
     )
 
   return {
     blocked: false,
-    message: 'Successfully unblocked user',
+    message: 'Successfully unblocked profile',
   }
 }
 
-export async function getBlockedUsers(
-  accountId: bigint,
+export async function getBlockedProfiles(
+  blockerProfileId: bigint,
   options: ListBlocksQuery = { limit: 50, offset: 0 }
 ): Promise<ListBlocksResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
 
-  const whereClause = eq(userBlocks.blockerId, accountId)
+  const whereClause = eq(profileBlocks.blockerProfileId, blockerProfileId)
 
   const [items, totalResult] = await Promise.all([
     db
       .select({
-        accountId: accounts.id,
+        profileId: profiles.id,
         name: profiles.name,
         identity: identities.identity,
         isMale: profiles.isMale,
-        blockedAt: userBlocks.createdAt,
+        blockedAt: profileBlocks.createdAt,
       })
-      .from(userBlocks)
-      .innerJoin(accounts, eq(userBlocks.blockedId, accounts.id))
-      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .from(profileBlocks)
+      .innerJoin(profiles, eq(profileBlocks.blockedProfileId, profiles.id))
       .leftJoin(identities, eq(profiles.identityId, identities.id))
       .where(whereClause)
-      .orderBy(desc(userBlocks.createdAt))
+      .orderBy(desc(profileBlocks.createdAt))
       .limit(limit)
       .offset(offset),
     db
       .select({ count: count() })
-      .from(userBlocks)
+      .from(profileBlocks)
       .where(whereClause),
   ])
 
   return {
-    users: items.map((item) => ({
-      id: item.accountId,
+    profiles: items.map((item) => ({
+      id: item.profileId,
       name: item.name,
       identity: item.identity,
       isMale: item.isMale,
@@ -656,7 +654,7 @@ export function generateFeedSeed(): string {
 }
 
 export async function getProfileFeed(
-  viewerAccountId: bigint,
+  viewerProfileId: bigint,
   query: ProfileFeedQuery
 ): Promise<ProfileFeedResult> {
   const type: ProfileFeedType = query.type ?? 'recommended'
@@ -665,13 +663,13 @@ export async function getProfileFeed(
   const activeSeed = type === 'random' ? (query.seed || generateFeedSeed()) : undefined
 
   const notBlockedCondition = sql`NOT EXISTS (
-    SELECT 1 FROM ${userBlocks}
-    WHERE (${userBlocks.blockerId} = ${viewerAccountId} AND ${userBlocks.blockedId} = ${profiles.accountId})
-       OR (${userBlocks.blockerId} = ${profiles.accountId} AND ${userBlocks.blockedId} = ${viewerAccountId})
+    SELECT 1 FROM ${profileBlocks}
+    WHERE (${profileBlocks.blockerProfileId} = ${viewerProfileId} AND ${profileBlocks.blockedProfileId} = ${profiles.id})
+       OR (${profileBlocks.blockerProfileId} = ${profiles.id} AND ${profileBlocks.blockedProfileId} = ${viewerProfileId})
   )`
 
   const baseConditions = [
-    ne(profiles.accountId, viewerAccountId),
+    ne(profiles.id, viewerProfileId),
     isNotNull(profiles.name),
     sql`trim(${profiles.name}) != ''`,
     isNotNull(profiles.isMale),
@@ -691,7 +689,7 @@ export async function getProfileFeed(
 
   const orderByClause =
     type === 'recommended'
-      ? [desc(profiles.regularFollowersCount), desc(profiles.id)]
+      ? [desc(profiles.regularReadersCount), desc(profiles.id)]
       : [sql`hashtext(concat(${profiles.id}::text, ${activeSeed}::text))`, asc(profiles.id)]
 
   const items = await db
@@ -701,7 +699,7 @@ export async function getProfileFeed(
       avatarKey: profiles.avatarKey,
       identity: identities.identity,
       shortDescription: profiles.shortDescription,
-      regularFollowersCount: profiles.regularFollowersCount,
+      regularReadersCount: profiles.regularReadersCount,
       countryCode: profiles.countryCode,
       cityId: profiles.cityId,
       verifiedAt: profiles.verifiedAt,
@@ -719,7 +717,7 @@ export async function getProfileFeed(
     avatarKey: item.avatarKey,
     identity: item.identity,
     shortDescription: item.shortDescription!,
-    regularFollowersCount: item.regularFollowersCount,
+    regularReadersCount: item.regularReadersCount,
     countryCode: item.countryCode!,
     cityId: item.cityId,
     isVerified: Boolean(item.verifiedAt),
@@ -735,7 +733,7 @@ export async function getProfileFeed(
 }
 
 export async function searchProfiles(
-  viewerAccountId: bigint,
+  viewerProfileId: bigint,
   query: ProfileSearchQuery
 ): Promise<ProfileSearchResult> {
   const limit = Math.min(Math.max(query.limit ?? 20, 1), 100)
@@ -757,16 +755,16 @@ export async function searchProfiles(
   const subPattern = `%${escapedQuery}%`
 
   const notBlockedCondition = sql`NOT EXISTS (
-    SELECT 1 FROM ${userBlocks}
-    WHERE (${userBlocks.blockerId} = ${viewerAccountId} AND ${userBlocks.blockedId} = ${profiles.accountId})
-       OR (${userBlocks.blockerId} = ${profiles.accountId} AND ${userBlocks.blockedId} = ${viewerAccountId})
+    SELECT 1 FROM ${profileBlocks}
+    WHERE (${profileBlocks.blockerProfileId} = ${viewerProfileId} AND ${profileBlocks.blockedProfileId} = ${profiles.id})
+       OR (${profileBlocks.blockerProfileId} = ${profiles.id} AND ${profileBlocks.blockedProfileId} = ${viewerProfileId})
   )`
 
   // Primary filtering: GIN-indexed searchText or identities.identity substring
   const primarySearchFilter = sql`(${profiles.searchText} LIKE ${subPattern} OR lower(${identities.identity}) LIKE ${subPattern})`
 
   const whereCondition = and(
-    ne(profiles.accountId, viewerAccountId),
+    ne(profiles.id, viewerProfileId),
     isNotNull(profiles.name),
     sql`trim(${profiles.name}) != ''`,
     isNotNull(profiles.isMale),
@@ -789,7 +787,7 @@ export async function searchProfiles(
   const orderByClause = [
     asc(relevanceRank),
     sql`CASE WHEN ${profiles.verifiedAt} IS NOT NULL THEN 1 ELSE 0 END DESC`,
-    desc(profiles.regularFollowersCount),
+    desc(profiles.regularReadersCount),
     desc(profiles.id),
   ]
 
@@ -801,7 +799,7 @@ export async function searchProfiles(
         avatarKey: profiles.avatarKey,
         identity: identities.identity,
         shortDescription: profiles.shortDescription,
-        regularFollowersCount: profiles.regularFollowersCount,
+        regularReadersCount: profiles.regularReadersCount,
         countryCode: profiles.countryCode,
         cityId: profiles.cityId,
         verifiedAt: profiles.verifiedAt,
@@ -825,7 +823,7 @@ export async function searchProfiles(
     avatarKey: item.avatarKey,
     identity: item.identity,
     shortDescription: item.shortDescription,
-    regularFollowersCount: item.regularFollowersCount,
+    regularReadersCount: item.regularReadersCount,
     countryCode: item.countryCode,
     cityId: item.cityId,
     isVerified: Boolean(item.verifiedAt),
@@ -838,4 +836,3 @@ export async function searchProfiles(
     offset,
   }
 }
-

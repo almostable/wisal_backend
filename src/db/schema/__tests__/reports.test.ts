@@ -12,16 +12,16 @@ import {
 describe('Reports Schema Tests', () => {
   it('validates a valid report insertion payload with minimal fields', () => {
     const validData = {
-      reporterId: 100000000000001n,
-      reportedUserId: 200000000000002n,
+      reporterProfileId: 100000000000001n,
+      reportedProfileId: 200000000000002n,
       targetType: 'post' as const,
       targetId: 300000000000003n,
       reason: 'spam' as const,
     }
 
     const parsed = insertReportSchema.parse(validData)
-    expect(parsed.reporterId).toBe(100000000000001n)
-    expect(parsed.reportedUserId).toBe(200000000000002n)
+    expect(parsed.reporterProfileId).toBe(100000000000001n)
+    expect(parsed.reportedProfileId).toBe(200000000000002n)
     expect(parsed.targetType).toBe('post')
     expect(parsed.targetId).toBe(300000000000003n)
     expect(parsed.reason).toBe('spam')
@@ -31,8 +31,8 @@ describe('Reports Schema Tests', () => {
 
   it('validates a full report insertion payload with all fields', () => {
     const validData = {
-      reporterId: 100000000000001n,
-      reportedUserId: 200000000000002n,
+      reporterProfileId: 100000000000001n,
+      reportedProfileId: 200000000000002n,
       targetType: 'comment' as const,
       targetId: 400000000000004n,
       reason: 'toxicity' as const,
@@ -41,8 +41,8 @@ describe('Reports Schema Tests', () => {
     }
 
     const parsed = insertReportSchema.parse(validData)
-    expect(parsed.reporterId).toBe(100000000000001n)
-    expect(parsed.reportedUserId).toBe(200000000000002n)
+    expect(parsed.reporterProfileId).toBe(100000000000001n)
+    expect(parsed.reportedProfileId).toBe(200000000000002n)
     expect(parsed.targetType).toBe('comment')
     expect(parsed.targetId).toBe(400000000000004n)
     expect(parsed.reason).toBe('toxicity')
@@ -52,21 +52,21 @@ describe('Reports Schema Tests', () => {
 
   it('rejects self-report in insertReportSchema', () => {
     const selfReportData = {
-      reporterId: 100000000000001n,
-      reportedUserId: 100000000000001n,
-      targetType: 'user' as const,
+      reporterProfileId: 100000000000001n,
+      reportedProfileId: 100000000000001n,
+      targetType: 'profile' as const,
       targetId: 100000000000001n,
       reason: 'spam' as const,
     }
 
-    expect(() => insertReportSchema.parse(selfReportData)).toThrow('Users cannot report themselves')
+    expect(() => insertReportSchema.parse(selfReportData)).toThrow('Profiles cannot report themselves')
   })
 
   it('validates allowed target types and rejects invalid ones', () => {
     for (const targetType of REPORT_TARGET_TYPES) {
       const parsed = insertReportSchema.parse({
-        reporterId: 100000000000001n,
-        reportedUserId: 200000000000002n,
+        reporterProfileId: 100000000000001n,
+        reportedProfileId: 200000000000002n,
         targetType,
         targetId: 500000000000005n,
         reason: 'other' as const,
@@ -76,8 +76,8 @@ describe('Reports Schema Tests', () => {
 
     expect(() =>
       insertReportSchema.parse({
-        reporterId: 100000000000001n,
-        reportedUserId: 200000000000002n,
+        reporterProfileId: 100000000000001n,
+        reportedProfileId: 200000000000002n,
         targetType: 'article' as any,
         targetId: 500000000000005n,
         reason: 'other' as const,
@@ -88,9 +88,9 @@ describe('Reports Schema Tests', () => {
   it('validates allowed reasons and rejects invalid ones', () => {
     for (const reason of REPORT_REASONS) {
       const parsed = insertReportSchema.parse({
-        reporterId: 100000000000001n,
-        reportedUserId: 200000000000002n,
-        targetType: 'user' as const,
+        reporterProfileId: 100000000000001n,
+        reportedProfileId: 200000000000002n,
+        targetType: 'profile' as const,
         targetId: 200000000000002n,
         reason,
       })
@@ -99,9 +99,9 @@ describe('Reports Schema Tests', () => {
 
     expect(() =>
       insertReportSchema.parse({
-        reporterId: 100000000000001n,
-        reportedUserId: 200000000000002n,
-        targetType: 'user' as const,
+        reporterProfileId: 100000000000001n,
+        reportedProfileId: 200000000000002n,
+        targetType: 'profile' as const,
         targetId: 200000000000002n,
         reason: 'invalid_reason' as any,
       })
@@ -111,9 +111,9 @@ describe('Reports Schema Tests', () => {
   it('validates allowed statuses and rejects invalid ones', () => {
     for (const status of REPORT_STATUSES) {
       const parsed = insertReportSchema.parse({
-        reporterId: 100000000000001n,
-        reportedUserId: 200000000000002n,
-        targetType: 'user' as const,
+        reporterProfileId: 100000000000001n,
+        reportedProfileId: 200000000000002n,
+        targetType: 'profile' as const,
         targetId: 200000000000002n,
         reason: 'gender_mismatch' as const,
         status,
@@ -123,9 +123,9 @@ describe('Reports Schema Tests', () => {
 
     expect(() =>
       insertReportSchema.parse({
-        reporterId: 100000000000001n,
-        reportedUserId: 200000000000002n,
-        targetType: 'user' as const,
+        reporterProfileId: 100000000000001n,
+        reportedProfileId: 200000000000002n,
+        targetType: 'profile' as const,
         targetId: 200000000000002n,
         reason: 'other' as const,
         status: 'closed' as any,
@@ -137,8 +137,8 @@ describe('Reports Schema Tests', () => {
     const now = new Date()
     const record = {
       id: 900000000000001n,
-      reporterId: 100000000000001n,
-      reportedUserId: 200000000000002n,
+      reporterProfileId: 100000000000001n,
+      reportedProfileId: 200000000000002n,
       targetType: 'post',
       targetId: 300000000000003n,
       reason: 'inappropriate_content',
@@ -153,8 +153,8 @@ describe('Reports Schema Tests', () => {
 
     const parsed = selectReportSchema.parse(record)
     expect(parsed.id).toBe(900000000000001n)
-    expect(parsed.reporterId).toBe(100000000000001n)
-    expect(parsed.reportedUserId).toBe(200000000000002n)
+    expect(parsed.reporterProfileId).toBe(100000000000001n)
+    expect(parsed.reportedProfileId).toBe(200000000000002n)
     expect(parsed.targetType).toBe('post')
     expect(parsed.targetId).toBe(300000000000003n)
     expect(parsed.reason).toBe('inappropriate_content')
@@ -172,8 +172,8 @@ describe('Reports Schema Tests', () => {
     const resolvedAt = new Date('2026-08-20T11:00:00.000Z')
     const record = {
       id: 900000000000002n,
-      reporterId: 100000000000001n,
-      reportedUserId: 200000000000002n,
+      reporterProfileId: 100000000000001n,
+      reportedProfileId: 200000000000002n,
       targetType: 'post',
       targetId: 300000000000003n,
       reason: 'boundary_violation',
@@ -206,7 +206,7 @@ describe('Reports Schema Tests', () => {
     )
     expect(uniqueConstraint).toBeDefined()
     expect(uniqueConstraint?.columns.map((c) => c.name)).toEqual([
-      'reporter_id',
+      'reporter_profile_id',
       'target_type',
       'target_id',
       'reason',
@@ -221,12 +221,12 @@ describe('Reports Schema Tests', () => {
     expect(checkConstraint).toBeDefined()
   })
 
-  it('has required index idx_reports_reported_user on reported_user_id', () => {
+  it('has required index idx_reports_reported_profile on reported_profile_id', () => {
     const config = getTableConfig(reports)
-    const reportedUserIndex = config.indexes.find(
-      (idx) => idx.config.name === 'idx_reports_reported_user'
+    const reportedProfileIndex = config.indexes.find(
+      (idx) => idx.config.name === 'idx_reports_reported_profile'
     )
-    expect(reportedUserIndex).toBeDefined()
+    expect(reportedProfileIndex).toBeDefined()
   })
 
   it('has moderation indexes on status, created_at, and target', () => {

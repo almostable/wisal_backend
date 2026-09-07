@@ -37,8 +37,8 @@ describe('Posts Feature Route Tests', () => {
     cityId: null,
     contacts: null,
     identityId: 444444444444444n,
-    regularFollowersCount: 0,
-    followersCount: 0,
+    regularReadersCount: 0,
+    readersCount: 0,
     verifiedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -79,8 +79,8 @@ describe('Posts Feature Route Tests', () => {
     cityId: null,
     contacts: null,
     identityId: 888888888888888n,
-    regularFollowersCount: 0,
-    followersCount: 0,
+    regularReadersCount: 0,
+    readersCount: 0,
     verifiedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -108,6 +108,7 @@ describe('Posts Feature Route Tests', () => {
     isSaved: false,
     createdAt: new Date(),
     updatedAt: new Date(),
+    editedAt: null,
     author: {
       id: maleAccount.id,
       name: 'Male User',
@@ -121,11 +122,9 @@ describe('Posts Feature Route Tests', () => {
     id: 888888888888881n,
     postId: samplePost.id,
     authorId: maleAccount.id,
-    rootId: null,
-    branchId: null,
     parentId: null,
-    replyToUserId: null,
-    replyToUser: null,
+    replyToCommentId: null,
+    replyToProfile: null,
     type: 'text',
     payload: {},
     content: 'First comment on post',
@@ -254,7 +253,7 @@ describe('Posts Feature Route Tests', () => {
         authorGender,
         content: input.content,
         genderScope: input.genderScope ?? 'all',
-        accessLevel: input.accessLevel ?? 'public',
+        accessLevel: input.accessLevel ?? 'readers',
         isPinned: input.isPinned ?? false,
       }),
     }))
@@ -268,7 +267,7 @@ describe('Posts Feature Route Tests', () => {
       body: JSON.stringify({
         content: 'Hello Wisal world!',
         genderScope: 'same_gender',
-        accessLevel: 'followers',
+        accessLevel: 'readers',
         isPinned: true,
       }),
     })
@@ -279,7 +278,7 @@ describe('Posts Feature Route Tests', () => {
     expect(body.post.content).toBe('Hello Wisal world!')
     expect(body.post.authorGender).toBe(true)
     expect(body.post.genderScope).toBe('same_gender')
-    expect(body.post.accessLevel).toBe('followers')
+    expect(body.post.accessLevel).toBe('readers')
     expect(body.post.isPinned).toBe(true)
   })
 
@@ -567,7 +566,7 @@ describe('Posts Feature Route Tests', () => {
       },
       body: JSON.stringify({
         content: 'Updated post content',
-        accessLevel: 'followers',
+        accessLevel: 'readers',
       }),
     })
 
@@ -575,7 +574,49 @@ describe('Posts Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; post: PostResponse }
     expect(body.success).toBe(true)
     expect(body.post.content).toBe('Updated post content')
-    expect(body.post.accessLevel).toBe('followers')
+    expect(body.post.accessLevel).toBe('readers')
+  })
+
+  it('PATCH /posts/:id returns editedAt timestamp when post is edited', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const editedDate = new Date()
+    const editedPost: PostResponse = {
+      ...samplePost,
+      content: 'Updated post with editedAt',
+      editedAt: editedDate,
+    }
+
+    mock.module('../service', () => ({
+      updatePost: async () => editedPost,
+    }))
+
+    const res = await app.request('/posts/999999999999991', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Updated post with editedAt',
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; post: any }
+    expect(body.success).toBe(true)
+    expect(body.post.content).toBe('Updated post with editedAt')
+    expect(body.post.editedAt).toBe(editedDate.toISOString())
   })
 
   it('PATCH /posts/:id returns 403 when trying to edit someone else post', async () => {
@@ -843,8 +884,8 @@ describe('Posts Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      savePost: async (_postId: bigint, viewer: { accountId: bigint; isMale: boolean }) => {
-        expect(viewer.accountId).toBe(maleAccount.id)
+      savePost: async (_postId: bigint, viewer: { profileId: bigint; isMale: boolean }) => {
+        expect(viewer.profileId).toBe(maleProfile.id)
         expect(viewer.isMale).toBe(true)
         return {
           saved: true,
@@ -961,8 +1002,8 @@ describe('Posts Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      unsavePost: async (_postId: bigint, viewer: { accountId: bigint; isMale: boolean }) => {
-        expect(viewer.accountId).toBe(maleAccount.id)
+      unsavePost: async (_postId: bigint, viewer: { profileId: bigint; isMale: boolean }) => {
+        expect(viewer.profileId).toBe(maleProfile.id)
         expect(viewer.isMale).toBe(true)
         return {
           saved: false,
@@ -1079,8 +1120,8 @@ describe('Posts Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      likePost: async (_postId: bigint, viewer: { accountId: bigint; isMale: boolean }) => {
-        expect(viewer.accountId).toBe(maleAccount.id)
+      likePost: async (_postId: bigint, viewer: { profileId: bigint; isMale: boolean }) => {
+        expect(viewer.profileId).toBe(maleProfile.id)
         expect(viewer.isMale).toBe(true)
         return {
           liked: true,
@@ -1197,8 +1238,8 @@ describe('Posts Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      unlikePost: async (_postId: bigint, viewer: { accountId: bigint; isMale: boolean }) => {
-        expect(viewer.accountId).toBe(maleAccount.id)
+      unlikePost: async (_postId: bigint, viewer: { profileId: bigint; isMale: boolean }) => {
+        expect(viewer.profileId).toBe(maleProfile.id)
         expect(viewer.isMale).toBe(true)
         return {
           liked: false,
@@ -1331,10 +1372,10 @@ describe('Posts Feature Route Tests', () => {
 
     mock.module('../service', () => ({
       getSavedPosts: async (
-        viewer: { accountId: bigint; isMale: boolean },
+        viewer: { profileId: bigint; isMale: boolean },
         query: { limit?: number; offset?: number }
       ) => {
-        expect(viewer.accountId).toBe(maleAccount.id)
+        expect(viewer.profileId).toBe(maleProfile.id)
         expect(query.limit).toBe(10)
         expect(query.offset).toBe(0)
         return {
@@ -1947,8 +1988,8 @@ describe('Posts Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      deleteComment: async (authorAccountId: bigint, commentId: bigint) => {
-        expect(authorAccountId).toBe(maleAccount.id)
+      deleteComment: async (authorProfileId: bigint, commentId: bigint) => {
+        expect(authorProfileId).toBe(maleProfile.id)
         expect(commentId).toBe(888888888888881n)
         return {
           success: true,
@@ -2302,7 +2343,7 @@ describe('Posts Feature Route Tests', () => {
     expect(body.total).toBe(2)
   })
 
-  it('GET /posts/comments/:id/replies returns flat list with replyToUser info', async () => {
+  it('GET /posts/comments/:id/replies returns flat list with replyToProfile info', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -2318,33 +2359,29 @@ describe('Posts Feature Route Tests', () => {
     const reply1: CommentResponse = {
       ...sampleComment,
       id: 888888888888882n,
-      rootId: 888888888888881n,
-      branchId: null,
       parentId: 888888888888881n,
-      replyToUserId: maleAccount.id,
-      replyToUser: {
+      replyToCommentId: 888888888888881n,
+      replyToProfile: {
         id: maleAccount.id,
         name: 'Male User',
         identity: 'male_user',
       },
-      content: 'First reply to root (Level 1 branch)',
-      repliesCount: 1,
+      content: 'First reply to root',
+      repliesCount: 0,
     }
 
     const reply2: CommentResponse = {
       ...sampleComment,
       id: 888888888888883n,
       authorId: femaleAccount.id,
-      rootId: 888888888888881n,
-      branchId: 888888888888882n,
-      parentId: 888888888888882n,
-      replyToUserId: maleAccount.id,
-      replyToUser: {
+      parentId: 888888888888881n,
+      replyToCommentId: 888888888888882n,
+      replyToProfile: {
         id: maleAccount.id,
         name: 'Male User',
         identity: 'male_user',
       },
-      content: 'Reply to reply1 inside branch (Level 2)',
+      content: 'Reply to reply1 in flat thread',
       repliesCount: 0,
       author: {
         id: femaleAccount.id,
@@ -2382,15 +2419,13 @@ describe('Posts Feature Route Tests', () => {
     }
     expect(body.success).toBe(true)
     expect(body.comments.length).toBe(2)
-    expect(body.comments[0].rootId).toBe('888888888888881')
-    expect(body.comments[0].branchId).toBeNull()
+    // Both belong to root parentId
     expect(body.comments[0].parentId).toBe('888888888888881')
-    expect(body.comments[0].replyToUser?.identity).toBe('male_user')
-    expect(body.comments[1].rootId).toBe('888888888888881')
-    expect(body.comments[1].branchId).toBe('888888888888882')
-    expect(body.comments[1].parentId).toBe('888888888888882')
-    expect(body.comments[1].replyToUserId).toBe(maleAccount.id.toString())
-    expect(body.comments[1].replyToUser?.name).toBe('Male User')
+    expect(body.comments[1].parentId).toBe('888888888888881')
+    // replyToProfile is present
+    expect(body.comments[0].replyToProfile?.identity).toBe('male_user')
+    expect(body.comments[1].replyToCommentId).toBe('888888888888882')
+    expect(body.comments[1].replyToProfile?.name).toBe('Male User')
   })
 
   it('PATCH /posts/:id returns 403 when post is older than 15 minutes', async () => {
@@ -2444,8 +2479,8 @@ describe('Posts Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      updateComment: async (authorAccountId: bigint, commentId: bigint, input: any) => {
-        expect(authorAccountId).toBe(maleAccount.id)
+      updateComment: async (authorProfileId: bigint, commentId: bigint, input: any) => {
+        expect(authorProfileId).toBe(maleProfile.id)
         expect(commentId).toBe(888888888888881n)
         return {
           ...sampleComment,
@@ -2579,7 +2614,7 @@ describe('Posts Feature Route Tests', () => {
     expect(body.error).toBe('Comment not found')
   })
 
-  it('GET /posts/feed and GET /posts/:id include author.isFollowing for viewer', async () => {
+  it('GET /posts/feed and GET /posts/:id include author.isReading for viewer', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -2596,7 +2631,7 @@ describe('Posts Feature Route Tests', () => {
       ...samplePost,
       author: {
         ...samplePost.author!,
-        isFollowing: true,
+        isReading: true,
       },
     }
 
@@ -2616,7 +2651,7 @@ describe('Posts Feature Route Tests', () => {
     expect(resFeed.status).toBe(200)
     const bodyFeed = (await resFeed.json()) as { success: boolean; posts: PostResponse[] }
     expect(bodyFeed.success).toBe(true)
-    expect(bodyFeed.posts[0].author?.isFollowing).toBe(true)
+    expect(bodyFeed.posts[0].author?.isReading).toBe(true)
 
     const resPost = await app.request('/posts/999999999999991', {
       method: 'GET',
@@ -2625,10 +2660,10 @@ describe('Posts Feature Route Tests', () => {
     expect(resPost.status).toBe(200)
     const bodyPost = (await resPost.json()) as { success: boolean; post: PostResponse }
     expect(bodyPost.success).toBe(true)
-    expect(bodyPost.post.author?.isFollowing).toBe(true)
+    expect(bodyPost.post.author?.isReading).toBe(true)
   })
 
-  it('GET /posts/user/:identity includes author.isFollowing status', async () => {
+  it('GET /posts/user/:identity includes author.isReading status', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -2645,7 +2680,7 @@ describe('Posts Feature Route Tests', () => {
       ...samplePost,
       author: {
         ...samplePost.author!,
-        isFollowing: false,
+        isReading: false,
       },
     }
 
@@ -2665,145 +2700,10 @@ describe('Posts Feature Route Tests', () => {
     expect(resUser.status).toBe(200)
     const bodyUser = (await resUser.json()) as { success: boolean; posts: PostResponse[] }
     expect(bodyUser.success).toBe(true)
-    expect(bodyUser.posts[0].author?.isFollowing).toBe(false)
+    expect(bodyUser.posts[0].author?.isReading).toBe(false)
   })
 
-  it('GET /posts/comments/:id/replies returns Level 1 comments for Level 0 root', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: maleAccount,
-        session: maleSession,
-      }),
-    }))
 
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => maleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    const level1Branch: CommentResponse = {
-      ...sampleComment,
-      id: 888888888888882n,
-      rootId: sampleComment.id,
-      branchId: null,
-      parentId: sampleComment.id,
-      replyToUserId: maleAccount.id,
-      content: 'Branch Level 1',
-      repliesCount: 3,
-    }
-
-    mock.module('../service', () => ({
-      getCommentReplies: async (commentId: bigint) => {
-        expect(commentId).toBe(sampleComment.id)
-        return {
-          comments: [level1Branch],
-          total: 1,
-          limit: 50,
-          offset: 0,
-        }
-      },
-    }))
-
-    const res = await app.request(`/posts/comments/${sampleComment.id}/replies`, {
-      method: 'GET',
-      headers: { Authorization: 'Bearer valid_male_token' },
-    })
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { success: boolean; comments: any[] }
-    expect(body.success).toBe(true)
-    expect(body.comments[0].rootId).toBe(sampleComment.id.toString())
-    expect(body.comments[0].branchId).toBeNull()
-    expect(body.comments[0].parentId).toBe(sampleComment.id.toString())
-    expect(body.comments[0].repliesCount).toBe(3)
-  })
-
-  it('GET /posts/comments/:id/replies returns Level 2 comments for Level 1 branch', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: maleAccount,
-        session: maleSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => maleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    const branchId = 888888888888882n
-    const level2Reply: CommentResponse = {
-      ...sampleComment,
-      id: 888888888888883n,
-      rootId: sampleComment.id,
-      branchId: branchId,
-      parentId: branchId,
-      replyToUserId: maleAccount.id,
-      content: 'Reply inside branch Level 2',
-      repliesCount: 0,
-    }
-
-    mock.module('../service', () => ({
-      getCommentReplies: async (commentId: bigint) => {
-        expect(commentId).toBe(branchId)
-        return {
-          comments: [level2Reply],
-          total: 1,
-          limit: 50,
-          offset: 0,
-        }
-      },
-    }))
-
-    const res = await app.request(`/posts/comments/${branchId}/replies`, {
-      method: 'GET',
-      headers: { Authorization: 'Bearer valid_male_token' },
-    })
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { success: boolean; comments: any[] }
-    expect(body.success).toBe(true)
-    expect(body.comments[0].rootId).toBe(sampleComment.id.toString())
-    expect(body.comments[0].branchId).toBe(branchId.toString())
-    expect(body.comments[0].parentId).toBe(branchId.toString())
-    expect(body.comments[0].repliesCount).toBe(0)
-  })
-
-  it('GET /posts/comments/:id/replies returns empty array for Level 2 leaf', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: maleAccount,
-        session: maleSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => maleProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    const leafId = 888888888888883n
-
-    mock.module('../service', () => ({
-      getCommentReplies: async (commentId: bigint) => {
-        expect(commentId).toBe(leafId)
-        return {
-          comments: [],
-          total: 0,
-          limit: 50,
-          offset: 0,
-        }
-      },
-    }))
-
-    const res = await app.request(`/posts/comments/${leafId}/replies`, {
-      method: 'GET',
-      headers: { Authorization: 'Bearer valid_male_token' },
-    })
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { success: boolean; comments: any[]; total: number }
-    expect(body.success).toBe(true)
-    expect(body.comments.length).toBe(0)
-    expect(body.total).toBe(0)
-  })
 
   it('PATCH /posts/comments/:id returns editedAt timestamp when comment is edited', async () => {
     mock.module('../../../lib/session', () => ({
@@ -2977,7 +2877,7 @@ describe('Posts Feature Route Tests', () => {
       const body = (await res.json()) as { success: boolean; updatedCount: number }
       expect(body.success).toBe(true)
       expect(body.updatedCount).toBe(2)
-      expect(capturedViewer.accountId).toBe(maleAccount.id)
+      expect(capturedViewer.profileId).toBe(maleProfile.id)
       expect(capturedIds).toEqual([999999999999991n, 999999999999992n])
     })
   })

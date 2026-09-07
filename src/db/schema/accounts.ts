@@ -6,19 +6,13 @@ import { snowflakePrimaryKey, timestamps, emailSchema } from './common'
 import { sessions } from './sessions'
 import { profiles } from './profiles'
 import { invites } from './invites'
-import { follows } from './follows'
-import { posts } from './posts'
-import { postSaves } from './post-saves'
-import { postLikes } from './post-likes'
-import { reports } from './reports'
-import { mediaUploads } from './media-uploads'
 
 export const accounts = pgTable(
   'accounts',
   {
     id: snowflakePrimaryKey(),
     email: varchar('email', { length: 255 }).notNull(),
-    password: varchar('password', { length: 255 }).notNull(),
+    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
     ...timestamps,
   },
@@ -34,14 +28,6 @@ export const accountsRelations = relations(accounts, ({ one, many }) => ({
   profile: one(profiles),
   usedInvites: many(invites, { relationName: 'usedBy' }),
   invites: many(invites, { relationName: 'inviter' }),
-  followers: many(follows, { relationName: 'following' }),
-  following: many(follows, { relationName: 'follower' }),
-  posts: many(posts),
-  postSaves: many(postSaves),
-  postLikes: many(postLikes),
-  reportsFiled: many(reports, { relationName: 'reporter' }),
-  reportsReceived: many(reports, { relationName: 'reportedUser' }),
-  mediaUploads: many(mediaUploads),
 }))
 
 export { emailSchema }
@@ -53,12 +39,12 @@ export const rawPasswordSchema = z
 
 export const insertAccountSchema = createInsertSchema(accounts, {
   email: () => emailSchema,
-  password: () => rawPasswordSchema,
+  passwordHash: () => z.string().min(1, 'Password hash is required'),
 })
 
 export const selectAccountSchema = createSelectSchema(accounts)
 
-export const safeAccountSchema = selectAccountSchema.omit({ password: true })
+export const safeAccountSchema = selectAccountSchema.omit({ passwordHash: true })
 
 export type Account = typeof accounts.$inferSelect
 export type NewAccount = typeof accounts.$inferInsert

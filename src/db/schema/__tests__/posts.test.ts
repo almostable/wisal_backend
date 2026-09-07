@@ -16,7 +16,7 @@ describe('Posts Schema Tests', () => {
       authorGender: true,
       content: 'Hello Wisal community!',
       genderScope: 'same_gender',
-      accessLevel: 'followers',
+      accessLevel: 'readers',
       isPinned: true,
     }
 
@@ -25,7 +25,7 @@ describe('Posts Schema Tests', () => {
     expect(parsed.authorGender).toBe(true)
     expect(parsed.content).toBe('Hello Wisal community!')
     expect(parsed.genderScope).toBe('same_gender')
-    expect(parsed.accessLevel).toBe('followers')
+    expect(parsed.accessLevel).toBe('readers')
     expect(parsed.isPinned).toBe(true)
     expect(parsed.savesCount).toBeUndefined()
     expect(parsed.type).toBe('text')
@@ -81,6 +81,7 @@ describe('Posts Schema Tests', () => {
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
+      editedAt: null,
     }
 
     const parsed = selectPostSchema.parse(record)
@@ -91,6 +92,7 @@ describe('Posts Schema Tests', () => {
     expect(parsed.commentsCount).toBe(2)
     expect(parsed.viewsCount).toBe(10)
     expect(parsed.deletedAt).toBeNull()
+    expect(parsed.editedAt).toBeNull()
   })
 
   it('has correct indexes configured on posts table', () => {
@@ -111,6 +113,6 @@ describe('Posts Schema Tests', () => {
   it('has expected enum constants defined', () => {
     expect(POST_TYPES).toEqual(['text', 'media'])
     expect(GENDER_SCOPES).toEqual(['all', 'same_gender'])
-    expect(ACCESS_LEVELS).toEqual(['public', 'followers'])
+    expect(ACCESS_LEVELS).toEqual(['public', 'readers'])
   })
 })

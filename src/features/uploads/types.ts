@@ -12,7 +12,7 @@ export interface PresignResponse {
 
 export interface AttachMediaOptions {
   fileKeys: string[]
-  userId: bigint
+  profileId: bigint
   entityType: MediaEntityType
   entityId: bigint
 }
@@ -25,7 +25,7 @@ export interface MarkEntityMediaDeletedOptions {
 export interface ReconcileMediaOptions {
   entityType: MediaEntityType
   entityId: bigint
-  userId: bigint
+  profileId: bigint
   newFileKeys: string[]
   oldFileKeys: string[]
 }

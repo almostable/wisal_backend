@@ -5,6 +5,14 @@ import { z } from 'zod'
 import { snowflakePrimaryKey, snowflakeId, timestamps, emailSchema } from './common'
 import { accounts } from './accounts'
 import { identities, identityFormatSchema, standardIdentityFormatSchema, type Identity } from './identities'
+import { readers } from './readers'
+import { posts } from './posts'
+import { comments } from './comments'
+import { postLikes } from './post-likes'
+import { postSaves } from './post-saves'
+import { mediaUploads } from './media-uploads'
+import { reports } from './reports'
+import { profileBlocks } from './profile-blocks'
 
 export const urlSchema = z
   .string()
@@ -50,8 +58,8 @@ export const profiles = pgTable(
     identityId: snowflakeId('identity_id')
       .unique()
       .references(() => identities.id, { onDelete: 'restrict' }),
-    regularFollowersCount: integer('regular_followers_count').notNull().default(0),
-    followersCount: integer('followers_count').notNull().default(0),
+    regularReadersCount: integer('regular_readers_count').notNull().default(0),
+    readersCount: integer('readers_count').notNull().default(0),
     verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
     searchText: text('search_text').generatedAlwaysAs(
       sql`lower(coalesce(identity, '') || ' ' || coalesce(name, '') || ' ' || coalesce(short_description, ''))`
@@ -63,7 +71,7 @@ export const profiles = pgTable(
   ]
 )
 
-export const profilesRelations = relations(profiles, ({ one }) => ({
+export const profilesRelations = relations(profiles, ({ one, many }) => ({
   account: one(accounts, {
     fields: [profiles.accountId],
     references: [accounts.id],
@@ -72,6 +80,17 @@ export const profilesRelations = relations(profiles, ({ one }) => ({
     fields: [profiles.identityId],
     references: [identities.id],
   }),
+  readers: many(readers, { relationName: 'author' }),
+  reading: many(readers, { relationName: 'reader' }),
+  posts: many(posts),
+  comments: many(comments),
+  postLikes: many(postLikes),
+  postSaves: many(postSaves),
+  mediaUploads: many(mediaUploads),
+  reportsFiled: many(reports, { relationName: 'reporter' }),
+  reportsReceived: many(reports, { relationName: 'reportedProfile' }),
+  blockedProfiles: many(profileBlocks, { relationName: 'blocker' }),
+  blockedByProfiles: many(profileBlocks, { relationName: 'blocked' }),
 }))
 
 export const nameSchema = z

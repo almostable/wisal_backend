@@ -42,7 +42,7 @@ describe('deleteAccount Service Tests', () => {
               findFirst: async () => ({
                 id: accountId,
                 email: 'test@wisal.dev',
-                password: hashedPassword,
+                passwordHash: hashedPassword,
                 deletedAt: null,
               }),
             },
@@ -64,7 +64,7 @@ describe('deleteAccount Service Tests', () => {
     let postsUpdatedSet: any = null
     let postMediaMarked = false
     let commentMediaMarked = false
-    let followersDecremented = false
+    let readersDecremented = false
 
     const mockDb: any = {
       transaction: async (cb: any) => {
@@ -74,7 +74,7 @@ describe('deleteAccount Service Tests', () => {
               findFirst: async () => ({
                 id: accountId,
                 email: 'user@wisal.dev',
-                password: hashedPassword,
+                passwordHash: hashedPassword,
                 deletedAt: null,
               }),
             },
@@ -100,8 +100,8 @@ describe('deleteAccount Service Tests', () => {
                 postsUpdatedSet = setData
               } else if (setData.status === 'deleted') {
                 postMediaMarked = true
-              } else if (setData.followersCount !== undefined) {
-                followersDecremented = true
+              } else if (setData.readersCount !== undefined) {
+                readersDecremented = true
               }
               return {
                 where: () => ({
@@ -110,17 +110,14 @@ describe('deleteAccount Service Tests', () => {
               }
             },
           }),
+          select: (_fields: any) => ({
+            from: (_table: any) => ({
+              where: () => [{ authorProfileId: 555555555555555n }],
+            }),
+          }),
           delete: (_table: any) => ({
             where: () => ({
               returning: async () => [{ postId: 999999999999991n }],
-            }),
-          }),
-          select: (_fields: any) => ({
-            from: () => ({
-              where: () => [
-                { id: 999999999999991n },
-                { followingId: 555555555555555n },
-              ],
             }),
           }),
           execute: async () => {
@@ -140,7 +137,7 @@ describe('deleteAccount Service Tests', () => {
     expect(accountUpdatedSet).toBeDefined()
     expect(accountUpdatedSet.deletedAt).toBeInstanceOf(Date)
     expect(accountUpdatedSet.email).toBe(`${accountId}@deleted.invalid`)
-    expect(accountUpdatedSet.password).toBe('!ACCOUNT_DELETED!')
+    expect(accountUpdatedSet.passwordHash).toBe('!ACCOUNT_DELETED!')
 
     expect(profileUpdatedSet).toBeDefined()
     expect(profileUpdatedSet.name).toBeNull()
@@ -154,7 +151,7 @@ describe('deleteAccount Service Tests', () => {
     expect(postsUpdatedSet.isPinned).toBe(false)
     expect(postMediaMarked).toBe(true)
     expect(commentMediaMarked).toBe(true)
-    expect(followersDecremented).toBe(true)
+    expect(readersDecremented).toBe(true)
   })
 })
 
@@ -188,7 +185,7 @@ describe('Auth Feature Route Tests', () => {
     cityId: null,
     contacts: null,
     identity: 'wisaluser',
-    regularFollowersCount: 0,
+    regularReadersCount: 0,
     isVerified: false,
   }
 

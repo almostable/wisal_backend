@@ -34,7 +34,7 @@ describe('Uploads Service Unit Tests', () => {
     expect(result.fileKey).toBeString()
     expect(insertedValues).not.toBeNull()
     expect(insertedValues.fileKey).toBe(result.fileKey)
-    expect(insertedValues.userId).toBe(userId)
+    expect(insertedValues.profileId).toBe(userId)
     expect(insertedValues.status).toBe('pending')
   })
 
@@ -60,7 +60,7 @@ describe('Uploads Service Unit Tests', () => {
 
     await attachMediaFiles(mockExecutor, {
       fileKeys,
-      userId,
+      profileId: userId,
       entityType: 'post',
       entityId: postId,
     })
@@ -83,7 +83,7 @@ describe('Uploads Service Unit Tests', () => {
     await expect(
       attachMediaFiles(mockExecutor, {
         fileKeys: duplicateKeys,
-        userId,
+        profileId: userId,
         entityType: 'post',
         entityId: postId,
       })
@@ -109,7 +109,7 @@ describe('Uploads Service Unit Tests', () => {
     try {
       await attachMediaFiles(mockExecutor, {
         fileKeys,
-        userId,
+        profileId: userId,
         entityType: 'post',
         entityId: postId,
       })
@@ -174,7 +174,7 @@ describe('Uploads Service Unit Tests', () => {
     await reconcileEntityMedia(mockExecutor, {
       entityType: 'post',
       entityId: postId,
-      userId,
+      profileId: userId,
       newFileKeys: newKeys,
       oldFileKeys: oldKeys,
     })
