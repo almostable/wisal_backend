@@ -1,21 +1,26 @@
-import { drizzle } from 'drizzle-orm/postgres-js'
-import { reset } from 'drizzle-seed'
 import postgres from 'postgres'
 import { env } from '../config/env'
-import * as schema from './schema'
 
 async function runReset() {
-  const client = postgres(env.DATABASE_URL)
-  const db = drizzle(client)
+  const client = postgres(env.DATABASE_URL, { max: 1 })
 
   try {
-    await reset(db, schema)
+    console.log('Resetting PostgreSQL public schema...')
+
+    await client`DROP SCHEMA IF EXISTS public CASCADE;`
+    await client`CREATE SCHEMA public;`
+    await client`GRANT ALL ON SCHEMA public TO CURRENT_USER;`
+    await client`GRANT ALL ON SCHEMA public TO public;`
+    await client`CREATE EXTENSION IF NOT EXISTS pg_trgm;`
+
+    console.log('Database schema successfully reset and pg_trgm extension enabled.')
   } catch (error) {
-    console.error('Database reset error:', error)
-    process.exitCode = 1
+    console.error('Database reset failed:', error)
+    process.exit(1)
   } finally {
     await client.end()
   }
 }
 
 runReset()
+
