@@ -55,9 +55,8 @@ describe('Posts Likes Feature Unit & Integration Tests', () => {
           genderScope: 'all',
           accessLevel: 'public',
           isPinned: false,
-          ...(isAuthor ? { likesCount: 42, savesCount: 10 } : {}),
+          ...(isAuthor ? { likesCount: 42, savesCount: 10, viewsCount: 100 } : {}),
           commentsCount: 0,
-          viewsCount: 100,
           isLiked: true,
           isSaved: true,
           createdAt: new Date(),
@@ -76,9 +75,10 @@ describe('Posts Likes Feature Unit & Integration Tests', () => {
     const bodyAuthor = (await resAuthor.json()) as { success: boolean; post: PostResponse }
     expect(bodyAuthor.post.likesCount).toBe(42)
     expect(bodyAuthor.post.savesCount).toBe(10)
+    expect(bodyAuthor.post.viewsCount).toBe(100)
     expect(bodyAuthor.post.isLiked).toBe(true)
 
-    // 2. Reader requests author post -> likesCount is omitted
+    // 2. Reader requests author post -> likesCount, savesCount, viewsCount are omitted
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: readerAccount,
@@ -98,6 +98,7 @@ describe('Posts Likes Feature Unit & Integration Tests', () => {
     const bodyReader = (await resReader.json()) as { success: boolean; post: PostResponse }
     expect(bodyReader.post.likesCount).toBeUndefined()
     expect(bodyReader.post.savesCount).toBeUndefined()
+    expect(bodyReader.post.viewsCount).toBeUndefined()
     expect(bodyReader.post.isLiked).toBe(true)
   })
 

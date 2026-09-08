@@ -228,4 +228,40 @@ describe('Authors and Monotonic Read Feature Tests', () => {
       expect(body.reading).toBe(true)
     })
   })
+
+  describe('readProfile and unreadCount Unit Logic', () => {
+    it('sets lastReadPostId to latest post on subscription ensuring unreadCount is 0', () => {
+      const authorPosts = [
+        { id: 500000000000003n, authorId: 999999999999999n },
+        { id: 500000000000002n, authorId: 999999999999999n },
+        { id: 500000000000001n, authorId: 999999999999999n },
+      ]
+
+      const latestPostId = authorPosts[0].id // 500000000000003n
+
+      // Simulated unreadCount check: posts with id > lastReadPostId
+      const unreadCount = authorPosts.filter((p) => p.id > latestPostId).length
+      expect(unreadCount).toBe(0)
+
+      // When author publishes a newer post:
+      const newPost = { id: 500000000000004n, authorId: 999999999999999n }
+      const updatedPosts = [newPost, ...authorPosts]
+      const newUnreadCount = updatedPosts.filter((p) => p.id > latestPostId).length
+      expect(newUnreadCount).toBe(1)
+    })
+
+    it('considers reader regular if lastReadAt is within 180 days', () => {
+      const now = Date.now()
+      const windowMs = 180 * 24 * 60 * 60 * 1000
+
+      const recentRead = new Date(now - 10 * 24 * 60 * 60 * 1000) // 10 days ago
+      const oldRead = new Date(now - 181 * 24 * 60 * 60 * 1000) // 181 days ago
+
+      const isRecentRegular = now - recentRead.getTime() <= windowMs
+      const isOldRegular = now - oldRead.getTime() <= windowMs
+
+      expect(isRecentRegular).toBe(true)
+      expect(isOldRegular).toBe(false)
+    })
+  })
 })

@@ -2,6 +2,8 @@ import { sql } from 'drizzle-orm'
 import { Cron } from 'croner'
 import { db } from '../db'
 
+import { REGULAR_READERS_WINDOW_DAYS } from '../config/constants'
+
 export interface RecalculateResult {
   success: boolean
   timestamp: string
@@ -12,12 +14,12 @@ export async function recalculateRegularReaders(
 ): Promise<RecalculateResult> {
   const nowIso = new Date().toISOString()
 
-  // 1. Update authors who have active readers in the last 30 days
+  // 1. Update authors who have active readers in the last 180 days
   await executor.execute(sql`
     WITH calculated_stats AS (
       SELECT author_profile_id, COUNT(*) AS active_count
       FROM readers
-      WHERE last_read_at >= NOW() - INTERVAL '30 days'
+      WHERE last_read_at >= NOW() - INTERVAL '180 days'
       GROUP BY author_profile_id
     )
     UPDATE profiles p
@@ -27,7 +29,7 @@ export async function recalculateRegularReaders(
       AND p.regular_readers_count != cs.active_count
   `)
 
-  // 2. Reset regular_readers_count to 0 for authors with no active reads in the last 30 days
+  // 2. Reset regular_readers_count to 0 for authors with no active reads in the last 180 days
   await executor.execute(sql`
     UPDATE profiles
     SET regular_readers_count = 0
@@ -35,7 +37,7 @@ export async function recalculateRegularReaders(
       AND id NOT IN (
         SELECT DISTINCT author_profile_id
         FROM readers
-        WHERE last_read_at >= NOW() - INTERVAL '30 days'
+        WHERE last_read_at >= NOW() - INTERVAL '180 days'
       )
   `)
 

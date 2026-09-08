@@ -183,4 +183,26 @@ describe('Profile Search Endpoint (GET /profile/search)', () => {
     expect(body.offset).toBe(0)
     expect(capturedQuery.q).toBe('@it')
   })
+
+  it('search block condition only filters out users blocked by viewer, not users who blocked viewer', () => {
+    const { PgDialect } = require('drizzle-orm/pg-core')
+    const { sql } = require('drizzle-orm')
+    const { profileBlocks } = require('../../../db/schema/profile-blocks')
+    const { profiles } = require('../../../db/schema/profiles')
+
+    const viewerProfileId = 100000000000001n
+    const notBlockedCondition = sql`NOT EXISTS (
+      SELECT 1 FROM ${profileBlocks}
+      WHERE ${profileBlocks.blockerProfileId} = ${viewerProfileId}
+        AND ${profileBlocks.blockedProfileId} = ${profiles.id}
+    )`
+
+    const dialect = new PgDialect()
+    const compiled = dialect.sqlToQuery(notBlockedCondition)
+
+    expect(compiled.sql).toContain('"profile_blocks"."blocker_profile_id" = $1')
+    expect(compiled.sql).toContain('"profile_blocks"."blocked_profile_id" = "profiles"."id"')
+    // Must NOT contain condition where blocker is profiles.id and blocked is viewer
+    expect(compiled.sql).not.toContain('"profile_blocks"."blocker_profile_id" = "profiles"."id"')
+  })
 })

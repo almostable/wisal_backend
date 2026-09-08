@@ -154,11 +154,11 @@ function formatPost(
     genderScope: post.genderScope as GenderScope,
     accessLevel: post.accessLevel as AccessLevel,
     isPinned: post.isPinned,
-    viewsCount: post.viewsCount ?? 0,
     ...(canViewAuthorCounts
       ? {
           savesCount: post.savesCount ?? 0,
           likesCount: post.likesCount ?? 0,
+          viewsCount: post.viewsCount ?? 0,
         }
       : {}),
     commentsCount: post.commentsCount ?? 0,

@@ -27,4 +27,4 @@ export const DEFAULT_PRESIGN_TTL_SECONDS = 900 // 15 minutes
 /**
  * Regular readers window
  */
-export const REGULAR_READERS_WINDOW_DAYS = 30
+export const REGULAR_READERS_WINDOW_DAYS = 180

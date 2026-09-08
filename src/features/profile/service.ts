@@ -23,6 +23,7 @@ import { identities } from '../../db/schema/identities'
 import { readers } from '../../db/schema/readers'
 import { posts } from '../../db/schema/posts'
 import { profileBlocks } from '../../db/schema/profile-blocks'
+import { REGULAR_READERS_WINDOW_DAYS } from '../../config/constants'
 import {
   getProfileByAccountId,
   getProfileByIdentity,
@@ -301,7 +302,7 @@ export async function getReaders(
 
   const whereClause = and(
     eq(readers.authorProfileId, targetProfileId),
-    gte(readers.lastReadAt, sql`NOW() - INTERVAL '30 days'`)
+    gte(readers.lastReadAt, sql`NOW() - INTERVAL '180 days'`)
   )
 
   const [items, totalResult] = await Promise.all([
@@ -550,12 +551,20 @@ export async function readProfile(
   }
 
   return await db.transaction(async (tx) => {
+    const [latestPost] = await tx
+      .select({ id: posts.id })
+      .from(posts)
+      .where(and(eq(posts.authorId, targetProfileId), isNull(posts.deletedAt)))
+      .orderBy(desc(posts.id))
+      .limit(1)
+
     const inserted = await tx
       .insert(readers)
       .values({
         readerProfileId,
         authorProfileId: targetProfileId,
         lastReadAt: new Date(),
+        lastReadPostId: latestPost?.id ?? null,
       })
       .onConflictDoNothing()
       .returning({ readerProfileId: readers.readerProfileId })
@@ -565,6 +574,7 @@ export async function readProfile(
         .update(profiles)
         .set({
           readersCount: sql`${profiles.readersCount} + 1`,
+          regularReadersCount: sql`${profiles.regularReadersCount} + 1`,
         })
         .where(eq(profiles.id, targetProfileId))
     }
@@ -595,13 +605,26 @@ export async function unreadProfile(
           eq(readers.authorProfileId, targetProfileId)
         )
       )
-      .returning({ readerProfileId: readers.readerProfileId })
+      .returning({
+        readerProfileId: readers.readerProfileId,
+        lastReadAt: readers.lastReadAt,
+      })
 
     if (deleted.length > 0) {
+      const isRegular =
+        deleted[0].lastReadAt &&
+        Date.now() - deleted[0].lastReadAt.getTime() <=
+          REGULAR_READERS_WINDOW_DAYS * 24 * 60 * 60 * 1000
+
       await tx
         .update(profiles)
         .set({
           readersCount: sql`GREATEST(0, ${profiles.readersCount} - 1)`,
+          ...(isRegular
+            ? {
+                regularReadersCount: sql`GREATEST(0, ${profiles.regularReadersCount} - 1)`,
+              }
+            : {}),
         })
         .where(eq(profiles.id, targetProfileId))
     }
@@ -649,13 +672,24 @@ export async function blockProfile(
       .returning({
         readerProfileId: readers.readerProfileId,
         authorProfileId: readers.authorProfileId,
+        lastReadAt: readers.lastReadAt,
       })
 
     for (const rel of deletedReaders) {
+      const isRegular =
+        rel.lastReadAt &&
+        Date.now() - rel.lastReadAt.getTime() <=
+          REGULAR_READERS_WINDOW_DAYS * 24 * 60 * 60 * 1000
+
       await tx
         .update(profiles)
         .set({
           readersCount: sql`GREATEST(0, ${profiles.readersCount} - 1)`,
+          ...(isRegular
+            ? {
+                regularReadersCount: sql`GREATEST(0, ${profiles.regularReadersCount} - 1)`,
+              }
+            : {}),
         })
         .where(eq(profiles.id, rel.authorProfileId))
     }
@@ -844,8 +878,8 @@ export async function searchProfiles(
 
   const notBlockedCondition = sql`NOT EXISTS (
     SELECT 1 FROM ${profileBlocks}
-    WHERE (${profileBlocks.blockerProfileId} = ${viewerProfileId} AND ${profileBlocks.blockedProfileId} = ${profiles.id})
-       OR (${profileBlocks.blockerProfileId} = ${profiles.id} AND ${profileBlocks.blockedProfileId} = ${viewerProfileId})
+    WHERE ${profileBlocks.blockerProfileId} = ${viewerProfileId}
+      AND ${profileBlocks.blockedProfileId} = ${profiles.id}
   )`
 
   // Primary filtering: GIN-indexed searchText or identities.identity substring

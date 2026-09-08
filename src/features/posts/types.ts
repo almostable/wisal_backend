@@ -25,7 +25,7 @@ export interface PostResponse {
   savesCount?: number
   likesCount?: number
   commentsCount: number
-  viewsCount: number
+  viewsCount?: number
   isSaved?: boolean
   isLiked?: boolean
   createdAt: Date
