@@ -95,7 +95,6 @@ describe('Posts Feature Route Tests', () => {
   const samplePost: PostResponse = {
     id: 999999999999991n,
     authorId: maleAccount.id,
-    authorGender: true,
     type: 'text',
     payload: {},
     content: 'First test post',
@@ -234,10 +233,9 @@ describe('Posts Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      createPost: async (authorId: bigint, authorGender: boolean, input: any) => ({
+      createPost: async (authorId: bigint, _authorGender: boolean, input: any) => ({
         ...samplePost,
         authorId,
-        authorGender,
         content: input.content,
         genderScope: input.genderScope ?? 'all',
         accessLevel: input.accessLevel ?? 'readers',
@@ -263,7 +261,6 @@ describe('Posts Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; post: PostResponse }
     expect(body.success).toBe(true)
     expect(body.post.content).toBe('Hello Wisal world!')
-    expect(body.post.authorGender).toBe(true)
     expect(body.post.genderScope).toBe('same_gender')
     expect(body.post.accessLevel).toBe('readers')
     expect(body.post.isPinned).toBe(true)
@@ -312,12 +309,11 @@ describe('Posts Feature Route Tests', () => {
     mock.module('../service', () => ({
       createPost: async (
         authorId: bigint,
-        authorGender: boolean,
+        _authorGender: boolean,
         input: any
       ) => ({
         ...samplePost,
         authorId,
-        authorGender,
         content: '',
         type: 'media',
         payload: input.payload ?? {},
@@ -371,12 +367,11 @@ describe('Posts Feature Route Tests', () => {
     mock.module('../service', () => ({
       createPost: async (
         authorId: bigint,
-        authorGender: boolean,
+        _authorGender: boolean,
         input: any
       ) => ({
         ...samplePost,
         authorId,
-        authorGender,
         content: input.content,
         type: 'media',
         payload: input.payload ?? {},
@@ -785,12 +780,14 @@ describe('Posts Feature Route Tests', () => {
       isOnboardingCompleted: () => true,
     }))
 
+    const userPost1: PostResponse = { ...samplePost, isPinned: true }
+    delete userPost1.author
+    const userPost2: PostResponse = { ...samplePost, id: 999999999999992n, isPinned: false }
+    delete userPost2.author
+
     mock.module('../service', () => ({
       getUserPosts: async () => ({
-        posts: [
-          { ...samplePost, isPinned: true },
-          { ...samplePost, id: 999999999999992n, isPinned: false },
-        ],
+        posts: [userPost1, userPost2],
         total: 2,
         limit: 20,
         offset: 0,
@@ -815,6 +812,8 @@ describe('Posts Feature Route Tests', () => {
     expect(body.success).toBe(true)
     expect(body.posts.length).toBe(2)
     expect(body.posts[0].isPinned).toBe(true)
+    expect(body.posts[0].author).toBeUndefined()
+    expect(body.posts[1].author).toBeUndefined()
     expect(body.total).toBe(2)
   })
 
@@ -1415,7 +1414,7 @@ describe('Posts Feature Route Tests', () => {
     expect(body.comments[0].content).toBe('First comment on post')
     expect(body.comments[0].parentId).toBeNull()
     expect(body.comments[1].content).toBe('Reply comment on post')
-    expect(body.comments[1].parentId).toBe(sampleComment.id.toString())
+    expect(String(body.comments[1].parentId)).toBe(sampleComment.id.toString())
     expect(body.total).toBe(2)
   })
 
@@ -2259,7 +2258,7 @@ describe('Posts Feature Route Tests', () => {
     expect(bodyPost.post.author?.isReading).toBe(true)
   })
 
-  it('GET /posts/user/:identity includes author.isReading status', async () => {
+  it('GET /posts/user/:identity returns posts without author object', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -2272,17 +2271,14 @@ describe('Posts Feature Route Tests', () => {
       isOnboardingCompleted: () => true,
     }))
 
-    const postWithUnfollowedAuthor: PostResponse = {
+    const postWithoutAuthor: PostResponse = {
       ...samplePost,
-      author: {
-        ...samplePost.author!,
-        isReading: false,
-      },
     }
+    delete postWithoutAuthor.author
 
     mock.module('../service', () => ({
       getUserPosts: async () => ({
-        posts: [postWithUnfollowedAuthor],
+        posts: [postWithoutAuthor],
         total: 1,
         limit: 20,
         offset: 0,
@@ -2296,7 +2292,7 @@ describe('Posts Feature Route Tests', () => {
     expect(resUser.status).toBe(200)
     const bodyUser = (await resUser.json()) as { success: boolean; posts: PostResponse[] }
     expect(bodyUser.success).toBe(true)
-    expect(bodyUser.posts[0].author?.isReading).toBe(false)
+    expect(bodyUser.posts[0].author).toBeUndefined()
   })
 
 

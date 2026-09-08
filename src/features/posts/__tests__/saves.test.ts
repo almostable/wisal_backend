@@ -41,7 +41,6 @@ describe('Posts Saves Feature Unit & Integration Tests', () => {
         return {
           id: 999999999999991n,
           authorId: authorProfile.id,
-          authorGender: true,
           type: 'text',
           payload: {},
           content: 'Author post',

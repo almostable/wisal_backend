@@ -778,14 +778,8 @@ describe('Profile Feature Route Tests', () => {
             id: 888888888888888n,
             name: 'Author One',
             avatarKey: 'avatar.png',
-            shortDescription: 'Writer',
-            description: 'Leader',
             identity: 'author1',
-            isMale: true,
             isVerified: true,
-            readAt: new Date(),
-            lastReadAt: new Date(),
-            lastReadPostId: 100n,
             unreadCount: 5,
           },
         ],
@@ -814,7 +808,12 @@ describe('Profile Feature Route Tests', () => {
     expect(body.total).toBe(1)
     expect(body.authors[0].identity).toBe('author1')
     expect(body.authors[0].unreadCount).toBe(5)
-    expect(body.authors[0].lastReadPostId).toBe('100')
+    expect(body.authors[0].shortDescription).toBeUndefined()
+    expect(body.authors[0].description).toBeUndefined()
+    expect(body.authors[0].isMale).toBeUndefined()
+    expect(body.authors[0].readAt).toBeUndefined()
+    expect(body.authors[0].lastReadAt).toBeUndefined()
+    expect(body.authors[0].lastReadPostId).toBeUndefined()
   })
 
   it('GET /profile/:identity/readers returns public list', async () => {

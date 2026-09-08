@@ -148,7 +148,6 @@ function formatPost(
   return {
     id: post.id,
     authorId: post.authorId,
-    authorGender: post.authorGender,
     type: post.type as PostType,
     payload: (post.payload as Record<string, unknown>) ?? {},
     content: post.content,
@@ -168,7 +167,7 @@ function formatPost(
     createdAt: post.createdAt,
     updatedAt: post.updatedAt,
     editedAt: post.editedAt ?? null,
-    author: author ?? null,
+    ...(author !== undefined ? { author } : {}),
   }
 }
 
@@ -897,14 +896,10 @@ export async function getUserPosts(
     db
       .select({
         post: posts,
-        ...authorSelectFields,
         isSaved: sql<boolean>`CASE WHEN ${postSaves.profileId} IS NOT NULL THEN true ELSE false END`,
         isLiked: sql<boolean>`CASE WHEN ${postLikes.profileId} IS NOT NULL THEN true ELSE false END`,
       })
       .from(posts)
-      .innerJoin(profiles, eq(posts.authorId, profiles.id))
-      .leftJoin(identities, eq(profiles.identityId, identities.id))
-      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
       .leftJoin(
         postSaves,
         and(
@@ -932,7 +927,7 @@ export async function getUserPosts(
   const formattedPosts = items.map((item) =>
     formatPost(
       item.post,
-      mapAuthor(item, isAuthor ? undefined : isReading),
+      undefined,
       Boolean(item.isSaved),
       isAuthor,
       Boolean(item.isLiked)

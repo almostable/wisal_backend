@@ -112,7 +112,6 @@ describe('Posts & Comments Media Lifecycle Route Integration Tests', () => {
       createPost: async () => ({
         id: '333333333333333',
         authorId: '111111111111111',
-        authorGender: true,
         type: 'media',
         payload: {
           media: [

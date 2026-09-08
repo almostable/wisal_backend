@@ -66,14 +66,8 @@ export interface AuthorSubscriptionItem {
   id: bigint
   name: string | null
   avatarKey: string | null
-  shortDescription: string | null
-  description: string | null
   identity: string | null
-  isMale: boolean | null
   isVerified: boolean
-  readAt: Date
-  lastReadAt: Date | null
-  lastReadPostId: bigint | null
   unreadCount: number
 }
 

@@ -16,7 +16,6 @@ export interface PostAuthorInfo {
 export interface PostResponse {
   id: bigint
   authorId: bigint
-  authorGender: boolean
   type: PostType
   payload: Record<string, unknown>
   content: string

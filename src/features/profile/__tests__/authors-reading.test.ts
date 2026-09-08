@@ -81,22 +81,22 @@ describe('Authors and Monotonic Read Feature Tests', () => {
       // Step 1: User reads post #105
       const first = updateLastRead(105n)
       expect(first).toBe(105n)
-      expect(currentLastReadPostId).toBe(105n)
+      expect(currentLastReadPostId as bigint | null).toBe(105n)
 
       // Step 2: Delayed network packet arrives for post #104
       const second = updateLastRead(104n)
       expect(second).toBe(105n)
-      expect(currentLastReadPostId).toBe(105n) // Must remain 105n!
+      expect(currentLastReadPostId as bigint | null).toBe(105n) // Must remain 105n!
 
       // Step 3: Later post #106 arrives
       const third = updateLastRead(106n)
       expect(third).toBe(106n)
-      expect(currentLastReadPostId).toBe(106n)
+      expect(currentLastReadPostId as bigint | null).toBe(106n)
     })
   })
 
   describe('GET /profile/authors Route', () => {
-    it('returns authors list with computed unreadCount', async () => {
+    it('returns authors list with computed unreadCount without omitted fields', async () => {
       mock.module('../../../lib/session', () => ({
         validateSessionToken: async () => ({
           account: mockAccount,
@@ -116,28 +116,16 @@ describe('Authors and Monotonic Read Feature Tests', () => {
               id: 999999999999999n,
               name: 'Favorite Author',
               avatarKey: 'author-pic.png',
-              shortDescription: 'Tech Writer',
-              description: 'Writing about distributed systems',
               identity: 'favauthor',
-              isMale: true,
               isVerified: true,
-              readAt: new Date('2026-01-01'),
-              lastReadAt: new Date('2026-02-01'),
-              lastReadPostId: 105n,
               unreadCount: 3,
             },
             {
               id: 888888888888888n,
               name: 'Up-to-date Author',
               avatarKey: null,
-              shortDescription: null,
-              description: null,
               identity: 'allreadauthor',
-              isMale: false,
               isVerified: false,
-              readAt: new Date('2026-01-01'),
-              lastReadAt: new Date('2026-02-01'),
-              lastReadPostId: 200n,
               unreadCount: 0,
             },
           ],
@@ -160,7 +148,12 @@ describe('Authors and Monotonic Read Feature Tests', () => {
       expect(body.total).toBe(2)
       expect(body.authors[0].identity).toBe('favauthor')
       expect(body.authors[0].unreadCount).toBe(3)
-      expect(body.authors[0].lastReadPostId).toBe('105')
+      expect(body.authors[0].shortDescription).toBeUndefined()
+      expect(body.authors[0].description).toBeUndefined()
+      expect(body.authors[0].isMale).toBeUndefined()
+      expect(body.authors[0].readAt).toBeUndefined()
+      expect(body.authors[0].lastReadAt).toBeUndefined()
+      expect(body.authors[0].lastReadPostId).toBeUndefined()
       expect(body.authors[1].unreadCount).toBe(0)
     })
   })

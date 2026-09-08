@@ -322,14 +322,8 @@ Header `Authorization: Bearer <token>`.
         "id": "222222222222222",
         "name": "Author Name",
         "avatarKey": "avatars/user.png",
-        "shortDescription": "Author bio",
-        "description": "Full author description",
         "identity": "author_handle",
-        "isMale": true,
         "isVerified": true,
-        "readAt": "2026-08-20T00:00:00.000Z",
-        "lastReadAt": "2026-09-01T12:00:00.000Z",
-        "lastReadPostId": "105",
         "unreadCount": 3
       }
     ],
@@ -713,7 +707,6 @@ Header `Authorization: Bearer <token>`.
     "post": {
       "id": "999999999999991",
       "authorId": "111111111111111",
-      "authorGender": true,
       "type": "media",
       "payload": {
         "media": [
@@ -765,7 +758,6 @@ Header `Authorization: Bearer <token>`.
     "post": {
       "id": "999999999999991",
       "authorId": "111111111111111",
-      "authorGender": true,
       "type": "text",
       "payload": {},
       "content": "Updated post content",
@@ -835,7 +827,6 @@ Header `Authorization: Bearer <token>`.
     "post": {
       "id": "999999999999991",
       "authorId": "111111111111111",
-      "authorGender": true,
       "type": "text",
       "payload": {},
       "content": "Pinned post content",
@@ -936,7 +927,6 @@ Header `Authorization: Bearer <token>`.
       {
         "id": "999999999999991",
         "authorId": "111111111111111",
-        "authorGender": true,
         "type": "text",
         "payload": {},
         "content": "Saved post content",
@@ -979,7 +969,6 @@ Header `Authorization: Bearer <token>`.
     "post": {
       "id": "999999999999991",
       "authorId": "111111111111111",
-      "authorGender": true,
       "type": "text",
       "payload": {},
       "content": "Specific post content",
@@ -1023,7 +1012,6 @@ Header `Authorization: Bearer <token>`.
       {
         "id": "999999999999991",
         "authorId": "111111111111111",
-        "authorGender": true,
         "type": "text",
         "payload": {},
         "content": "Pinned user post",
@@ -1036,15 +1024,7 @@ Header `Authorization: Bearer <token>`.
         "isLiked": false,
         "createdAt": "2026-08-20T00:00:00.000Z",
         "updatedAt": "2026-08-20T00:00:00.000Z",
-        "editedAt": null,
-        "author": {
-          "id": "111111111111111",
-          "name": "John Doe",
-          "identity": "johndoe",
-          "avatarKey": null,
-          "isMale": true,
-          "isReading": true
-        }
+        "editedAt": null
       }
     ],
     "total": 1,
