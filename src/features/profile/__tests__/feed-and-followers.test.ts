@@ -13,8 +13,6 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
     avatarKey: 'avatar.png',
     description: 'Long description',
     shortDescription: 'Short bio',
-    countryCode: 'US',
-    cityId: 'nyc',
     contacts: null,
     identityId: 300000000000003n,
     regularReadersCount: 25,

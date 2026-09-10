@@ -181,8 +181,6 @@ describe('Auth Feature Route Tests', () => {
     avatarKey: null,
     description: 'Test description',
     shortDescription: null,
-    countryCode: null,
-    cityId: null,
     contacts: null,
     identity: 'wisaluser',
     regularReadersCount: 0,

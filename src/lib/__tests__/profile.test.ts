@@ -12,8 +12,6 @@ describe('Profile Utility Tests', () => {
       avatarKey: null,
       description: null,
       shortDescription: null,
-      countryCode: null,
-      cityId: null,
       contacts: null,
       identityId: 100n,
       regularReadersCount: 0,
@@ -46,8 +44,6 @@ describe('Profile Utility Tests', () => {
       avatarKey: null,
       description: null,
       shortDescription: null,
-      countryCode: null,
-      cityId: null,
       contacts: null,
       identityId: 100n,
       regularReadersCount: 0,
@@ -75,8 +71,6 @@ describe('Profile Utility Tests', () => {
       avatarKey: null,
       description: null,
       shortDescription: null,
-      countryCode: null,
-      cityId: null,
       contacts: null,
       identityId: 100n,
       regularReadersCount: 0,
@@ -104,8 +98,6 @@ describe('Profile Utility Tests', () => {
       avatarKey: null,
       description: null,
       shortDescription: null,
-      countryCode: null,
-      cityId: null,
       contacts: null,
       identityId: 100n,
       regularReadersCount: 0,
@@ -142,8 +134,6 @@ describe('Profile Utility Tests', () => {
       avatarKey: 'avatar.png',
       description: 'bio',
       shortDescription: 'Hi all',
-      countryCode: 'US',
-      cityId: 'nyc_1',
       contacts: null,
       identityId: 100n,
       regularReadersCount: 42,
@@ -166,8 +156,6 @@ describe('Profile Utility Tests', () => {
     expect((formatted as any).accountId).toBeUndefined()
     expect(formatted!.identity).toBe('alice')
     expect(formatted!.shortDescription).toBe('Hi all')
-    expect(formatted!.countryCode).toBe('US')
-    expect(formatted!.cityId).toBe('nyc_1')
     expect(formatted!.regularReadersCount).toBe(42)
     expect(formatted!.readersCount).toBeUndefined()
     expect(formatted!.isVerified).toBe(false)
@@ -193,8 +181,6 @@ describe('Profile Utility Tests', () => {
       avatarKey: 'avatar.png',
       description: 'bio',
       shortDescription: 'Hi all',
-      countryCode: 'US',
-      cityId: 'nyc_1',
       contacts: null,
       identityId: 100n,
       regularReadersCount: 42,
@@ -214,8 +200,6 @@ describe('Profile Utility Tests', () => {
     expect(restricted).not.toBeNull()
     expect(restricted!.regularReadersCount).toBe(0)
     expect(restricted!.shortDescription).toBeNull()
-    expect(restricted!.countryCode).toBeNull()
-    expect(restricted!.cityId).toBeNull()
     expect(restricted!.isBlocked).toBe(true)
     expect(restricted!.isVerified).toBe(true)
   })

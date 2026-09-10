@@ -32,8 +32,6 @@ describe('Profile Feature Route Tests', () => {
     avatarKey: null,
     description: 'Hello world bio',
     shortDescription: 'Coffee & Code',
-    countryCode: 'US',
-    cityId: 'city_nyc',
     contacts: {
       telegram: 'wisal_user',
       youtube: null,
@@ -230,7 +228,7 @@ describe('Profile Feature Route Tests', () => {
     expect((body.profile as any).identityId).toBeUndefined()
   })
 
-  it('POST /profile/onboarding accepts and returns shortDescription, countryCode, and cityId', async () => {
+  it('POST /profile/onboarding accepts and returns shortDescription', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -245,8 +243,6 @@ describe('Profile Feature Route Tests', () => {
         isMale: input.isMale,
         identity: input.identity,
         shortDescription: input.shortDescription,
-        countryCode: input.countryCode,
-        cityId: input.cityId,
       }),
     }))
 
@@ -261,8 +257,6 @@ describe('Profile Feature Route Tests', () => {
         isMale: true,
         identity: 'johndoe2026',
         shortDescription: 'Coffee & Code',
-        countryCode: 'US',
-        cityId: 'city_nyc',
       }),
     })
 
@@ -270,11 +264,9 @@ describe('Profile Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; profile: SafeProfile }
     expect(body.success).toBe(true)
     expect(body.profile.shortDescription).toBe('Coffee & Code')
-    expect(body.profile.countryCode).toBe('US')
-    expect(body.profile.cityId).toBe('city_nyc')
   })
 
-  it('POST /profile/onboarding rejects invalid shortDescription, countryCode, or cityId with 400', async () => {
+  it('POST /profile/onboarding rejects invalid shortDescription with 400', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -297,38 +289,6 @@ describe('Profile Feature Route Tests', () => {
       }),
     })
     expect(res1.status).toBe(400)
-
-    // Invalid countryCode (lowercase)
-    const res2 = await app.request('/profile/onboarding', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer valid_user_token',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        name: 'John Doe',
-        isMale: true,
-        identity: 'johndoe',
-        countryCode: 'us',
-      }),
-    })
-    expect(res2.status).toBe(400)
-
-    // Invalid cityId (> 64 chars)
-    const res3 = await app.request('/profile/onboarding', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer valid_user_token',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        name: 'John Doe',
-        isMale: true,
-        identity: 'johndoe',
-        cityId: 'c'.repeat(65),
-      }),
-    })
-    expect(res3.status).toBe(400)
 
     // Invalid description (empty string)
     const res4 = await app.request('/profile/onboarding', {
@@ -411,7 +371,7 @@ describe('Profile Feature Route Tests', () => {
     expect(resTg3.status).toBe(400)
   })
 
-  it('PATCH /profile/me updates and clears shortDescription, countryCode, and cityId', async () => {
+  it('PATCH /profile/me updates and clears shortDescription', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -423,8 +383,6 @@ describe('Profile Feature Route Tests', () => {
       updateUserProfile: async (_accountId: bigint, input: any) => ({
         ...mockProfile,
         shortDescription: input.shortDescription !== undefined ? input.shortDescription : mockProfile.shortDescription,
-        countryCode: input.countryCode !== undefined ? input.countryCode : mockProfile.countryCode,
-        cityId: input.cityId !== undefined ? input.cityId : mockProfile.cityId,
       }),
     }))
 
@@ -437,15 +395,11 @@ describe('Profile Feature Route Tests', () => {
       },
       body: JSON.stringify({
         shortDescription: 'Solo Dev',
-        countryCode: 'KZ',
-        cityId: 'almaty_01',
       }),
     })
     expect(resUpdate.status).toBe(200)
     const bodyUpdate = (await resUpdate.json()) as { success: boolean; profile: SafeProfile }
     expect(bodyUpdate.profile.shortDescription).toBe('Solo Dev')
-    expect(bodyUpdate.profile.countryCode).toBe('KZ')
-    expect(bodyUpdate.profile.cityId).toBe('almaty_01')
 
     // Update with nulls to clear
     const resClear = await app.request('/profile/me', {
@@ -456,15 +410,11 @@ describe('Profile Feature Route Tests', () => {
       },
       body: JSON.stringify({
         shortDescription: null,
-        countryCode: null,
-        cityId: null,
       }),
     })
     expect(resClear.status).toBe(200)
     const bodyClear = (await resClear.json()) as { success: boolean; profile: SafeProfile }
     expect(bodyClear.profile.shortDescription).toBeNull()
-    expect(bodyClear.profile.countryCode).toBeNull()
-    expect(bodyClear.profile.cityId).toBeNull()
   })
 
   it('PATCH /profile/me returns 409 when new identity is already taken', async () => {
@@ -1484,8 +1434,6 @@ describe('Profile Feature Route Tests', () => {
       identity: 'verified_star',
       shortDescription: 'I am verified',
       regularFollowersCount: 100,
-      countryCode: 'US',
-      cityId: 'nyc',
       isVerified: true,
     }
 
@@ -1551,8 +1499,6 @@ describe('Profile Feature Route Tests', () => {
       identity: 'random_user',
       shortDescription: 'Hello world',
       regularFollowersCount: 5,
-      countryCode: 'CA',
-      cityId: null,
       isVerified: false,
     }
 

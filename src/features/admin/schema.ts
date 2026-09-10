@@ -10,8 +10,6 @@ import {
   nameSchema,
   descriptionSchema,
   shortDescriptionSchema,
-  countryCodeSchema,
-  cityIdSchema,
   contactsSchema,
 } from '../../db/schema/profiles'
 import { identityFormatSchema } from '../../db/schema/identities'
@@ -104,8 +102,6 @@ export const adminUpdateUserProfileSchema = z.object({
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
   shortDescription: shortDescriptionSchema.nullable().optional(),
-  countryCode: countryCodeSchema.nullable().optional(),
-  cityId: cityIdSchema.nullable().optional(),
   contacts: contactsSchema.nullable().optional(),
   isVerified: z.boolean().optional(),
 })

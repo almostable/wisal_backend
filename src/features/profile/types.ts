@@ -120,8 +120,6 @@ export interface ProfileFeedItem {
   identity: string
   shortDescription: string
   regularReadersCount: number
-  countryCode: string
-  cityId: string | null
   isVerified: boolean
 }
 
@@ -140,8 +138,6 @@ export interface ProfileSearchItem {
   identity: string
   shortDescription: string | null
   regularReadersCount: number
-  countryCode: string | null
-  cityId: string | null
   isVerified: boolean
 }
 

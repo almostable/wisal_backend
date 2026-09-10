@@ -31,8 +31,6 @@ describe('Authors and Monotonic Read Feature Tests', () => {
     avatarKey: null,
     description: null,
     shortDescription: null,
-    countryCode: 'US',
-    cityId: null,
     contacts: null,
     identity: 'readeruser',
     regularReadersCount: 0,

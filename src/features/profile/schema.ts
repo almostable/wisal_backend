@@ -4,8 +4,6 @@ import {
   onboardingInputSchema,
   updateProfileInputSchema,
   shortDescriptionSchema,
-  countryCodeSchema,
-  cityIdSchema,
   telegramUsernameSchema,
   contactsSchema,
 } from '../../db/schema/profiles'
@@ -104,8 +102,6 @@ export {
   onboardingInputSchema,
   updateProfileInputSchema,
   shortDescriptionSchema,
-  countryCodeSchema,
-  cityIdSchema,
   telegramUsernameSchema,
   contactsSchema,
 }

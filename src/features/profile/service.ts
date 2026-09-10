@@ -796,8 +796,6 @@ export async function getProfileFeed(
     sql`trim(${profiles.name}) != ''`,
     isNotNull(profiles.isMale),
     isNotNull(profiles.identityId),
-    isNotNull(profiles.countryCode),
-    sql`trim(${profiles.countryCode}) != ''`,
     isNotNull(profiles.shortDescription),
     sql`trim(${profiles.shortDescription}) != ''`,
     notBlockedCondition,
@@ -822,8 +820,6 @@ export async function getProfileFeed(
       identity: identities.identity,
       shortDescription: profiles.shortDescription,
       regularReadersCount: profiles.regularReadersCount,
-      countryCode: profiles.countryCode,
-      cityId: profiles.cityId,
       verifiedAt: profiles.verifiedAt,
     })
     .from(profiles)
@@ -840,8 +836,6 @@ export async function getProfileFeed(
     identity: item.identity,
     shortDescription: item.shortDescription!,
     regularReadersCount: item.regularReadersCount,
-    countryCode: item.countryCode!,
-    cityId: item.cityId,
     isVerified: Boolean(item.verifiedAt),
   }))
 
@@ -922,8 +916,6 @@ export async function searchProfiles(
         identity: identities.identity,
         shortDescription: profiles.shortDescription,
         regularReadersCount: profiles.regularReadersCount,
-        countryCode: profiles.countryCode,
-        cityId: profiles.cityId,
         verifiedAt: profiles.verifiedAt,
       })
       .from(profiles)
@@ -946,8 +938,6 @@ export async function searchProfiles(
     identity: item.identity,
     shortDescription: item.shortDescription,
     regularReadersCount: item.regularReadersCount,
-    countryCode: item.countryCode,
-    cityId: item.cityId,
     isVerified: Boolean(item.verifiedAt),
   }))
 

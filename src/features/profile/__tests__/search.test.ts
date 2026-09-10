@@ -27,8 +27,6 @@ describe('Profile Search Endpoint (GET /profile/search)', () => {
     avatarKey: null,
     description: null,
     shortDescription: 'Bio',
-    countryCode: 'US',
-    cityId: null,
     contacts: null,
     identityId: 400000000000001n,
     regularFollowersCount: 0,
@@ -141,8 +139,6 @@ describe('Profile Search Endpoint (GET /profile/search)', () => {
         identity: 'it',
         shortDescription: 'Developer',
         regularFollowersCount: 50,
-        countryCode: 'US',
-        cityId: 'nyc',
         isVerified: true,
       },
     ]

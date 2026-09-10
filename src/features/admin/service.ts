@@ -636,12 +636,6 @@ export async function updateUserProfileByAdmin(
       if (input.shortDescription !== undefined) {
         updateData.shortDescription = input.shortDescription?.trim() ?? null
       }
-      if (input.countryCode !== undefined) {
-        updateData.countryCode = input.countryCode ?? null
-      }
-      if (input.cityId !== undefined) {
-        updateData.cityId = input.cityId?.trim() ?? null
-      }
       if (input.contacts !== undefined) {
         updateData.contacts = input.contacts ?? null
       }
@@ -673,8 +667,6 @@ export async function updateUserProfileByAdmin(
           avatarKey: input.avatarKey ?? null,
           description: input.description?.trim() ?? null,
           shortDescription: input.shortDescription?.trim() ?? null,
-          countryCode: input.countryCode ?? null,
-          cityId: input.cityId?.trim() ?? null,
           contacts: input.contacts ?? null,
           identityId: newIdentityId,
           verifiedAt: newVerifiedAt,

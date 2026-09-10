@@ -32,8 +32,6 @@ describe('Posts & Comments Media Lifecycle Route Integration Tests', () => {
     avatarKey: null,
     description: 'Bio',
     shortDescription: null,
-    countryCode: null,
-    cityId: null,
     contacts: null,
     identityId: 444444444444444n,
     regularReadersCount: 0,

@@ -56,8 +56,6 @@ Header `Authorization: Bearer <token>`.
       "avatarKey": null,
       "description": "Bio text",
       "shortDescription": null,
-      "countryCode": null,
-      "cityId": null,
       "contacts": {
         "telegram": "johndoe",
         "youtube": null,
@@ -157,8 +155,6 @@ Header `Authorization: Bearer <token>`.
       "avatarKey": null,
       "description": "Bio text",
       "shortDescription": null,
-      "countryCode": null,
-      "cityId": null,
       "contacts": null,
       "identity": "johndoe",
       "regularReadersCount": 0,
@@ -179,8 +175,6 @@ Header `Authorization: Bearer <token>`.
   - `avatarKey` *(string, опционально)* — ключ аватара в хранилище
   - `description` *(string, опционально, мин. 1, макс. 2000 симв.)* — описание/биография
   - `shortDescription` *(string, опционально, мин. 1, макс. 110 симв.)* — краткое описание
-  - `countryCode` *(string, опционально, ровно 2 симв. в верхнем регистре)* — код страны (ISO 3166-1 alpha-2)
-  - `cityId` *(string, опционально, мин. 1, макс. 64 симв.)* — идентификатор города
   - `contacts` *(object, опционально)* — контакты (`telegram` username 4-32 симв., `youtube`, `website`, `email`)
 - **Ответ `200 OK`:**
   ```json
@@ -193,8 +187,6 @@ Header `Authorization: Bearer <token>`.
       "avatarKey": null,
       "description": "Bio text",
       "shortDescription": null,
-      "countryCode": null,
-      "cityId": null,
       "contacts": null,
       "identity": "johndoe",
       "regularReadersCount": 0,
@@ -211,8 +203,6 @@ Header `Authorization: Bearer <token>`.
   - `avatarKey` *(string | null, опционально)*
   - `description` *(string | null, опционально, мин. 1, макс. 2000 симв.)*
   - `shortDescription` *(string | null, опционально, мин. 1, макс. 110 симв.)*
-  - `countryCode` *(string | null, опционально, ровно 2 симв. в верхнем регистре)*
-  - `cityId` *(string | null, опционально, мин. 1, макс. 64 симв.)*
   - `contacts` *(object | null, опционально)*
   - `isMale` *(boolean, опционально, допустимо только если пол ранее не был задан)*
 > **Безопасность:** Поле `verified_at` защищено от изменения пользователем. Внешне отдаётся вычисляемое свойство `isVerified: boolean`.
@@ -227,8 +217,6 @@ Header `Authorization: Bearer <token>`.
       "avatarKey": "avatars/user.png",
       "description": "New bio",
       "shortDescription": "Solo Dev",
-      "countryCode": "KZ",
-      "cityId": "almaty",
       "contacts": {
         "telegram": "updated",
         "youtube": null,
@@ -482,7 +470,7 @@ Header `Authorization: Bearer <token>`.
   - `offset` *(number, опционально, по умолчанию: 0)*
 - **Бизнес-правила отбора профилей:**
   - Профиль завершил онбординг (заполнены `name`, `is_male`, `identity`).
-  - Обязательно заполнены `country_code` и `short_description`.
+  - Обязательно заполнено `short_description`.
   - В режиме `recommended` обязательно наличие `verified_at` (`isVerified = true`).
   - Исключаются пользователи, у которых есть взаимные блокировки со зрителем (`profile_blocks`).
   - Исключается профиль самого зрителя.
@@ -499,8 +487,6 @@ Header `Authorization: Bearer <token>`.
         "identity": "alexsmith",
         "shortDescription": "Tech writer & engineer",
         "regularReadersCount": 42,
-        "countryCode": "US",
-        "cityId": "nyc",
         "isVerified": true
       }
     ],
@@ -521,8 +507,6 @@ Header `Authorization: Bearer <token>`.
         "identity": "janedoe",
         "shortDescription": "Designer & explorer",
         "regularReadersCount": 15,
-        "countryCode": "FR",
-        "cityId": "paris",
         "isVerified": false
       }
     ],
@@ -573,8 +557,6 @@ Header `Authorization: Bearer <token>`.
         "identity": "alexsmith",
         "shortDescription": "Tech writer & engineer",
         "regularReadersCount": 42,
-        "countryCode": "US",
-        "cityId": "nyc",
         "isVerified": true
       }
     ],
@@ -601,8 +583,6 @@ Header `Authorization: Bearer <token>`.
       "avatarKey": null,
       "description": "Bio text",
       "shortDescription": null,
-      "countryCode": null,
-      "cityId": null,
       "contacts": {
         "telegram": "johndoe",
         "youtube": null,
@@ -627,8 +607,6 @@ Header `Authorization: Bearer <token>`.
       "avatarKey": null,
       "description": null,
       "shortDescription": null,
-      "countryCode": null,
-      "cityId": null,
       "contacts": null,
       "identity": "johndoe",
       "regularReadersCount": 0,
@@ -1563,8 +1541,6 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
           "avatarKey": null,
           "description": null,
           "shortDescription": null,
-          "countryCode": null,
-          "cityId": null,
           "contacts": null,
           "identity": null,
           "regularReadersCount": 0,
@@ -1598,8 +1574,6 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         "avatarKey": null,
         "description": "User bio",
         "shortDescription": null,
-        "countryCode": null,
-        "cityId": null,
         "contacts": null,
         "identity": "username",
         "regularReadersCount": 10,
@@ -1620,8 +1594,6 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
   - `avatarKey` *(string | null, опционально)*
   - `description` *(string | null, опционально, мин. 1, макс. 2000 симв.)*
   - `shortDescription` *(string | null, опционально, мин. 1, макс. 110 симв.)*
-  - `countryCode` *(string | null, опционально, ровно 2 симв. в верхнем регистре)*
-  - `cityId` *(string | null, опционально, мин. 1, макс. 64 симв.)*
   - `contacts` *(object | null, опционально)*
   - `isVerified` *(boolean, опционально)* — управление верификацией: при `true` сервер устанавливает текущую дату в `verified_at`, при `false` сбрасывает `verified_at` в `null`.
 - **Ответ `200 OK`:**
@@ -1640,8 +1612,6 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         "avatarKey": null,
         "description": "Updated bio",
         "shortDescription": null,
-        "countryCode": null,
-        "cityId": null,
         "contacts": null,
         "identity": "updated_user",
         "regularReadersCount": 10,
