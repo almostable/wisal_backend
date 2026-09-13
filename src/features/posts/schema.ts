@@ -71,7 +71,18 @@ export const createPostSchema = z
     accessLevel: z.enum(ACCESS_LEVELS).default('public').optional(),
     isPinned: z.boolean().default(false).optional(),
   })
-  .superRefine(validateMediaOrText)
+  .superRefine((data, ctx) => {
+    validateMediaOrText(data, ctx)
+    const effectiveAccessLevel = data.accessLevel ?? 'public'
+    const effectiveGenderScope = data.genderScope ?? 'all'
+    if (effectiveAccessLevel === 'public' && effectiveGenderScope === 'same_gender') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "genderScope must be 'all' when accessLevel is 'public'",
+        path: ['genderScope'],
+      })
+    }
+  })
   .transform(transformMediaOrText)
 
 export const updatePostSchema = z
@@ -84,6 +95,13 @@ export const updatePostSchema = z
     payload: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.accessLevel === 'public' && data.genderScope === 'same_gender') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "genderScope must be 'all' when accessLevel is 'public'",
+        path: ['genderScope'],
+      })
+    }
     if (data.type === 'media' && data.payload !== undefined) {
       const parsedPayload = mediaPayloadSchema.safeParse(data.payload)
       if (!parsedPayload.success) {

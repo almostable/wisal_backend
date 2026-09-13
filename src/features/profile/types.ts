@@ -118,7 +118,7 @@ export interface ProfileFeedItem {
   isMale: boolean
   avatarKey: string | null
   identity: string
-  shortDescription: string
+  description: string
   regularReadersCount: number
   isVerified: boolean
 }
@@ -136,7 +136,7 @@ export interface ProfileSearchItem {
   isMale: boolean
   avatarKey: string | null
   identity: string
-  shortDescription: string | null
+  description: string | null
   regularReadersCount: number
   isVerified: boolean
 }

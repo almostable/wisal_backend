@@ -34,7 +34,6 @@ describe('Comments Anonymization Integration Tests', () => {
     isMale: true,
     avatarKey: null,
     description: null,
-    shortDescription: null,
     contacts: null,
     identityId: 444444444444444n,
     regularReadersCount: 0,

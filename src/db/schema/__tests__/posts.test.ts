@@ -16,7 +16,7 @@ describe('Posts Schema Tests', () => {
       authorGender: true,
       content: 'Hello Wisal community!',
       genderScope: 'same_gender',
-      accessLevel: 'readers',
+      accessLevel: 'registered',
       isPinned: true,
     }
 
@@ -25,7 +25,7 @@ describe('Posts Schema Tests', () => {
     expect(parsed.authorGender).toBe(true)
     expect(parsed.content).toBe('Hello Wisal community!')
     expect(parsed.genderScope).toBe('same_gender')
-    expect(parsed.accessLevel).toBe('readers')
+    expect(parsed.accessLevel).toBe('registered')
     expect(parsed.isPinned).toBe(true)
     expect(parsed.savesCount).toBeUndefined()
     expect(parsed.type).toBe('text')
@@ -113,6 +113,6 @@ describe('Posts Schema Tests', () => {
   it('has expected enum constants defined', () => {
     expect(POST_TYPES).toEqual(['text', 'media'])
     expect(GENDER_SCOPES).toEqual(['all', 'same_gender'])
-    expect(ACCESS_LEVELS).toEqual(['public', 'readers'])
+    expect(ACCESS_LEVELS).toEqual(['public', 'registered'])
   })
 })

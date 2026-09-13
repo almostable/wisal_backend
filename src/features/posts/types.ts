@@ -8,7 +8,8 @@ export interface PostAuthorInfo {
   name: string | null
   identity: string | null
   avatarKey: string | null
-  isMale: boolean | null
+  isMale?: boolean | null
+  isVerified?: boolean
   isReading?: boolean
   isDeleted?: boolean
 }

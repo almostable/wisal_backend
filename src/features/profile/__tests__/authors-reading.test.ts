@@ -30,7 +30,6 @@ describe('Authors and Monotonic Read Feature Tests', () => {
     isMale: true,
     avatarKey: null,
     description: null,
-    shortDescription: null,
     contacts: null,
     identity: 'readeruser',
     regularReadersCount: 0,
@@ -146,7 +145,6 @@ describe('Authors and Monotonic Read Feature Tests', () => {
       expect(body.total).toBe(2)
       expect(body.authors[0].identity).toBe('favauthor')
       expect(body.authors[0].unreadCount).toBe(3)
-      expect(body.authors[0].shortDescription).toBeUndefined()
       expect(body.authors[0].description).toBeUndefined()
       expect(body.authors[0].isMale).toBeUndefined()
       expect(body.authors[0].readAt).toBeUndefined()

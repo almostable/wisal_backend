@@ -257,7 +257,6 @@ export async function deleteAccount(
           isMale: null,
           avatarKey: null,
           description: null,
-          shortDescription: null,
           contacts: null,
           verifiedAt: null,
           regularReadersCount: 0,

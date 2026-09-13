@@ -55,7 +55,6 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
-      "shortDescription": null,
       "contacts": {
         "telegram": "johndoe",
         "youtube": null,
@@ -154,7 +153,6 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
-      "shortDescription": null,
       "contacts": null,
       "identity": "johndoe",
       "regularReadersCount": 0,
@@ -173,8 +171,7 @@ Header `Authorization: Bearer <token>`.
   - `isMale` *(boolean, обязательное)* — пол (после онбординга неизменяем)
   - `identity` *(string, обязательное, мин. 5 симв. для обычных, мин. 3 симв. при наличии verified_at, макс. 32 симв.)* — уникальный юзернейм/хэндл. Должен начинаться с буквы (`[a-z]`), содержать только буквы, цифры и знаки подчёркивания (`^[a-z][a-z0-9_]*$`). Не может начинаться с цифры или состоять только из цифр.
   - `avatarKey` *(string, опционально)* — ключ аватара в хранилище
-  - `description` *(string, опционально, мин. 1, макс. 2000 симв.)* — описание/биография
-  - `shortDescription` *(string, опционально, мин. 1, макс. 110 симв.)* — краткое описание
+  - `description` *(string, опционально, мин. 1, макс. 110 симв.)* — описание/биография
   - `contacts` *(object, опционально)* — контакты (`telegram` username 4-32 симв., `youtube`, `website`, `email`)
 - **Ответ `200 OK`:**
   ```json
@@ -186,7 +183,6 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
-      "shortDescription": null,
       "contacts": null,
       "identity": "johndoe",
       "regularReadersCount": 0,
@@ -201,8 +197,7 @@ Header `Authorization: Bearer <token>`.
   - `name` *(string, опционально, мин. 1, макс. 100 симв.)*
   - `identity` *(string, опционально, мин. 5 симв. для обычных, мин. 3 симв. при наличии verified_at, макс. 32 симв.)* — новый уникальный юзернейм/хэндл (начинается с буквы, не только цифры)
   - `avatarKey` *(string | null, опционально)*
-  - `description` *(string | null, опционально, мин. 1, макс. 2000 симв.)*
-  - `shortDescription` *(string | null, опционально, мин. 1, макс. 110 симв.)*
+  - `description` *(string | null, опционально, мин. 1, макс. 110 симв.)*
   - `contacts` *(object | null, опционально)*
   - `isMale` *(boolean, опционально, допустимо только если пол ранее не был задан)*
 > **Безопасность:** Поле `verified_at` защищено от изменения пользователем. Внешне отдаётся вычисляемое свойство `isVerified: boolean`.
@@ -215,8 +210,7 @@ Header `Authorization: Bearer <token>`.
       "name": "Updated Name",
       "isMale": true,
       "avatarKey": "avatars/user.png",
-      "description": "New bio",
-      "shortDescription": "Solo Dev",
+      "description": "Solo Dev",
       "contacts": {
         "telegram": "updated",
         "youtube": null,
@@ -470,7 +464,7 @@ Header `Authorization: Bearer <token>`.
   - `offset` *(number, опционально, по умолчанию: 0)*
 - **Бизнес-правила отбора профилей:**
   - Профиль завершил онбординг (заполнены `name`, `is_male`, `identity`).
-  - Обязательно заполнено `short_description`.
+  - Обязательно заполнено `description`.
   - В режиме `recommended` обязательно наличие `verified_at` (`isVerified = true`).
   - Исключаются пользователи, у которых есть взаимные блокировки со зрителем (`profile_blocks`).
   - Исключается профиль самого зрителя.
@@ -485,7 +479,7 @@ Header `Authorization: Bearer <token>`.
         "isMale": true,
         "avatarKey": "avatars/2026-09-01/111111111111111.jpg",
         "identity": "alexsmith",
-        "shortDescription": "Tech writer & engineer",
+        "description": "Tech writer & engineer",
         "regularReadersCount": 42,
         "isVerified": true
       }
@@ -505,7 +499,7 @@ Header `Authorization: Bearer <token>`.
         "isMale": false,
         "avatarKey": null,
         "identity": "janedoe",
-        "shortDescription": "Designer & explorer",
+        "description": "Designer & explorer",
         "regularReadersCount": 15,
         "isVerified": false
       }
@@ -528,14 +522,14 @@ Header `Authorization: Bearer <token>`.
   - `limit` *(number, опционально, по умолчанию: 20, макс: 100)*
   - `offset` *(number, опционально, по умолчанию: 0)*
 - **Архитектура и производительность поиска:**
-  - **Единое поисковое поле без мусора:** База данных автоматически формирует скрытую колонку `search_text`, склеивающую в нижнем регистре никнейм, имя и краткое описание пользователя (`lower(coalesce(identity, '') || ' ' || coalesce(name, '') || ' ' || coalesce(short_description, ''))`). Полное длинное описание исключено из поискового индекса для экономии памяти и мгновенного обновления профилей.
+  - **Единое поисковое поле без мусора:** База данных автоматически формирует скрытую колонку `search_text`, склеивающую в нижнем регистре никнейм, имя и описание пользователя (`lower(coalesce(identity, '') || ' ' || coalesce(name, '') || ' ' || coalesce(description, ''))`).
   - **Мгновенный первичный отсев по триграммному GIN-индексу:** Запрос отсекает 99% базы за доли миллисекунды одним индексным условием `search_text LIKE '%query%'`.
 - **Иерархия ранжирования совпадений (5 уровней):**
   1. **Уровень 1 (Высший приоритет):** Точный никнейм целиком (нахождение конкретного человека).
   2. **Уровень 2:** Никнейм начинается с введенных букв (быстрый автокомплит ника).
   3. **Уровень 3:** Имя профиля начинается с запроса или любое отдельное слово в названии начинается с него (например, по запросу «клуб» найдется «IT Клуб»).
   4. **Уровень 4:** Запрос встретился где-то в середине ника или названия.
-  5. **Уровень 5 (Базовый):** Слово найдено только в кратком описании.
+  5. **Уровень 5 (Базовый):** Слово найдено только в описании.
 - **Вторичная сортировка внутри уровня:**
   - Сначала идут верифицированные аккаунты (`isVerified: true`).
   - Затем аккаунты по убыванию числа постоянных читателей (`regularReadersCount DESC`).
@@ -555,7 +549,7 @@ Header `Authorization: Bearer <token>`.
         "isMale": true,
         "avatarKey": "avatars/2026-09-01/111111111111111.jpg",
         "identity": "alexsmith",
-        "shortDescription": "Tech writer & engineer",
+        "description": "Tech writer & engineer",
         "regularReadersCount": 42,
         "isVerified": true
       }
@@ -567,12 +561,30 @@ Header `Authorization: Bearer <token>`.
   ```
 
 ### `GET /profile/:identity`
-- **Доступ:** Авторизованный пользователь
+- **Доступ:** Публичный / Авторизованный пользователь
 - **URL-параметры:**
   - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
-- **Поведение при блокировке:**
+- **Поведение для неавторизованных пользователей (гостей):**
+  - Женские профили (`isMale === false` или `null`) строго скрыты и возвращают `404 Not Found`.
+  - Для мужских профилей (`isMale === true`) возвращаются только базовые публичные поля: `id`, `name`, `identity`, `avatarKey`, `description`, `isVerified`. Поле `isMale`, контакты, счетчики читателей, подписки и посты **строго не возвращаются**.
+- **Поведение для авторизованных пользователей:**
   - Если авторизованный пользователь заблокировал автора (`isBlocked: true`) или заблокирован автором (`isHidden: true`): возвращаются только `id`, `name`, `identity`, `isMale` (аватарка, описание, контакты отсутствуют).
-- **Ответ `200 OK` (обычный):**
+  - В обычном режиме возвращаются все поля профиля, включая `isMale`, `contacts`, `regularReadersCount`, `isVerified`, `isReading`.
+- **Ответ `200 OK` (для неавторизованного гостя на мужской профиль):**
+  ```json
+  {
+    "success": true,
+    "profile": {
+      "id": "222222222222222",
+      "name": "John Doe",
+      "identity": "johndoe",
+      "avatarKey": null,
+      "description": "Bio text",
+      "isVerified": false
+    }
+  }
+  ```
+- **Ответ `200 OK` (для авторизованного пользователя):**
   ```json
   {
     "success": true,
@@ -582,7 +594,6 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
-      "shortDescription": null,
       "contacts": {
         "telegram": "johndoe",
         "youtube": null,
@@ -596,7 +607,7 @@ Header `Authorization: Bearer <token>`.
     }
   }
   ```
-- **Ответ `200 OK` (при блокировке):**
+- **Ответ `200 OK` (при блокировке между авторизованными пользователями):**
   ```json
   {
     "success": true,
@@ -606,7 +617,6 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": null,
-      "shortDescription": null,
       "contacts": null,
       "identity": "johndoe",
       "regularReadersCount": 0,
@@ -665,7 +675,7 @@ Header `Authorization: Bearer <token>`.
 
 ## Публикации и лента (`/posts`)
 
-> **Важно:** Все эндпоинты `/posts` требуют авторизации (`Authorization: Bearer <token>`) и полностью пройденного онбординга (заданный пол `isMale` и уникальный `identity`).
+> **Важно:** Большинство эндпоинтов `/posts` (создание, редактирование, удаление, реакции, комментарии, ленты) требуют обязательной авторизации (`Authorization: Bearer <token>`) и полностью пройденного онбординга. Эндпоинт `GET /posts/:id` доступен публично без авторизации исключительно для постов с `accessLevel: "public"`.
 
 ### `POST /posts`
 - **Доступ:** Авторизованный пользователь с онбордингом
@@ -675,8 +685,10 @@ Header `Authorization: Bearer <token>`.
   - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*:
     - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (от 1 до 10 файлов)
     - Для `type: "text"`: `{}`
-  - `genderScope` *(string, опционально, `"all" | "same_gender"`, по умолчанию: `"all"`)* — охват по полу (`same_gender` — только для своего пола)
-  - `accessLevel` *(string, опционально, `"public" | "readers"`, по умолчанию: `"public"`)* — уровень видимости
+  - `genderScope` *(string, опционально, `"all" | "same_gender"`, по умолчанию: `"all"`)* — охват по полу (`same_gender` — только для своего пола). **Ограничение:** если `accessLevel: "public"`, то `genderScope` может быть **только `"all"`**. Попытка задать `same_gender` при `accessLevel: "public"` отклоняется с ошибкой `400 Bad Request`.
+  - `accessLevel` *(string, опционально, `"public" | "registered"`, по умолчанию: `"registered"`)* — уровень видимости:
+    - `"public"` — виден всем (включая неавторизованных гостей по прямой ссылке `GET /posts/:id`), `genderScope` строго `"all"`.
+    - `"registered"` — виден только авторизованным пользователям с завершенным онбордингом, автор может выбирать `genderScope: "all" | "same_gender"`.
   - `isPinned` *(boolean, опционально, по умолчанию: `false`)* — закрепить пост (снимает закреп с других постов пользователя)
 - **Ответ `201 Created`:**
   ```json
@@ -716,6 +728,7 @@ Header `Authorization: Bearer <token>`.
         "isMale": true
       }
     }
+  }
   ```
 
 ### `PATCH /posts/:id`
@@ -726,9 +739,10 @@ Header `Authorization: Bearer <token>`.
 - **Тело запроса (JSON):**
   - `content` *(string, опционально, мин. 1, макс. 5000 симв.)*
   - `genderScope` *(string, опционально, `"all" | "same_gender"`)*
-  - `accessLevel` *(string, опционально, `"public" | "readers"`)*
+  - `accessLevel` *(string, опционально, `"public" | "registered"`)*
   - `isPinned` *(boolean, опционально)*
   - `payload` *(object, опционально)*
+- **Правило валидации:** Нельзя установить `accessLevel: "public"` вместе с `genderScope: "same_gender"` (вернет `400 Bad Request`).
 - **Ответ `200 OK`:**
   ```json
   {
@@ -740,7 +754,7 @@ Header `Authorization: Bearer <token>`.
       "payload": {},
       "content": "Updated post content",
       "genderScope": "same_gender",
-      "accessLevel": "public",
+      "accessLevel": "registered",
       "isPinned": false,
       "savesCount": 0,
       "likesCount": 0,
@@ -937,10 +951,43 @@ Header `Authorization: Bearer <token>`.
 
 
 ### `GET /posts/:id`
-- **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
+- **Доступ:** Публичный для постов с `accessLevel: "public"`, авторизованный пользователь с онбордингом для `accessLevel: "registered"` (с учетом прав `gender_scope`).
 - **URL-параметры:**
   - `id` *(string, обязательное)* — Snowflake ID поста
-- **Ответ `200 OK`:**
+- **Поведение для неавторизованных пользователей (гостей):**
+  - Доступны только публикации с `accessLevel: "public"`. Попытка открыть пост с `accessLevel: "registered"` или несуществующий/удаленный пост вернет `404 Not Found`.
+  - В блоке `author` возвращаются только: `id`, `name`, `identity`, `avatarKey`, `isVerified`. Поле `isMale`, дата регистрации и прочая чувствительная информация **строго скрыты**.
+  - Поля `isSaved`, `isLiked` возвращаются как `false`, счетчики `savesCount`, `likesCount`, `viewsCount` не передаются.
+- **Ответ `200 OK` (для неавторизованного гостя на публичный пост):**
+  ```json
+  {
+    "success": true,
+    "post": {
+      "id": "999999999999991",
+      "authorId": "111111111111111",
+      "type": "text",
+      "payload": {},
+      "content": "Specific public post content",
+      "genderScope": "all",
+      "accessLevel": "public",
+      "isPinned": false,
+      "commentsCount": 4,
+      "isSaved": false,
+      "isLiked": false,
+      "createdAt": "2026-08-20T00:00:00.000Z",
+      "updatedAt": "2026-08-20T00:00:00.000Z",
+      "editedAt": null,
+      "author": {
+        "id": "111111111111111",
+        "name": "John Doe",
+        "identity": "johndoe",
+        "avatarKey": null,
+        "isVerified": false
+      }
+    }
+  }
+  ```
+- **Ответ `200 OK` (для авторизованного пользователя):**
   ```json
   {
     "success": true,
@@ -968,12 +1015,13 @@ Header `Authorization: Bearer <token>`.
         "identity": "johndoe",
         "avatarKey": null,
         "isMale": true,
+        "isVerified": false,
         "isReading": true
       }
     }
   }
   ```
-  *Примечание:* Поля `savesCount`, `likesCount` и `viewsCount` передаются только если текущий пользователь является автором поста. Для других пользователей эти поля не отображаются.
+  *Примечание:* Поля `savesCount`, `likesCount` и `viewsCount` передаются только если текущий авторизованный пользователь является автором поста. Для других пользователей эти поля не отображаются.
 
 ### `GET /posts/user/:identity`
 - **Доступ:** Авторизованный пользователь с онбордингом (с учетом прав `gender_scope` и `access_level`)
@@ -1540,7 +1588,6 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
           "isMale": true,
           "avatarKey": null,
           "description": null,
-          "shortDescription": null,
           "contacts": null,
           "identity": null,
           "regularReadersCount": 0,
@@ -1573,7 +1620,6 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         "isMale": true,
         "avatarKey": null,
         "description": "User bio",
-        "shortDescription": null,
         "contacts": null,
         "identity": "username",
         "regularReadersCount": 10,
@@ -1592,8 +1638,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
   - `identity` *(string, опционально, мин. 3-32 симв. для верифицированных, мин. 5-32 симв. для не верифицированных)*
   - `isMale` *(boolean, опционально)* — модератор/админ может корректировать пол пользователя
   - `avatarKey` *(string | null, опционально)*
-  - `description` *(string | null, опционально, мин. 1, макс. 2000 симв.)*
-  - `shortDescription` *(string | null, опционально, мин. 1, макс. 110 симв.)*
+  - `description` *(string | null, опционально, мин. 1, макс. 110 симв.)*
   - `contacts` *(object | null, опционально)*
   - `isVerified` *(boolean, опционально)* — управление верификацией: при `true` сервер устанавливает текущую дату в `verified_at`, при `false` сбрасывает `verified_at` в `null`.
 - **Ответ `200 OK`:**
@@ -1611,7 +1656,6 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         "isMale": true,
         "avatarKey": null,
         "description": "Updated bio",
-        "shortDescription": null,
         "contacts": null,
         "identity": "updated_user",
         "regularReadersCount": 10,

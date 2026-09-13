@@ -24,7 +24,7 @@ export interface MediaPayload {
 export const GENDER_SCOPES = ['all', 'same_gender'] as const
 export type GenderScope = (typeof GENDER_SCOPES)[number]
 
-export const ACCESS_LEVELS = ['public', 'readers'] as const
+export const ACCESS_LEVELS = ['public', 'registered'] as const
 export type AccessLevel = (typeof ACCESS_LEVELS)[number]
 
 export const posts = pgTable(

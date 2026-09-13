@@ -32,7 +32,6 @@ describe('Posts Feature Route Tests', () => {
     isMale: true,
     avatarKey: null,
     description: 'Male bio',
-    shortDescription: null,
     contacts: null,
     identityId: 444444444444444n,
     regularReadersCount: 0,
@@ -72,7 +71,6 @@ describe('Posts Feature Route Tests', () => {
     isMale: false,
     avatarKey: null,
     description: 'Female bio',
-    shortDescription: null,
     contacts: null,
     identityId: 888888888888888n,
     regularReadersCount: 0,
@@ -136,7 +134,7 @@ describe('Posts Feature Route Tests', () => {
     },
   }
 
-  it('rejects unauthenticated requests with 401 on /posts routes', async () => {
+  it('rejects unauthenticated requests with 401 on protected /posts routes', async () => {
     const resSaves = await app.request('/posts/saves', { method: 'GET' })
     expect(resSaves.status).toBe(401)
 
@@ -147,8 +145,12 @@ describe('Posts Feature Route Tests', () => {
     })
     expect(resCreate.status).toBe(401)
 
-    const resGet = await app.request('/posts/999999999999991', { method: 'GET' })
-    expect(resGet.status).toBe(401)
+    const resViews = await app.request('/posts/views', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postIds: ['999999999999991'] }),
+    })
+    expect(resViews.status).toBe(401)
 
     const resUser = await app.request('/posts/user/male_user', { method: 'GET' })
     expect(resUser.status).toBe(401)
@@ -234,7 +236,7 @@ describe('Posts Feature Route Tests', () => {
         authorId,
         content: input.content,
         genderScope: input.genderScope ?? 'all',
-        accessLevel: input.accessLevel ?? 'readers',
+        accessLevel: input.accessLevel ?? 'registered',
         isPinned: input.isPinned ?? false,
       }),
     }))
@@ -248,7 +250,7 @@ describe('Posts Feature Route Tests', () => {
       body: JSON.stringify({
         content: 'Hello Wisal world!',
         genderScope: 'same_gender',
-        accessLevel: 'readers',
+        accessLevel: 'registered',
         isPinned: true,
       }),
     })
@@ -258,7 +260,7 @@ describe('Posts Feature Route Tests', () => {
     expect(body.success).toBe(true)
     expect(body.post.content).toBe('Hello Wisal world!')
     expect(body.post.genderScope).toBe('same_gender')
-    expect(body.post.accessLevel).toBe('readers')
+    expect(body.post.accessLevel).toBe('registered')
     expect(body.post.isPinned).toBe(true)
   })
 
@@ -544,7 +546,7 @@ describe('Posts Feature Route Tests', () => {
       },
       body: JSON.stringify({
         content: 'Updated post content',
-        accessLevel: 'readers',
+        accessLevel: 'registered',
       }),
     })
 
@@ -552,7 +554,7 @@ describe('Posts Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; post: PostResponse }
     expect(body.success).toBe(true)
     expect(body.post.content).toBe('Updated post content')
-    expect(body.post.accessLevel).toBe('readers')
+    expect(body.post.accessLevel).toBe('registered')
   })
 
   it('PATCH /posts/:id returns editedAt timestamp when post is edited', async () => {
@@ -730,6 +732,116 @@ describe('Posts Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; post: any }
     expect(body.success).toBe(true)
     expect(body.post.id).toBe('999999999999991')
+  })
+
+  it('GET /posts/:id allows unauthenticated guest access to public post without author isMale', async () => {
+    const guestPublicPost: PostResponse = {
+      ...samplePost,
+      accessLevel: 'public',
+      genderScope: 'all',
+      author: {
+        id: maleAccount.id,
+        name: 'Male User',
+        identity: 'male_user',
+        avatarKey: null,
+        isVerified: false,
+      },
+    }
+
+    mock.module('../service', () => ({
+      getPostById: async (postId: bigint, viewer?: any) => {
+        expect(postId).toBe(999999999999991n)
+        expect(viewer).toBeUndefined()
+        return guestPublicPost
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991', {
+      method: 'GET',
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; post: any }
+    expect(body.success).toBe(true)
+    expect(body.post.id).toBe('999999999999991')
+    expect(body.post.author.name).toBe('Male User')
+    expect(body.post.author.identity).toBe('male_user')
+    expect(body.post.author.isMale).toBeUndefined()
+  })
+
+  it('GET /posts/:id returns 404 for unauthenticated guest when post is registered', async () => {
+    mock.module('../service', () => ({
+      getPostById: async (postId: bigint, viewer?: any) => {
+        expect(postId).toBe(999999999999991n)
+        expect(viewer).toBeUndefined()
+        throw new HTTPException(404, { message: 'Post not found' })
+      },
+    }))
+
+    const res = await app.request('/posts/999999999999991', {
+      method: 'GET',
+    })
+
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe('Post not found')
+  })
+
+  it('POST /posts rejects accessLevel public with genderScope same_gender with 400', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const res = await app.request('/posts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Invalid combination',
+        accessLevel: 'public',
+        genderScope: 'same_gender',
+      }),
+    })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('PATCH /posts/:id rejects accessLevel public with genderScope same_gender with 400', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const res = await app.request('/posts/999999999999991', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        accessLevel: 'public',
+        genderScope: 'same_gender',
+      }),
+    })
+
+    expect(res.status).toBe(400)
   })
 
   it('GET /posts/:id returns 404 when post violates same_gender or followers rules', async () => {

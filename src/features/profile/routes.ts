@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { zValidator } from '@hono/zod-validator'
-import { authMiddleware } from '../../middleware/auth'
+import { authMiddleware, optionalAuthMiddleware } from '../../middleware/auth'
 import { onboardingMiddleware } from '../../middleware/onboarding'
 import { getProfileByAccountId } from '../../lib/profile'
 import {
@@ -39,9 +39,7 @@ import {
 
 export const profileRouter = new Hono()
 
-profileRouter.use('*', authMiddleware)
-
-profileRouter.get('/me', async (c) => {
+profileRouter.get('/me', authMiddleware, async (c) => {
   const account = c.get('account')
   const result = await getMyProfile(account.id)
 
@@ -53,6 +51,7 @@ profileRouter.get('/me', async (c) => {
 
 profileRouter.post(
   '/onboarding',
+  authMiddleware,
   zValidator('json', onboardingInputSchema),
   async (c) => {
     const account = c.get('account')
@@ -68,6 +67,7 @@ profileRouter.post(
 
 profileRouter.patch(
   '/me',
+  authMiddleware,
   zValidator('json', updateProfileInputSchema),
   async (c) => {
     const account = c.get('account')
@@ -83,6 +83,7 @@ profileRouter.patch(
 
 profileRouter.get(
   '/invites',
+  authMiddleware,
   zValidator('query', listMyInvitesQuerySchema),
   async (c) => {
     const account = c.get('account')
@@ -98,6 +99,7 @@ profileRouter.get(
 
 profileRouter.get(
   '/blocks',
+  authMiddleware,
   zValidator('query', listBlocksQuerySchema),
   async (c) => {
     const account = c.get('account')
@@ -117,6 +119,7 @@ profileRouter.get(
 
 profileRouter.get(
   '/readers',
+  authMiddleware,
   zValidator('query', listReadersQuerySchema),
   async (c) => {
     const account = c.get('account')
@@ -136,6 +139,7 @@ profileRouter.get(
 
 profileRouter.get(
   '/authors',
+  authMiddleware,
   zValidator('query', listAuthorsQuerySchema),
   async (c) => {
     const account = c.get('account')
@@ -156,7 +160,7 @@ profileRouter.get(
   }
 )
 
-profileRouter.get('/check/:identity', zValidator('param', identityParamSchema), async (c) => {
+profileRouter.get('/check/:identity', authMiddleware, zValidator('param', identityParamSchema), async (c) => {
   const account = c.get('account')
   const { identity } = c.req.valid('param')
   const result = await checkHandleAvailability(identity, account.id)
@@ -169,6 +173,7 @@ profileRouter.get('/check/:identity', zValidator('param', identityParamSchema), 
 
 profileRouter.post(
   '/:author_id/read',
+  authMiddleware,
   zValidator('param', authorParamSchema),
   async (c) => {
     const account = c.get('account')
@@ -213,6 +218,7 @@ profileRouter.post(
 
 profileRouter.delete(
   '/:author_id/read',
+  authMiddleware,
   zValidator('param', authorParamSchema),
   async (c) => {
     const account = c.get('account')
@@ -232,6 +238,7 @@ profileRouter.delete(
 
 profileRouter.post(
   '/:identity/block',
+  authMiddleware,
   zValidator('param', identityParamSchema),
   async (c) => {
     const account = c.get('account')
@@ -251,6 +258,7 @@ profileRouter.post(
 
 profileRouter.delete(
   '/:identity/block',
+  authMiddleware,
   zValidator('param', identityParamSchema),
   async (c) => {
     const account = c.get('account')
@@ -270,6 +278,7 @@ profileRouter.delete(
 
 profileRouter.get(
   '/:identity/readers',
+  authMiddleware,
   zValidator('param', identityParamSchema),
   zValidator('query', listReadersQuerySchema),
   async (c) => {
@@ -288,6 +297,7 @@ profileRouter.get(
 
 profileRouter.get(
   '/feed',
+  authMiddleware,
   onboardingMiddleware,
   zValidator('query', profileFeedQuerySchema),
   async (c) => {
@@ -304,6 +314,7 @@ profileRouter.get(
 
 profileRouter.get(
   '/search',
+  authMiddleware,
   onboardingMiddleware,
   zValidator('query', profileSearchQuerySchema),
   async (c) => {
@@ -320,11 +331,12 @@ profileRouter.get(
 
 profileRouter.get(
   '/:identity',
+  optionalAuthMiddleware,
   zValidator('param', identityParamSchema),
   async (c) => {
     const account = c.get('account')
     const { identity } = c.req.valid('param')
-    const profile = await getPublicProfile(identity, account.id)
+    const profile = await getPublicProfile(identity, account?.id)
 
     return c.json({
       success: true,

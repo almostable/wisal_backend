@@ -8,13 +8,12 @@ import { attachMediaFiles, reconcileEntityMedia } from '../features/uploads/serv
 export interface SafeProfile {
   id: bigint
   name: string | null
-  isMale: boolean | null
+  isMale?: boolean | null
   avatarKey: string | null
   description: string | null
-  shortDescription: string | null
-  contacts: Contacts | null
+  contacts?: Contacts | null
   identity: string | null
-  regularReadersCount: number
+  regularReadersCount?: number
   readersCount?: number
   isVerified: boolean
   isReading?: boolean
@@ -44,7 +43,6 @@ export function formatProfileResponse(
     isMale: profile.isMale,
     avatarKey: profile.avatarKey,
     description: profile.description,
-    shortDescription: profile.shortDescription ?? null,
     contacts: profile.contacts ?? null,
     identity: identityStr,
     regularReadersCount: profile.regularReadersCount ?? 0,
@@ -79,7 +77,6 @@ export function formatRestrictedProfileResponse(
     isMale: profile.isMale,
     avatarKey: null,
     description: null,
-    shortDescription: null,
     contacts: null,
     identity: identityStr,
     regularReadersCount: 0,
@@ -192,7 +189,6 @@ export async function completeOnboarding(
           isMale: input.isMale,
           avatarKey: input.avatarKey ?? null,
           description: input.description?.trim() ?? null,
-          shortDescription: input.shortDescription?.trim() ?? null,
           contacts: input.contacts ?? null,
           identityId: createdIdentity.id,
         })
@@ -210,7 +206,6 @@ export async function completeOnboarding(
           isMale: input.isMale,
           avatarKey: input.avatarKey ?? null,
           description: input.description?.trim() ?? null,
-          shortDescription: input.shortDescription?.trim() ?? null,
           contacts: input.contacts ?? null,
           identityId: createdIdentity.id,
         })
@@ -329,9 +324,6 @@ export async function updateProfile(
     }
     if (input.description !== undefined) {
       updateData.description = input.description?.trim() ?? null
-    }
-    if (input.shortDescription !== undefined) {
-      updateData.shortDescription = input.shortDescription?.trim() ?? null
     }
     if (input.contacts !== undefined) {
       updateData.contacts = input.contacts ?? null

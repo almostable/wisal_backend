@@ -101,7 +101,7 @@ export async function updateUserProfile(
 
 export async function getPublicProfile(
   identityHandle: string,
-  viewerAccountId: bigint
+  viewerAccountId?: bigint | null
 ): Promise<PublicProfile> {
   const targetProfile = await getProfileByIdentity(identityHandle)
 
@@ -109,10 +109,26 @@ export async function getPublicProfile(
     throw new HTTPException(404, { message: 'Profile not found' })
   }
 
-  const viewerProfile = await getProfileByAccountId(viewerAccountId)
+  const viewerProfile = viewerAccountId ? await getProfileByAccountId(viewerAccountId) : null
+
+  if (!viewerProfile) {
+    if (targetProfile.isMale !== true) {
+      throw new HTTPException(404, { message: 'Profile not found' })
+    }
+
+    return {
+      id: targetProfile.id,
+      name: targetProfile.name,
+      identity: targetProfile.identity,
+      avatarKey: targetProfile.avatarKey,
+      description: targetProfile.description,
+      isVerified: Boolean(targetProfile.verifiedAt),
+    }
+  }
+
   let isReading = false
 
-  if (viewerProfile && viewerProfile.id !== targetProfile.id) {
+  if (viewerProfile.id !== targetProfile.id) {
     const [[blockRecord], [readerRecord]] = await Promise.all([
       db
         .select({
@@ -158,7 +174,7 @@ export async function getPublicProfile(
 
   return formatProfileResponse(targetProfile, {
     isReading,
-    includeReadersCount: viewerProfile?.id === targetProfile.id,
+    includeReadersCount: viewerProfile.id === targetProfile.id,
   })!
 }
 
@@ -796,8 +812,8 @@ export async function getProfileFeed(
     sql`trim(${profiles.name}) != ''`,
     isNotNull(profiles.isMale),
     isNotNull(profiles.identityId),
-    isNotNull(profiles.shortDescription),
-    sql`trim(${profiles.shortDescription}) != ''`,
+    isNotNull(profiles.description),
+    sql`trim(${profiles.description}) != ''`,
     notBlockedCondition,
   ]
 
@@ -818,7 +834,7 @@ export async function getProfileFeed(
       isMale: profiles.isMale,
       avatarKey: profiles.avatarKey,
       identity: identities.identity,
-      shortDescription: profiles.shortDescription,
+      description: profiles.description,
       regularReadersCount: profiles.regularReadersCount,
       verifiedAt: profiles.verifiedAt,
     })
@@ -834,7 +850,7 @@ export async function getProfileFeed(
     isMale: item.isMale!,
     avatarKey: item.avatarKey,
     identity: item.identity,
-    shortDescription: item.shortDescription!,
+    description: item.description!,
     regularReadersCount: item.regularReadersCount,
     isVerified: Boolean(item.verifiedAt),
   }))
@@ -914,7 +930,7 @@ export async function searchProfiles(
         isMale: profiles.isMale,
         avatarKey: profiles.avatarKey,
         identity: identities.identity,
-        shortDescription: profiles.shortDescription,
+        description: profiles.description,
         regularReadersCount: profiles.regularReadersCount,
         verifiedAt: profiles.verifiedAt,
       })
@@ -936,7 +952,7 @@ export async function searchProfiles(
     isMale: item.isMale!,
     avatarKey: item.avatarKey,
     identity: item.identity,
-    shortDescription: item.shortDescription,
+    description: item.description,
     regularReadersCount: item.regularReadersCount,
     isVerified: Boolean(item.verifiedAt),
   }))

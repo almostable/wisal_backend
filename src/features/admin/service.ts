@@ -633,9 +633,6 @@ export async function updateUserProfileByAdmin(
       if (input.description !== undefined) {
         updateData.description = input.description?.trim() ?? null
       }
-      if (input.shortDescription !== undefined) {
-        updateData.shortDescription = input.shortDescription?.trim() ?? null
-      }
       if (input.contacts !== undefined) {
         updateData.contacts = input.contacts ?? null
       }
@@ -666,7 +663,6 @@ export async function updateUserProfileByAdmin(
           isMale: input.isMale ?? null,
           avatarKey: input.avatarKey ?? null,
           description: input.description?.trim() ?? null,
-          shortDescription: input.shortDescription?.trim() ?? null,
           contacts: input.contacts ?? null,
           identityId: newIdentityId,
           verifiedAt: newVerifiedAt,

@@ -32,7 +32,6 @@ describe('Reports Feature Route Tests', () => {
     isMale: true,
     avatarKey: null,
     description: 'Reporter bio',
-    shortDescription: null,
     contacts: null,
     identityId: 444444444444444n,
     regularReadersCount: 0,

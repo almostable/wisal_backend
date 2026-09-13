@@ -61,6 +61,7 @@ const authorSelectFields = {
     name: profiles.name,
     avatarKey: profiles.avatarKey,
     isMale: profiles.isMale,
+    verifiedAt: profiles.verifiedAt,
   },
   authorAccount: { deletedAt: accounts.deletedAt },
   authorIdentity: { identity: identities.identity },
@@ -72,6 +73,7 @@ type AuthorSelectResult = {
     name: string | null
     avatarKey: string | null
     isMale: boolean | null
+    verifiedAt?: Date | null
   } | null
   authorAccount: { deletedAt?: Date | null } | null
   authorIdentity: { identity: string | null } | null
@@ -95,7 +97,11 @@ type ReplyToProfileSelectResult = {
   replyToIdentity: { identity: string | null } | null
 }
 
-function mapAuthor(data: AuthorSelectResult, isReading?: boolean): PostAuthorInfo {
+function mapAuthor(
+  data: AuthorSelectResult,
+  isReading?: boolean,
+  isPublicGuest: boolean = false
+): PostAuthorInfo {
   const isDeleted = Boolean(data.authorAccount?.deletedAt)
   if (isDeleted || !data.authorProfile) {
     return {
@@ -103,8 +109,19 @@ function mapAuthor(data: AuthorSelectResult, isReading?: boolean): PostAuthorInf
       name: null,
       identity: null,
       avatarKey: null,
-      isMale: null,
+      isVerified: false,
+      ...(isPublicGuest ? {} : { isMale: null }),
       isDeleted: true,
+    }
+  }
+
+  if (isPublicGuest) {
+    return {
+      id: data.authorProfile.id,
+      name: data.authorProfile.name ?? null,
+      avatarKey: data.authorProfile.avatarKey ?? null,
+      identity: data.authorIdentity?.identity ?? null,
+      isVerified: Boolean(data.authorProfile.verifiedAt),
     }
   }
 
@@ -114,6 +131,7 @@ function mapAuthor(data: AuthorSelectResult, isReading?: boolean): PostAuthorInf
     avatarKey: data.authorProfile.avatarKey ?? null,
     identity: data.authorIdentity?.identity ?? null,
     isMale: data.authorProfile.isMale ?? null,
+    isVerified: Boolean(data.authorProfile.verifiedAt),
     ...(isReading !== undefined ? { isReading } : {}),
   }
 }
@@ -197,7 +215,7 @@ function formatComment(
 async function checkPostAccess(
   executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0],
   postId: bigint,
-  viewer: { profileId: bigint; isMale: boolean }
+  viewer?: { profileId: bigint; isMale: boolean } | null
 ): Promise<Post> {
   const post = await executor.query.posts.findFirst({
     where: and(eq(posts.id, postId), isNull(posts.deletedAt)),
@@ -205,6 +223,29 @@ async function checkPostAccess(
 
   if (!post) {
     throw new HTTPException(404, { message: 'Post not found' })
+  }
+
+  if (!viewer) {
+    if (post.accessLevel !== 'public') {
+      throw new HTTPException(404, { message: 'Post not found' })
+    }
+
+    const [authorRecord] = await executor
+      .select({
+        deletedAt: accounts.deletedAt,
+        name: profiles.name,
+        identityId: profiles.identityId,
+      })
+      .from(profiles)
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(eq(profiles.id, post.authorId))
+      .limit(1)
+
+    if (!authorRecord || authorRecord.deletedAt || !authorRecord.name || !authorRecord.identityId) {
+      throw new HTTPException(404, { message: 'Post not found' })
+    }
+
+    return post
   }
 
   const isAuthor = viewer.profileId === post.authorId
@@ -233,23 +274,6 @@ async function checkPostAccess(
 
     if (post.genderScope === 'same_gender' && post.authorGender !== viewer.isMale) {
       throw new HTTPException(404, { message: 'Post not found' })
-    }
-
-    if (post.accessLevel === 'readers') {
-      const [readerRecord] = await executor
-        .select({ readerProfileId: readers.readerProfileId })
-        .from(readers)
-        .where(
-          and(
-            eq(readers.readerProfileId, viewer.profileId),
-            eq(readers.authorProfileId, post.authorId)
-          )
-        )
-        .limit(1)
-
-      if (!readerRecord) {
-        throw new HTTPException(404, { message: 'Post not found' })
-      }
     }
   }
 
@@ -280,6 +304,11 @@ export async function createPost(
     const content = input.content ? input.content.trim() : ''
     const postType = input.type ?? 'text'
     const payload = input.payload ?? {}
+    const accessLevel = input.accessLevel ?? 'public'
+    if (accessLevel === 'public' && input.genderScope === 'same_gender') {
+      throw new HTTPException(400, { message: "genderScope must be 'all' when accessLevel is 'public'" })
+    }
+    const genderScope = accessLevel === 'public' ? 'all' : (input.genderScope ?? 'all')
 
     const [created] = await tx
       .insert(posts)
@@ -289,8 +318,8 @@ export async function createPost(
         type: postType,
         payload,
         content,
-        genderScope: input.genderScope ?? 'all',
-        accessLevel: input.accessLevel ?? 'public',
+        genderScope,
+        accessLevel,
         isPinned,
       })
       .returning()
@@ -367,6 +396,17 @@ export async function updatePost(
     const updateData: Partial<typeof posts.$inferInsert> = {
       updatedAt: new Date(),
       editedAt: new Date(),
+    }
+
+    const targetAccessLevel = input.accessLevel !== undefined ? input.accessLevel : existing.accessLevel
+    const targetGenderScope = input.genderScope !== undefined ? input.genderScope : existing.genderScope
+
+    if (targetAccessLevel === 'public' && targetGenderScope === 'same_gender') {
+      if (input.accessLevel === 'public' && input.genderScope === undefined) {
+        updateData.genderScope = 'all'
+      } else {
+        throw new HTTPException(400, { message: "genderScope must be 'all' when accessLevel is 'public'" })
+      }
     }
 
     if (input.content !== undefined) {
@@ -763,9 +803,31 @@ export async function recordAuthorPostRead(
 
 export async function getPostById(
   postId: bigint,
-  viewer: { profileId: bigint; isMale: boolean }
+  viewer?: { profileId: bigint; isMale: boolean } | null
 ): Promise<PostResponse> {
   const post = await checkPostAccess(db, postId, viewer)
+
+  if (!viewer) {
+    const [result] = await db
+      .select({
+        post: posts,
+        ...authorSelectFields,
+      })
+      .from(posts)
+      .innerJoin(profiles, eq(posts.authorId, profiles.id))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(eq(posts.id, postId))
+      .limit(1)
+
+    return formatPost(
+      result.post,
+      mapAuthor(result, undefined, true),
+      undefined,
+      false,
+      undefined
+    )
+  }
 
   if (viewer.profileId !== post.authorId) {
     await recordAuthorPostRead(viewer.profileId, post.authorId)
@@ -809,7 +871,7 @@ export async function getPostById(
 
   return formatPost(
     result.post,
-    mapAuthor(result, Boolean(result.isReadingAuthor)),
+    mapAuthor(result, Boolean(result.isReadingAuthor), false),
     Boolean(result.isSaved),
     viewer.profileId === result.post.authorId,
     Boolean(result.isLiked)
@@ -859,21 +921,6 @@ export async function getUserPosts(
     }
   }
 
-  let isReading = false
-  if (!isAuthor) {
-    const [reader] = await db
-      .select({ readerProfileId: readers.readerProfileId })
-      .from(readers)
-      .where(
-        and(
-          eq(readers.readerProfileId, viewer.profileId),
-          eq(readers.authorProfileId, targetProfile.id)
-        )
-      )
-      .limit(1)
-    isReading = Boolean(reader)
-  }
-
   const isSameGender = viewer.isMale === targetProfile.isMale
 
   const conditions: SQL[] = [
@@ -884,9 +931,6 @@ export async function getUserPosts(
   if (!isAuthor) {
     if (!isSameGender) {
       conditions.push(eq(posts.genderScope, 'all'))
-    }
-    if (!isReading) {
-      conditions.push(eq(posts.accessLevel, 'public'))
     }
   }
 
@@ -959,15 +1003,7 @@ export async function getSavedPosts(
     eq(postSaves.profileId, viewer.profileId),
     isNull(posts.deletedAt),
     notBlockedCondition,
-    sql`(${posts.authorId} = ${viewer.profileId} OR (
-      (${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))
-      AND
-      (${posts.accessLevel} = 'public' OR EXISTS (
-        SELECT 1 FROM ${readers}
-        WHERE ${readers.readerProfileId} = ${viewer.profileId}
-          AND ${readers.authorProfileId} = ${posts.authorId}
-      ))
-    ))`
+    sql`(${posts.authorId} = ${viewer.profileId} OR (${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale})))`
   )!
 
   const [items, totalResult] = await Promise.all([
@@ -1539,11 +1575,7 @@ export async function recordPostViews(
               WHERE (${profileBlocks.blockerProfileId} = ${viewer.profileId} AND ${profileBlocks.blockedProfileId} = ${posts.authorId})
                  OR (${profileBlocks.blockerProfileId} = ${posts.authorId} AND ${profileBlocks.blockedProfileId} = ${viewer.profileId})
             )`,
-            sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`,
-            sql`(${posts.accessLevel} = 'public' OR EXISTS (
-              SELECT 1 FROM ${readers}
-              WHERE ${readers.readerProfileId} = ${viewer.profileId} AND ${readers.authorProfileId} = ${posts.authorId}
-            ))`
+            sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`
           )
         )
       )

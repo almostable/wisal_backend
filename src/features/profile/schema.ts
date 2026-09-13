@@ -3,7 +3,7 @@ import { paginationQuerySchema, createPaginationSchema } from '../../db/schema/c
 import {
   onboardingInputSchema,
   updateProfileInputSchema,
-  shortDescriptionSchema,
+  descriptionSchema,
   telegramUsernameSchema,
   contactsSchema,
 } from '../../db/schema/profiles'
@@ -101,7 +101,7 @@ export type ProfileSearchQuery = z.infer<typeof profileSearchQuerySchema>
 export {
   onboardingInputSchema,
   updateProfileInputSchema,
-  shortDescriptionSchema,
+  descriptionSchema,
   telegramUsernameSchema,
   contactsSchema,
 }

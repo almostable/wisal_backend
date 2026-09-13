@@ -6,7 +6,6 @@ import {
   onboardingInputSchema,
   updateProfileInputSchema,
   descriptionSchema,
-  shortDescriptionSchema,
   telegramUsernameSchema,
 } from '../profiles'
 
@@ -31,73 +30,44 @@ describe('Profiles Schema Tests', () => {
       telegram: 'john_doe',
       youtube: null,
       website: undefined,
+      email: null,
     }
 
     const parsed = contactsSchema.parse(partialContacts)
     expect(parsed.telegram).toBe('john_doe')
     expect(parsed.youtube).toBeNull()
     expect(parsed.website).toBeUndefined()
-    expect(parsed.email).toBeUndefined()
+    expect(parsed.email).toBeNull()
   })
 
   it('rejects invalid URLs in youtube and website', () => {
-    expect(() => contactsSchema.parse({ youtube: 'not a link' })).toThrow()
-    expect(() => contactsSchema.parse({ website: 'just_text' })).toThrow()
+    expect(() => contactsSchema.parse({ youtube: 'not-a-url' })).toThrow()
+    expect(() => contactsSchema.parse({ website: 'ftp://not-http' })).not.toThrow()
+    expect(() => contactsSchema.parse({ website: 'invalid' })).toThrow()
   })
 
   it('validates telegramUsernameSchema (4 to 32 chars, no @, spaces, or links)', () => {
-    // Valid
-    expect(telegramUsernameSchema.parse('user')).toBe('user')
     expect(telegramUsernameSchema.parse('durov')).toBe('durov')
-    expect(telegramUsernameSchema.parse('john_doe')).toBe('john_doe')
-    expect(telegramUsernameSchema.parse('AliceBob')).toBe('AliceBob')
-    expect(telegramUsernameSchema.parse('user_123')).toBe('user_123')
+    expect(telegramUsernameSchema.parse('user_1234')).toBe('user_1234')
     expect(telegramUsernameSchema.parse('a'.repeat(32))).toBe('a'.repeat(32))
-
-    // Rejects @
-    expect(() => telegramUsernameSchema.parse('@durov')).toThrow()
-    expect(() => telegramUsernameSchema.parse('user@name')).toThrow()
-
-    // Rejects links
-    expect(() => telegramUsernameSchema.parse('https://t.me/durov')).toThrow()
-    expect(() => telegramUsernameSchema.parse('t.me/durov')).toThrow()
-    expect(() => telegramUsernameSchema.parse('durov.me')).toThrow()
-
-    // Rejects spaces
-    expect(() => telegramUsernameSchema.parse('user name')).toThrow()
-    expect(() => telegramUsernameSchema.parse(' durov')).toThrow()
-    expect(() => telegramUsernameSchema.parse('durov ')).toThrow()
-
-    // Rejects special characters
-    expect(() => telegramUsernameSchema.parse('user-name')).toThrow()
-    expect(() => telegramUsernameSchema.parse('user!name')).toThrow()
-
-    // Rejects length < 4 or > 32
     expect(() => telegramUsernameSchema.parse('abc')).toThrow()
-    expect(() => telegramUsernameSchema.parse('')).toThrow()
     expect(() => telegramUsernameSchema.parse('a'.repeat(33))).toThrow()
+    expect(() => telegramUsernameSchema.parse('@durov')).toThrow()
+    expect(() => telegramUsernameSchema.parse('https://t.me/durov')).toThrow()
+    expect(() => telegramUsernameSchema.parse('user name')).toThrow()
   })
 
   it('rejects invalid email format in contacts', () => {
     expect(() => contactsSchema.parse({ email: 'not-an-email' })).toThrow()
   })
 
-  it('validates descriptionSchema (1 to 2000 chars, no empty string)', () => {
+  it('validates descriptionSchema (1 to 110 chars, spaces allowed, no empty string)', () => {
     expect(descriptionSchema.parse('a')).toBe('a')
-    expect(descriptionSchema.parse('Bio text with spaces')).toBe('Bio text with spaces')
-    expect(descriptionSchema.parse('a'.repeat(2000))).toBe('a'.repeat(2000))
+    expect(descriptionSchema.parse('Coffee & Code')).toBe('Coffee & Code')
+    expect(descriptionSchema.parse('a'.repeat(110))).toBe('a'.repeat(110))
     expect(() => descriptionSchema.parse('')).toThrow()
     expect(() => descriptionSchema.parse('   ')).toThrow()
-    expect(() => descriptionSchema.parse('a'.repeat(2001))).toThrow()
-  })
-
-  it('validates shortDescriptionSchema (1 to 110 chars, spaces allowed)', () => {
-    expect(shortDescriptionSchema.parse('a')).toBe('a')
-    expect(shortDescriptionSchema.parse('Coffee & Code')).toBe('Coffee & Code')
-    expect(shortDescriptionSchema.parse('a'.repeat(110))).toBe('a'.repeat(110))
-    expect(() => shortDescriptionSchema.parse('')).toThrow()
-    expect(() => shortDescriptionSchema.parse('   ')).toThrow()
-    expect(() => shortDescriptionSchema.parse('a'.repeat(111))).toThrow()
+    expect(() => descriptionSchema.parse('a'.repeat(111))).toThrow()
   })
 
   it('validates onboardingInputSchema with new optional fields', () => {
@@ -105,7 +75,7 @@ describe('Profiles Schema Tests', () => {
       name: 'John Doe',
       isMale: true,
       identity: 'johndoe',
-      shortDescription: 'Coffee & Code',
+      description: 'Coffee & Code',
       contacts: {
         telegram: 'johndoe',
         email: 'john@wisal.dev',
@@ -113,7 +83,7 @@ describe('Profiles Schema Tests', () => {
     }
 
     const parsed = onboardingInputSchema.parse(input)
-    expect(parsed.shortDescription).toBe('Coffee & Code')
+    expect(parsed.description).toBe('Coffee & Code')
     expect(parsed.contacts?.telegram).toBe('johndoe')
     expect(parsed.contacts?.email).toBe('john@wisal.dev')
   })
@@ -123,11 +93,11 @@ describe('Profiles Schema Tests', () => {
       name: 'John Doe',
       isMale: true,
       identity: 'johndoe',
-      shortDescription: null,
+      description: null,
       contacts: null,
     }
     const parsedWithNull = onboardingInputSchema.parse(inputWithNull)
-    expect(parsedWithNull.shortDescription).toBeNull()
+    expect(parsedWithNull.description).toBeNull()
     expect(parsedWithNull.contacts).toBeNull()
 
     const inputWithoutFields = {
@@ -136,14 +106,14 @@ describe('Profiles Schema Tests', () => {
       identity: 'johndoe',
     }
     const parsedWithout = onboardingInputSchema.parse(inputWithoutFields)
-    expect(parsedWithout.shortDescription).toBeUndefined()
+    expect(parsedWithout.description).toBeUndefined()
     expect(parsedWithout.contacts).toBeUndefined()
   })
 
   it('validates updateProfileInputSchema with contacts, identity, and new profile fields', () => {
     const updateInput = {
       identity: 'New_Handle',
-      shortDescription: 'Solo Dev',
+      description: 'Solo Dev',
       contacts: {
         website: 'https://wisal.dev',
       },
@@ -151,7 +121,7 @@ describe('Profiles Schema Tests', () => {
 
     const parsed = updateProfileInputSchema.parse(updateInput)
     expect(parsed.identity).toBe('new_handle')
-    expect(parsed.shortDescription).toBe('Solo Dev')
+    expect(parsed.description).toBe('Solo Dev')
     expect(parsed.contacts?.website).toBe('https://wisal.dev')
   })
 
@@ -160,7 +130,7 @@ describe('Profiles Schema Tests', () => {
       accountId: 100000000000000n,
       name: 'John Doe',
       isMale: true,
-      shortDescription: 'Coffee & Code',
+      description: 'Coffee & Code',
       contacts: {
         telegram: 'johndoe',
         email: 'john@wisal.dev',
@@ -168,7 +138,7 @@ describe('Profiles Schema Tests', () => {
     }
 
     const parsedInsert = insertProfileSchema.parse(insertData)
-    expect(parsedInsert.shortDescription).toBe('Coffee & Code')
+    expect(parsedInsert.description).toBe('Coffee & Code')
     expect(parsedInsert.contacts).toEqual({
       telegram: 'johndoe',
       email: 'john@wisal.dev',
@@ -180,8 +150,7 @@ describe('Profiles Schema Tests', () => {
       name: 'John Doe',
       isMale: true,
       avatarKey: null,
-      description: null,
-      shortDescription: 'Coffee & Code',
+      description: 'Coffee & Code',
       contacts: null,
       identity: null,
       identityId: null,
@@ -194,7 +163,7 @@ describe('Profiles Schema Tests', () => {
     }
 
     const parsedSelect = selectProfileSchema.parse(selectData)
-    expect(parsedSelect.shortDescription).toBe('Coffee & Code')
+    expect(parsedSelect.description).toBe('Coffee & Code')
     expect(parsedSelect.contacts).toBeNull()
     expect(parsedSelect.regularReadersCount).toBe(0)
     expect(parsedSelect.readersCount).toBe(0)

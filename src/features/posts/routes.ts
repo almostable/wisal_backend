@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
-import { authMiddleware } from '../../middleware/auth'
+import { authMiddleware, optionalAuthMiddleware } from '../../middleware/auth'
 import { onboardingMiddleware } from '../../middleware/onboarding'
 import {
   postIdParamSchema,
@@ -37,9 +37,9 @@ import {
 
 export const postsRouter = new Hono()
 
-postsRouter.use('*', authMiddleware, onboardingMiddleware)
+const auth = [authMiddleware, onboardingMiddleware] as const
 
-postsRouter.post('/', zValidator('json', createPostSchema), async (c) => {
+postsRouter.post('/', ...auth, zValidator('json', createPostSchema), async (c) => {
   const profile = c.get('profile')
   const data = c.req.valid('json')
 
@@ -54,7 +54,7 @@ postsRouter.post('/', zValidator('json', createPostSchema), async (c) => {
   )
 })
 
-postsRouter.post('/views', zValidator('json', recordViewsSchema), async (c) => {
+postsRouter.post('/views', ...auth, zValidator('json', recordViewsSchema), async (c) => {
   const profile = c.get('profile')
   const { postIds } = c.req.valid('json')
   const result = await recordPostViews(
@@ -67,6 +67,7 @@ postsRouter.post('/views', zValidator('json', recordViewsSchema), async (c) => {
 
 postsRouter.get(
   '/user/:identity',
+  ...auth,
   zValidator('param', userPostsParamSchema),
   zValidator('query', userPostsQuerySchema),
   async (c) => {
@@ -87,7 +88,7 @@ postsRouter.get(
   }
 )
 
-postsRouter.get('/saves', zValidator('query', savedPostsQuerySchema), async (c) => {
+postsRouter.get('/saves', ...auth, zValidator('query', savedPostsQuerySchema), async (c) => {
   const profile = c.get('profile')
   const query = c.req.valid('query')
 
@@ -104,6 +105,7 @@ postsRouter.get('/saves', zValidator('query', savedPostsQuerySchema), async (c) 
 
 postsRouter.patch(
   '/comments/:id',
+  ...auth,
   zValidator('param', commentIdParamSchema),
   zValidator('json', updateCommentSchema),
   async (c) => {
@@ -122,6 +124,7 @@ postsRouter.patch(
 
 postsRouter.delete(
   '/comments/:id',
+  ...auth,
   zValidator('param', commentIdParamSchema),
   async (c) => {
     const profile = c.get('profile')
@@ -135,6 +138,7 @@ postsRouter.delete(
 
 postsRouter.get(
   '/:id/comments',
+  ...auth,
   zValidator('param', postIdParamSchema),
   zValidator('query', listCommentsQuerySchema),
   async (c) => {
@@ -157,6 +161,7 @@ postsRouter.get(
 
 postsRouter.post(
   '/:id/comments',
+  ...auth,
   zValidator('param', postIdParamSchema),
   zValidator('json', createCommentSchema),
   async (c) => {
@@ -186,14 +191,14 @@ postsRouter.post(
   }
 )
 
-postsRouter.get('/:id', zValidator('param', postIdParamSchema), async (c) => {
+postsRouter.get('/:id', optionalAuthMiddleware, zValidator('param', postIdParamSchema), async (c) => {
   const profile = c.get('profile')
   const { id } = c.req.valid('param')
 
-  const post = await getPostById(id, {
-    profileId: profile.id,
-    isMale: profile.isMale!,
-  })
+  const post = await getPostById(
+    id,
+    profile ? { profileId: profile.id, isMale: profile.isMale! } : undefined
+  )
 
   return c.json({
     success: true,
@@ -203,6 +208,7 @@ postsRouter.get('/:id', zValidator('param', postIdParamSchema), async (c) => {
 
 postsRouter.patch(
   '/:id/pin',
+  ...auth,
   zValidator('param', postIdParamSchema),
   zValidator('json', pinPostSchema),
   async (c) => {
@@ -221,6 +227,7 @@ postsRouter.patch(
 
 postsRouter.patch(
   '/:id',
+  ...auth,
   zValidator('param', postIdParamSchema),
   zValidator('json', updatePostSchema),
   async (c) => {
@@ -237,7 +244,7 @@ postsRouter.patch(
   }
 )
 
-postsRouter.post('/:id/save', zValidator('param', postIdParamSchema), async (c) => {
+postsRouter.post('/:id/save', ...auth, zValidator('param', postIdParamSchema), async (c) => {
   const profile = c.get('profile')
   const { id } = c.req.valid('param')
 
@@ -252,7 +259,7 @@ postsRouter.post('/:id/save', zValidator('param', postIdParamSchema), async (c) 
   })
 })
 
-postsRouter.post('/:id/unsave', zValidator('param', postIdParamSchema), async (c) => {
+postsRouter.post('/:id/unsave', ...auth, zValidator('param', postIdParamSchema), async (c) => {
   const profile = c.get('profile')
   const { id } = c.req.valid('param')
 
@@ -267,7 +274,7 @@ postsRouter.post('/:id/unsave', zValidator('param', postIdParamSchema), async (c
   })
 })
 
-postsRouter.post('/:id/like', zValidator('param', postIdParamSchema), async (c) => {
+postsRouter.post('/:id/like', ...auth, zValidator('param', postIdParamSchema), async (c) => {
   const profile = c.get('profile')
   const { id } = c.req.valid('param')
 
@@ -282,7 +289,7 @@ postsRouter.post('/:id/like', zValidator('param', postIdParamSchema), async (c) 
   })
 })
 
-postsRouter.post('/:id/unlike', zValidator('param', postIdParamSchema), async (c) => {
+postsRouter.post('/:id/unlike', ...auth, zValidator('param', postIdParamSchema), async (c) => {
   const profile = c.get('profile')
   const { id } = c.req.valid('param')
 
@@ -297,7 +304,7 @@ postsRouter.post('/:id/unlike', zValidator('param', postIdParamSchema), async (c
   })
 })
 
-postsRouter.delete('/:id', zValidator('param', postIdParamSchema), async (c) => {
+postsRouter.delete('/:id', ...auth, zValidator('param', postIdParamSchema), async (c) => {
   const profile = c.get('profile')
   const { id } = c.req.valid('param')
 

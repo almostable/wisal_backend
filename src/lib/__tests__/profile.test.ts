@@ -11,7 +11,6 @@ describe('Profile Utility Tests', () => {
       isMale: false,
       avatarKey: null,
       description: null,
-      shortDescription: null,
       contacts: null,
       identityId: 100n,
       regularReadersCount: 0,
@@ -43,7 +42,6 @@ describe('Profile Utility Tests', () => {
       isMale: true,
       avatarKey: null,
       description: null,
-      shortDescription: null,
       contacts: null,
       identityId: 100n,
       regularReadersCount: 0,
@@ -70,7 +68,6 @@ describe('Profile Utility Tests', () => {
       isMale: null,
       avatarKey: null,
       description: null,
-      shortDescription: null,
       contacts: null,
       identityId: 100n,
       regularReadersCount: 0,
@@ -97,7 +94,6 @@ describe('Profile Utility Tests', () => {
       isMale: true,
       avatarKey: null,
       description: null,
-      shortDescription: null,
       contacts: null,
       identityId: 100n,
       regularReadersCount: 0,
@@ -133,7 +129,6 @@ describe('Profile Utility Tests', () => {
       isMale: true,
       avatarKey: 'avatar.png',
       description: 'bio',
-      shortDescription: 'Hi all',
       contacts: null,
       identityId: 100n,
       regularReadersCount: 42,
@@ -155,7 +150,7 @@ describe('Profile Utility Tests', () => {
     expect((formatted as any).identityId).toBeUndefined()
     expect((formatted as any).accountId).toBeUndefined()
     expect(formatted!.identity).toBe('alice')
-    expect(formatted!.shortDescription).toBe('Hi all')
+    expect(formatted!.description).toBe('bio')
     expect(formatted!.regularReadersCount).toBe(42)
     expect(formatted!.readersCount).toBeUndefined()
     expect(formatted!.isVerified).toBe(false)
@@ -180,7 +175,6 @@ describe('Profile Utility Tests', () => {
       isMale: true,
       avatarKey: 'avatar.png',
       description: 'bio',
-      shortDescription: 'Hi all',
       contacts: null,
       identityId: 100n,
       regularReadersCount: 42,
@@ -199,7 +193,7 @@ describe('Profile Utility Tests', () => {
     const restricted = formatRestrictedProfileResponse(fullProfile, { isBlocked: true })
     expect(restricted).not.toBeNull()
     expect(restricted!.regularReadersCount).toBe(0)
-    expect(restricted!.shortDescription).toBeNull()
+    expect(restricted!.description).toBeNull()
     expect(restricted!.isBlocked).toBe(true)
     expect(restricted!.isVerified).toBe(true)
   })

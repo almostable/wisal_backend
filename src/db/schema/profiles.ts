@@ -51,7 +51,6 @@ export const profiles = pgTable(
     isMale: boolean('is_male'),
     avatarKey: text('avatar_key'),
     description: text('description'),
-    shortDescription: text('short_description'),
     contacts: jsonb('contacts').$type<Contacts>(),
     identityId: snowflakeId('identity_id')
       .unique()
@@ -60,7 +59,7 @@ export const profiles = pgTable(
     readersCount: integer('readers_count').notNull().default(0),
     verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
     searchText: text('search_text').generatedAlwaysAs(
-      sql`lower(coalesce(identity, '') || ' ' || coalesce(name, '') || ' ' || coalesce(short_description, ''))`
+      sql`lower(coalesce(identity, '') || ' ' || coalesce(name, '') || ' ' || coalesce(description, ''))`
     ),
     ...timestamps,
   },
@@ -100,14 +99,8 @@ export const nameSchema = z
 export const descriptionSchema = z
   .string()
   .trim()
-  .min(1, 'Description cannot be empty')
-  .max(2000, 'Description must be at most 2000 characters')
-
-export const shortDescriptionSchema = z
-  .string()
-  .trim()
-  .min(1, 'Short description must be at least 1 character')
-  .max(110, 'Short description must be at most 110 characters')
+  .min(1, 'Description must be at least 1 character')
+  .max(110, 'Description must be at most 110 characters')
 
 export const onboardingInputSchema = z.object({
   name: nameSchema,
@@ -117,7 +110,6 @@ export const onboardingInputSchema = z.object({
   identity: standardIdentityFormatSchema,
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
-  shortDescription: shortDescriptionSchema.nullable().optional(),
   contacts: contactsSchema.nullable().optional(),
 })
 
@@ -126,7 +118,6 @@ export const updateProfileInputSchema = z.object({
   identity: identityFormatSchema.optional(),
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
-  shortDescription: shortDescriptionSchema.nullable().optional(),
   isMale: z.boolean().optional(),
   contacts: contactsSchema.nullable().optional(),
 })

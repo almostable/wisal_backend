@@ -31,7 +31,6 @@ describe('Profile Feature Route Tests', () => {
     isMale: true,
     avatarKey: null,
     description: 'Hello world bio',
-    shortDescription: 'Coffee & Code',
     contacts: {
       telegram: 'wisal_user',
       youtube: null,
@@ -228,7 +227,7 @@ describe('Profile Feature Route Tests', () => {
     expect((body.profile as any).identityId).toBeUndefined()
   })
 
-  it('POST /profile/onboarding accepts and returns shortDescription', async () => {
+  it('POST /profile/onboarding accepts and returns description', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -242,7 +241,7 @@ describe('Profile Feature Route Tests', () => {
         name: input.name,
         isMale: input.isMale,
         identity: input.identity,
-        shortDescription: input.shortDescription,
+        description: input.description,
       }),
     }))
 
@@ -256,17 +255,17 @@ describe('Profile Feature Route Tests', () => {
         name: 'Johnathan Doe',
         isMale: true,
         identity: 'johndoe2026',
-        shortDescription: 'Coffee & Code',
+        description: 'Coffee & Code',
       }),
     })
 
     expect(res.status).toBe(200)
     const body = (await res.json()) as { success: boolean; profile: SafeProfile }
     expect(body.success).toBe(true)
-    expect(body.profile.shortDescription).toBe('Coffee & Code')
+    expect(body.profile.description).toBe('Coffee & Code')
   })
 
-  it('POST /profile/onboarding rejects invalid shortDescription with 400', async () => {
+  it('POST /profile/onboarding rejects invalid description with 400', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -274,7 +273,7 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
-    // Invalid shortDescription (> 110 chars)
+    // Invalid description (> 110 chars)
     const res1 = await app.request('/profile/onboarding', {
       method: 'POST',
       headers: {
@@ -285,7 +284,7 @@ describe('Profile Feature Route Tests', () => {
         name: 'John Doe',
         isMale: true,
         identity: 'johndoe',
-        shortDescription: 'a'.repeat(111),
+        description: 'a'.repeat(111),
       }),
     })
     expect(res1.status).toBe(400)
@@ -305,22 +304,6 @@ describe('Profile Feature Route Tests', () => {
       }),
     })
     expect(res4.status).toBe(400)
-
-    // Invalid description (> 2000 chars)
-    const res5 = await app.request('/profile/onboarding', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer valid_user_token',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        name: 'John Doe',
-        isMale: true,
-        identity: 'johndoe',
-        description: 'a'.repeat(2001),
-      }),
-    })
-    expect(res5.status).toBe(400)
 
     // Invalid telegram username (starts with @)
     const resTg1 = await app.request('/profile/onboarding', {
@@ -371,7 +354,7 @@ describe('Profile Feature Route Tests', () => {
     expect(resTg3.status).toBe(400)
   })
 
-  it('PATCH /profile/me updates and clears shortDescription', async () => {
+  it('PATCH /profile/me updates and clears description', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -382,7 +365,7 @@ describe('Profile Feature Route Tests', () => {
     mock.module('../service', () => ({
       updateUserProfile: async (_accountId: bigint, input: any) => ({
         ...mockProfile,
-        shortDescription: input.shortDescription !== undefined ? input.shortDescription : mockProfile.shortDescription,
+        description: input.description !== undefined ? input.description : mockProfile.description,
       }),
     }))
 
@@ -394,12 +377,12 @@ describe('Profile Feature Route Tests', () => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        shortDescription: 'Solo Dev',
+        description: 'Solo Dev',
       }),
     })
     expect(resUpdate.status).toBe(200)
     const bodyUpdate = (await resUpdate.json()) as { success: boolean; profile: SafeProfile }
-    expect(bodyUpdate.profile.shortDescription).toBe('Solo Dev')
+    expect(bodyUpdate.profile.description).toBe('Solo Dev')
 
     // Update with nulls to clear
     const resClear = await app.request('/profile/me', {
@@ -409,12 +392,12 @@ describe('Profile Feature Route Tests', () => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        shortDescription: null,
+        description: null,
       }),
     })
     expect(resClear.status).toBe(200)
     const bodyClear = (await resClear.json()) as { success: boolean; profile: SafeProfile }
-    expect(bodyClear.profile.shortDescription).toBeNull()
+    expect(bodyClear.profile.description).toBeNull()
   })
 
   it('PATCH /profile/me returns 409 when new identity is already taken', async () => {
@@ -564,11 +547,41 @@ describe('Profile Feature Route Tests', () => {
     expect(bodyNotFollowed.profile.isReading).toBe(false)
   })
 
-  it('GET /profile/:identity returns 401 when token is missing', async () => {
+  it('GET /profile/:identity allows guest access for male profiles without isMale', async () => {
+    mock.module('../service', () => ({
+      getPublicProfile: async (identity: string, viewerAccountId?: bigint) => {
+        expect(viewerAccountId).toBeUndefined()
+        return {
+          id: mockProfile.id,
+          name: mockProfile.name,
+          identity,
+          avatarKey: null,
+          description: 'User bio',
+          isVerified: false,
+        } as any
+      },
+    }))
+
     const res = await app.request('/profile/wisaluser', { method: 'GET' })
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; profile: any }
+    expect(body.success).toBe(true)
+    expect(body.profile.name).toBe('Wisal User')
+    expect(body.profile.isMale).toBeUndefined()
+  })
+
+  it('GET /profile/:identity returns 404 for guest accessing female profile', async () => {
+    mock.module('../service', () => ({
+      getPublicProfile: async (_identity: string, viewerAccountId?: bigint) => {
+        expect(viewerAccountId).toBeUndefined()
+        throw new HTTPException(404, { message: 'Profile not found' })
+      },
+    }))
+
+    const res = await app.request('/profile/femaleprofile', { method: 'GET' })
+    expect(res.status).toBe(404)
     const body = (await res.json()) as { error: string }
-    expect(body.error).toBe('Missing or malformed Authorization header')
+    expect(body.error).toBe('Profile not found')
   })
 
   it('GET /profile/:identity returns 404 when profile does not exist', async () => {
@@ -758,7 +771,6 @@ describe('Profile Feature Route Tests', () => {
     expect(body.total).toBe(1)
     expect(body.authors[0].identity).toBe('author1')
     expect(body.authors[0].unreadCount).toBe(5)
-    expect(body.authors[0].shortDescription).toBeUndefined()
     expect(body.authors[0].description).toBeUndefined()
     expect(body.authors[0].isMale).toBeUndefined()
     expect(body.authors[0].readAt).toBeUndefined()
@@ -1432,7 +1444,7 @@ describe('Profile Feature Route Tests', () => {
       isMale: true,
       avatarKey: 'avatar_star.jpg',
       identity: 'verified_star',
-      shortDescription: 'I am verified',
+      description: 'I am verified',
       regularFollowersCount: 100,
       isVerified: true,
     }
@@ -1497,7 +1509,7 @@ describe('Profile Feature Route Tests', () => {
       isMale: false,
       avatarKey: null,
       identity: 'random_user',
-      shortDescription: 'Hello world',
+      description: 'Hello world',
       regularFollowersCount: 5,
       isVerified: false,
     }

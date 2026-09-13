@@ -1,6 +1,7 @@
 import { createMiddleware } from 'hono/factory'
 import { HTTPException } from 'hono/http-exception'
 import { validateSessionToken } from '../lib/session'
+import { getProfileByAccountId, isOnboardingCompleted } from '../lib/profile'
 import type { Session } from '../db/schema/sessions'
 import type { SafeAccount } from '../db/schema/accounts'
 
@@ -44,6 +45,29 @@ export const authMiddleware = createMiddleware<{
 
   c.set('session', result.session)
   c.set('account', result.account)
+
+  await next()
+})
+
+export const optionalAuthMiddleware = createMiddleware(async (c, next) => {
+  const authHeader = c.req.header('Authorization')
+  const token = extractBearerToken(authHeader)
+
+  if (token) {
+    const result = await validateSessionToken(token)
+
+    if (!result) {
+      throw new HTTPException(401, { message: 'Invalid or expired session token' })
+    }
+
+    c.set('session', result.session)
+    c.set('account', result.account)
+
+    const profile = await getProfileByAccountId(result.account.id)
+    if (profile && isOnboardingCompleted(profile)) {
+      c.set('profile', profile)
+    }
+  }
 
   await next()
 })
