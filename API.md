@@ -685,6 +685,10 @@ Header `Authorization: Bearer <token>`.
   - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*:
     - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (от 1 до 10 файлов)
     - Для `type: "text"`: `{}`
+  - `category` *(string, опционально, `"thought" | "project" | "request" | null`)* — категория для публикации поста в общую ленту (`/feed`):
+    - При указании категории пост попадает в ленту `/feed` на **48 часов** с момента создания.
+    - **Суточный лимит:** Публикация в ленту разрешена не чаще **1 раза за 24 часа** (при попытке опубликовать второй пост в ленту раньше вернется `429 Too Many Requests`).
+    - Если категория не указана (`null` или опущена), пост публикуется только в личный профиль автора **без каких-либо суточных ограничений**.
   - `genderScope` *(string, опционально, `"all" | "same_gender"`, по умолчанию: `"all"`)* — охват по полу (`same_gender` — только для своего пола). **Ограничение:** если `accessLevel: "public"`, то `genderScope` может быть **только `"all"`**. Попытка задать `same_gender` при `accessLevel: "public"` отклоняется с ошибкой `400 Bad Request`.
   - `accessLevel` *(string, опционально, `"public" | "registered"`, по умолчанию: `"registered"`)* — уровень видимости:
     - `"public"` — виден всем (включая неавторизованных гостей по прямой ссылке `GET /posts/:id`), `genderScope` строго `"all"`.
@@ -710,6 +714,7 @@ Header `Authorization: Bearer <token>`.
       "content": "Hello Wisal world!",
       "genderScope": "all",
       "accessLevel": "public",
+      "feedCategory": "thought",
       "isPinned": false,
       "savesCount": 0,
       "likesCount": 0,
@@ -730,6 +735,90 @@ Header `Authorization: Bearer <token>`.
     }
   }
   ```
+
+### `GET /feed` или `GET /posts/feed`
+- **Доступ:** Авторизованный пользователь с онбордингом
+- **Описание:** Получение ленты постов (Discovery Feed).
+  - Выдает порции по **5 постов** с защитой от дублирования.
+  - Посты в ленте активны ровно **48 часов** с момента создания.
+  - Из ленты строго **исключаются авторы, на которых зритель уже подписан (`readers`)**, а также посты самого зрителя и заблокированных пользователей.
+  - Суточный цикл (24 часа) начинается при запросе первой порции. Всего за сутки доступно **5 порций (до 25 постов)**.
+  - При перезаходе в приложение возвращает все уже выданные за текущий цикл посты, сохраняя счетчик использованных порций (`usedBatches`).
+- **Query-параметры:**
+  - `categories` *(string, опционально)* — фильтр по категориям через запятую (например, `thought,project` или `request`). По умолчанию выдаются все категории.
+  - `allServed` *(boolean, опционально, по умолчанию: `true`)* — возвращать все накопленные в текущем цикле посты (`true`) или только последнюю порцию (`false`).
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "posts": [
+      {
+        "id": "999999999999991",
+        "authorId": "111111111111111",
+        "type": "text",
+        "payload": {},
+        "content": "Feed post content",
+        "genderScope": "all",
+        "accessLevel": "public",
+        "feedCategory": "thought",
+        "isPinned": false,
+        "commentsCount": 0,
+        "isSaved": false,
+        "isLiked": false,
+        "createdAt": "2026-08-20T00:00:00.000Z",
+        "updatedAt": "2026-08-20T00:00:00.000Z",
+        "editedAt": null,
+        "author": {
+          "id": "111111111111111",
+          "name": "Alex",
+          "identity": "alex",
+          "avatarKey": null,
+          "isMale": true,
+          "isVerified": false,
+          "isReading": false
+        }
+      }
+    ],
+    "meta": {
+      "cycleId": "888888888888881",
+      "batchNumber": 1,
+      "usedBatches": 1,
+      "maxBatches": 5,
+      "remainingBatches": 4,
+      "batchSize": 5,
+      "cycleStartedAt": "2026-08-20T00:00:00.000Z",
+      "cycleExpiresAt": "2026-08-21T00:00:00.000Z",
+      "cooldownSecondsRemaining": 86400,
+      "hasMore": true
+    }
+  }
+  ```
+
+### `POST /feed/next` или `POST /posts/feed/next`
+- **Доступ:** Авторизованный пользователь с онбордингом
+- **Описание:** Запрос следующей порции из 5 постов (кнопка «Показать еще»). Инкрементирует счетчик `usedBatches`. Если суточный лимит (5 порций) исчерпан, возвращает `429 Too Many Requests`.
+- **Тело запроса (JSON, опционально):**
+  - `categories` *(array of string, опционально, `["thought" | "project" | "request"]`)* — категории для следующей пачки.
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "posts": [ ...5 новых уникальных постов... ],
+    "meta": {
+      "cycleId": "888888888888881",
+      "batchNumber": 2,
+      "usedBatches": 2,
+      "maxBatches": 5,
+      "remainingBatches": 3,
+      "batchSize": 5,
+      "cycleStartedAt": "2026-08-20T00:00:00.000Z",
+      "cycleExpiresAt": "2026-08-21T00:00:00.000Z",
+      "cooldownSecondsRemaining": 82800,
+      "hasMore": true
+    }
+  }
+  ```
+
 
 ### `PATCH /posts/:id`
 - **Доступ:** Автор поста (с онбордингом)

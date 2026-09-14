@@ -119,7 +119,7 @@ export async function getPublicProfile(
     return {
       id: targetProfile.id,
       name: targetProfile.name,
-      identity: targetProfile.identity,
+      identity: targetProfile.identity.identity,
       avatarKey: targetProfile.avatarKey,
       description: targetProfile.description,
       isVerified: Boolean(targetProfile.verifiedAt),

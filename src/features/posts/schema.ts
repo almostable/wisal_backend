@@ -4,6 +4,7 @@ import {
   POST_TYPES,
   GENDER_SCOPES,
   ACCESS_LEVELS,
+  FEED_CATEGORIES,
 } from '../../db/schema/posts'
 import {
   COMMENT_TYPES,
@@ -43,8 +44,19 @@ export function validateMediaOrText(
   }
 }
 
-export function transformMediaOrText<T extends { type?: string; content?: string | null; payload?: Record<string, unknown> }>(data: T) {
+export function transformMediaOrText<
+  T extends {
+    type?: string
+    content?: string | null
+    payload?: Record<string, unknown>
+    category?: (typeof FEED_CATEGORIES)[number] | null
+    feedCategory?: (typeof FEED_CATEGORIES)[number] | null
+  },
+>(data: T) {
   const itemType = data.type ?? 'text'
+  const effectiveFeedCategory =
+    data.category !== undefined ? data.category : data.feedCategory !== undefined ? data.feedCategory : undefined
+
   if (itemType === 'media') {
     const parsedPayload = mediaPayloadSchema.parse(data.payload)
     return {
@@ -52,6 +64,7 @@ export function transformMediaOrText<T extends { type?: string; content?: string
       type: 'media' as const,
       content: data.content ? data.content.trim() : '',
       payload: parsedPayload,
+      ...(effectiveFeedCategory !== undefined ? { feedCategory: effectiveFeedCategory } : {}),
     }
   }
   return {
@@ -59,6 +72,7 @@ export function transformMediaOrText<T extends { type?: string; content?: string
     type: 'text' as const,
     content: data.content ? data.content.trim() : '',
     payload: data.payload ?? {},
+    ...(effectiveFeedCategory !== undefined ? { feedCategory: effectiveFeedCategory } : {}),
   }
 }
 
@@ -69,6 +83,8 @@ export const createPostSchema = z
     payload: z.record(z.string(), z.unknown()).default({}).optional(),
     genderScope: z.enum(GENDER_SCOPES).default('all').optional(),
     accessLevel: z.enum(ACCESS_LEVELS).default('public').optional(),
+    category: z.enum(FEED_CATEGORIES).nullable().optional(),
+    feedCategory: z.enum(FEED_CATEGORIES).nullable().optional(),
     isPinned: z.boolean().default(false).optional(),
   })
   .superRefine((data, ctx) => {
@@ -91,6 +107,8 @@ export const updatePostSchema = z
     content: z.string().trim().max(5000, 'Content must be at most 5000 characters').nullable().optional(),
     genderScope: z.enum(GENDER_SCOPES).optional(),
     accessLevel: z.enum(ACCESS_LEVELS).optional(),
+    category: z.enum(FEED_CATEGORIES).nullable().optional(),
+    feedCategory: z.enum(FEED_CATEGORIES).nullable().optional(),
     isPinned: z.boolean().optional(),
     payload: z.record(z.string(), z.unknown()).optional(),
   })
@@ -123,15 +141,24 @@ export const updatePostSchema = z
     }
   })
   .transform((data) => {
+    const effectiveFeedCategory =
+      data.category !== undefined ? data.category : data.feedCategory !== undefined ? data.feedCategory : undefined
+
+    let result = {
+      ...data,
+      ...(effectiveFeedCategory !== undefined ? { feedCategory: effectiveFeedCategory } : {}),
+    }
+
     if (data.type === 'media' && data.payload !== undefined) {
       const parsedPayload = mediaPayloadSchema.parse(data.payload)
-      return {
-        ...data,
+      result = {
+        ...result,
         payload: parsedPayload,
       }
     }
-    return data
+    return result
   })
+
 
 export const pinPostSchema = z.object({
   isPinned: z.boolean().default(true),
@@ -171,6 +198,31 @@ export const recordViewsSchema = z.object({
     .max(100, 'Maximum 100 post IDs allowed'),
 })
 
+export const feedCategoriesSchema = z
+  .union([
+    z.array(z.enum(FEED_CATEGORIES)),
+    z.string().transform((str) =>
+      str
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+    ),
+  ])
+  .pipe(z.array(z.enum(FEED_CATEGORIES)).min(1, 'At least 1 category must be selected').max(3))
+  .optional()
+
+export const feedQuerySchema = z.object({
+  categories: feedCategoriesSchema,
+  allServed: z
+    .union([z.boolean(), z.string().transform((val) => val === 'true' || val === '1')])
+    .default(true)
+    .optional(),
+})
+
+export const feedNextBatchSchema = z.object({
+  categories: feedCategoriesSchema,
+})
+
 export type PostIdParam = z.infer<typeof postIdParamSchema>
 export type CommentIdParam = z.infer<typeof commentIdParamSchema>
 export type UserPostsParam = z.infer<typeof userPostsParamSchema>
@@ -183,3 +235,6 @@ export type CreateCommentInput = z.infer<typeof createCommentSchema>
 export type UpdateCommentInput = z.infer<typeof updateCommentSchema>
 export type ListCommentsQueryInput = z.infer<typeof listCommentsQuerySchema>
 export type RecordViewsInput = z.infer<typeof recordViewsSchema>
+export type FeedQueryInput = z.infer<typeof feedQuerySchema>
+export type FeedNextBatchInput = z.infer<typeof feedNextBatchSchema>
+

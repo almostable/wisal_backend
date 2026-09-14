@@ -27,6 +27,9 @@ export type GenderScope = (typeof GENDER_SCOPES)[number]
 export const ACCESS_LEVELS = ['public', 'registered'] as const
 export type AccessLevel = (typeof ACCESS_LEVELS)[number]
 
+export const FEED_CATEGORIES = ['thought', 'project', 'request'] as const
+export type FeedCategory = (typeof FEED_CATEGORIES)[number]
+
 export const posts = pgTable(
   'posts',
   {
@@ -40,6 +43,7 @@ export const posts = pgTable(
     content: text('content').notNull().default(''),
     genderScope: varchar('gender_scope', { length: 32 }).notNull().default('all'),
     accessLevel: varchar('access_level', { length: 32 }).notNull().default('public'),
+    feedCategory: varchar('feed_category', { length: 32 }),
     isPinned: boolean('is_pinned').notNull().default(false),
     savesCount: integer('saves_count').notNull().default(0),
     likesCount: integer('likes_count').notNull().default(0),
@@ -66,6 +70,9 @@ export const posts = pgTable(
     index('idx_posts_author_unread_scan')
       .on(table.authorId, table.id, table.genderScope, table.authorGender)
       .where(sql`${table.deletedAt} IS NULL`),
+    index('posts_feed_idx')
+      .on(table.feedCategory, table.createdAt)
+      .where(sql`${table.feedCategory} IS NOT NULL AND ${table.deletedAt} IS NULL`),
   ]
 )
 
@@ -89,6 +96,7 @@ export const insertPostSchema = createInsertSchema(posts, {
   type: () => z.enum(POST_TYPES).default('text'),
   genderScope: () => z.enum(GENDER_SCOPES).default('all'),
   accessLevel: () => z.enum(ACCESS_LEVELS).default('public'),
+  feedCategory: () => z.enum(FEED_CATEGORIES).nullable().optional(),
   payload: () => z.record(z.string(), z.unknown()).default({}),
   content: () => postContentSchema,
 })

@@ -13,7 +13,7 @@ import { env } from './config/env'
 import { adminRouter } from './features/admin'
 import { authRouter } from './features/auth'
 import { profileRouter } from './features/profile'
-import { postsRouter } from './features/posts'
+import { postsRouter, feedRouter } from './features/posts'
 import { reportsRouter } from './features/reports'
 import { uploadsRouter } from './features/uploads'
 import { initRegularFollowersCron } from './jobs/recalculate-regular-followers'
@@ -86,8 +86,10 @@ app.route('/admin', adminRouter)
 app.route('/auth', authRouter)
 app.route('/profile', profileRouter)
 app.route('/posts', postsRouter)
+app.route('/feed', feedRouter)
 app.route('/reports', reportsRouter)
 app.route('/uploads', uploadsRouter)
+
 
 export { app }
 

@@ -1,7 +1,7 @@
-import type { PostType, GenderScope, AccessLevel, MediaItem, MediaPayload } from '../../db/schema/posts'
+import type { PostType, GenderScope, AccessLevel, FeedCategory, MediaItem, MediaPayload } from '../../db/schema/posts'
 import type { CommentType } from '../../db/schema/comments'
 
-export type { MediaItem, MediaPayload }
+export type { MediaItem, MediaPayload, FeedCategory }
 
 export interface PostAuthorInfo {
   id: bigint
@@ -22,6 +22,7 @@ export interface PostResponse {
   content: string
   genderScope: GenderScope
   accessLevel: AccessLevel
+  feedCategory?: FeedCategory | null
   isPinned: boolean
   savesCount?: number
   likesCount?: number
@@ -40,7 +41,7 @@ export interface CommentAuthorInfo {
   name: string | null
   identity: string | null
   avatarKey: string | null
-  isMale: boolean | null
+  isMale?: boolean | null
   isBlocked?: boolean
   isHidden?: boolean
   isDeleted?: boolean
@@ -90,6 +91,8 @@ export interface CreatePostDTO {
   payload?: Record<string, unknown>
   genderScope?: GenderScope
   accessLevel?: AccessLevel
+  feedCategory?: FeedCategory | null
+  category?: FeedCategory | null
   isPinned?: boolean
 }
 
@@ -98,6 +101,8 @@ export interface UpdatePostDTO {
   type?: PostType
   genderScope?: GenderScope
   accessLevel?: AccessLevel
+  feedCategory?: FeedCategory | null
+  category?: FeedCategory | null
   isPinned?: boolean
   payload?: Record<string, unknown>
 }
@@ -167,3 +172,31 @@ export interface RecordViewsResult {
   success: boolean
   updatedCount: number
 }
+
+export interface FeedMeta {
+  cycleId: bigint
+  batchNumber?: number
+  usedBatches: number
+  maxBatches: number
+  remainingBatches: number
+  batchSize: number
+  cycleStartedAt: Date
+  cycleExpiresAt: Date
+  cooldownSecondsRemaining: number
+  hasMore: boolean
+}
+
+export interface FeedResult {
+  posts: PostResponse[]
+  meta: FeedMeta
+}
+
+export interface FeedQueryDTO {
+  categories?: FeedCategory[]
+  allServed?: boolean
+}
+
+export interface FeedNextBatchDTO {
+  categories?: FeedCategory[]
+}
+
