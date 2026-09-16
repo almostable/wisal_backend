@@ -1,72 +1,67 @@
 import { describe, it, expect } from 'bun:test'
 import '../../../lib/snowflake'
-import { FEED_CATEGORIES } from '../../../db/schema/posts'
-import { feedQuerySchema, feedNextBatchSchema, createPostSchema } from '../schema'
+import { feedQuerySchema, createPostSchema, updatePostSchema } from '../schema'
 
 describe('Feed Schemas and Validation Logic', () => {
-  it('validates createPostSchema with feed category', () => {
-    const valid = createPostSchema.parse({
-      content: 'My thought',
-      category: 'thought',
+  it('validates createPostSchema with isFeed or showInFeed', () => {
+    const valid1 = createPostSchema.parse({
+      content: 'My post for feed',
+      isFeed: true,
     })
-    expect(valid.content).toBe('My thought')
-    expect(valid.feedCategory).toBe('thought')
+    expect(valid1.content).toBe('My post for feed')
+    expect(valid1.isFeed).toBe(true)
+
+    const valid2 = createPostSchema.parse({
+      content: 'My post with showInFeed alias',
+      showInFeed: true,
+    })
+    expect(valid2.content).toBe('My post with showInFeed alias')
+    expect(valid2.isFeed).toBe(true)
   })
 
-  it('validates createPostSchema with null or omitted feed category', () => {
-    const validNull = createPostSchema.parse({
+  it('validates createPostSchema with false or omitted isFeed', () => {
+    const validFalse = createPostSchema.parse({
       content: 'Profile only post',
-      category: null,
+      isFeed: false,
     })
-    expect(validNull.feedCategory).toBeNull()
+    expect(validFalse.isFeed).toBe(false)
 
     const validOmitted = createPostSchema.parse({
       content: 'Profile only post omitted',
     })
-    expect(validOmitted.feedCategory).toBeUndefined()
+    expect(validOmitted.isFeed).toBeUndefined()
   })
 
-
-  it('validates feedQuerySchema with comma-separated categories', () => {
-    const parsed = feedQuerySchema.parse({
-      categories: 'thought,project',
-      allServed: 'true',
+  it('validates updatePostSchema with isFeed', () => {
+    const valid = updatePostSchema.parse({
+      showInFeed: true,
     })
-    expect(parsed.categories).toEqual(['thought', 'project'])
-    expect(parsed.allServed).toBe(true)
-  })
-
-  it('validates feedQuerySchema with array of categories', () => {
-    const parsed = feedQuerySchema.parse({
-      categories: ['request'],
-      allServed: false,
-    })
-    expect(parsed.categories).toEqual(['request'])
-    expect(parsed.allServed).toBe(false)
+    expect(valid.isFeed).toBe(true)
   })
 
   it('validates feedQuerySchema with default values', () => {
     const parsed = feedQuerySchema.parse({})
-    expect(parsed.categories).toBeUndefined()
-    expect(parsed.allServed).toBe(true)
+    expect(parsed.limit).toBe(20)
+    expect(parsed.offset).toBe(0)
+    expect(parsed.cursor).toBeUndefined()
   })
 
-  it('rejects invalid categories in feedQuerySchema', () => {
+  it('validates feedQuerySchema with custom limit, offset and cursor', () => {
+    const parsed = feedQuerySchema.parse({
+      limit: '15',
+      offset: '40',
+      cursor: '123456789012345678',
+    })
+    expect(parsed.limit).toBe(15)
+    expect(parsed.offset).toBe(40)
+    expect(parsed.cursor).toBe('123456789012345678')
+  })
+
+  it('rejects invalid cursor format in feedQuerySchema', () => {
     expect(() =>
       feedQuerySchema.parse({
-        categories: 'invalid_category',
+        cursor: 'invalid-cursor-abc',
       })
     ).toThrow()
-  })
-
-  it('validates feedNextBatchSchema with categories', () => {
-    const parsed = feedNextBatchSchema.parse({
-      categories: ['thought', 'request'],
-    })
-    expect(parsed.categories).toEqual(['thought', 'request'])
-  })
-
-  it('has expected FEED_CATEGORIES constants', () => {
-    expect(FEED_CATEGORIES).toEqual(['thought', 'project', 'request'])
   })
 })

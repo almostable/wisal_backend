@@ -1,7 +1,7 @@
-import type { PostType, GenderScope, AccessLevel, FeedCategory, MediaItem, MediaPayload } from '../../db/schema/posts'
+import type { PostType, GenderScope, AccessLevel, MediaItem, MediaPayload } from '../../db/schema/posts'
 import type { CommentType } from '../../db/schema/comments'
 
-export type { MediaItem, MediaPayload, FeedCategory }
+export type { MediaItem, MediaPayload }
 
 export interface PostAuthorInfo {
   id: bigint
@@ -22,7 +22,7 @@ export interface PostResponse {
   content: string
   genderScope: GenderScope
   accessLevel: AccessLevel
-  feedCategory?: FeedCategory | null
+  isFeed?: boolean
   isPinned: boolean
   savesCount?: number
   likesCount?: number
@@ -91,8 +91,8 @@ export interface CreatePostDTO {
   payload?: Record<string, unknown>
   genderScope?: GenderScope
   accessLevel?: AccessLevel
-  feedCategory?: FeedCategory | null
-  category?: FeedCategory | null
+  isFeed?: boolean
+  showInFeed?: boolean
   isPinned?: boolean
 }
 
@@ -101,8 +101,8 @@ export interface UpdatePostDTO {
   type?: PostType
   genderScope?: GenderScope
   accessLevel?: AccessLevel
-  feedCategory?: FeedCategory | null
-  category?: FeedCategory | null
+  isFeed?: boolean
+  showInFeed?: boolean
   isPinned?: boolean
   payload?: Record<string, unknown>
 }
@@ -173,30 +173,18 @@ export interface RecordViewsResult {
   updatedCount: number
 }
 
-export interface FeedMeta {
-  cycleId: bigint
-  batchNumber?: number
-  usedBatches: number
-  maxBatches: number
-  remainingBatches: number
-  batchSize: number
-  cycleStartedAt: Date
-  cycleExpiresAt: Date
-  cooldownSecondsRemaining: number
-  hasMore: boolean
-}
-
-export interface FeedResult {
-  posts: PostResponse[]
-  meta: FeedMeta
-}
-
 export interface FeedQueryDTO {
-  categories?: FeedCategory[]
-  allServed?: boolean
+  limit?: number
+  offset?: number
+  cursor?: string
 }
 
-export interface FeedNextBatchDTO {
-  categories?: FeedCategory[]
+export interface FeedPostsResult {
+  posts: PostResponse[]
+  total: number
+  limit: number
+  offset: number
+  nextCursor?: string | null
+  hasMore: boolean
 }
 

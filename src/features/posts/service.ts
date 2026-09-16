@@ -21,12 +21,10 @@ import { HTTPException } from 'hono/http-exception'
 import { db } from '../../db'
 import {
   posts,
-  FEED_CATEGORIES,
   type Post,
   type PostType,
   type GenderScope,
   type AccessLevel,
-  type FeedCategory,
 } from '../../db/schema/posts'
 import { comments, type Comment, type CommentType } from '../../db/schema/comments'
 import { profileBlocks } from '../../db/schema/profile-blocks'
@@ -37,7 +35,6 @@ import { profiles } from '../../db/schema/profiles'
 import { identities } from '../../db/schema/identities'
 import { readers } from '../../db/schema/readers'
 import { postViews } from '../../db/schema/post-views'
-import { feedCycles } from '../../db/schema/feed-cycles'
 import { getProfileByIdentity } from '../../lib/profile'
 import {
   attachMediaFiles,
@@ -67,9 +64,7 @@ import type {
   DeleteCommentResult,
   RecordViewsResult,
   FeedQueryDTO,
-  FeedNextBatchDTO,
-  FeedResult,
-  FeedMeta,
+  FeedPostsResult,
 } from './types'
 
 
@@ -189,7 +184,7 @@ function formatPost(
     content: post.content,
     genderScope: post.genderScope as GenderScope,
     accessLevel: post.accessLevel as AccessLevel,
-    feedCategory: (post.feedCategory as FeedCategory) ?? null,
+    isFeed: post.isFeed ?? false,
     isPinned: post.isPinned,
     ...(canViewAuthorCounts
       ? {
@@ -305,19 +300,14 @@ export async function createPost(
   input: CreatePostDTO
 ): Promise<PostResponse> {
   const isPinned = input.isPinned ?? false
-  const feedCategory =
-    input.category !== undefined
-      ? input.category
-      : input.feedCategory !== undefined
-        ? input.feedCategory
-        : null
+  const isFeed = input.isFeed ?? input.showInFeed ?? false
 
   return await db.transaction(async (tx) => {
-    if (feedCategory) {
+    if (isFeed) {
       const recentFeedPost = await tx.query.posts.findFirst({
         where: and(
           eq(posts.authorId, authorProfileId),
-          isNotNull(posts.feedCategory),
+          eq(posts.isFeed, true),
           isNull(posts.deletedAt),
           gte(posts.createdAt, sql`NOW() - INTERVAL '24 HOURS'`)
         ),
@@ -363,7 +353,7 @@ export async function createPost(
         content,
         genderScope,
         accessLevel,
-        feedCategory,
+        isFeed,
         isPinned,
       })
       .returning()
@@ -423,18 +413,18 @@ export async function updatePost(
       })
     }
 
-    const targetFeedCategory =
-      input.category !== undefined
-        ? input.category
-        : input.feedCategory !== undefined
-          ? input.feedCategory
-          : existing.feedCategory
+    const targetIsFeed =
+      input.isFeed !== undefined
+        ? input.isFeed
+        : input.showInFeed !== undefined
+          ? input.showInFeed
+          : existing.isFeed
 
-    if (targetFeedCategory && !existing.feedCategory) {
+    if (targetIsFeed && !existing.isFeed) {
       const recentFeedPost = await tx.query.posts.findFirst({
         where: and(
           eq(posts.authorId, authorProfileId),
-          isNotNull(posts.feedCategory),
+          eq(posts.isFeed, true),
           ne(posts.id, postId),
           isNull(posts.deletedAt),
           gte(posts.createdAt, sql`NOW() - INTERVAL '24 HOURS'`)
@@ -494,8 +484,8 @@ export async function updatePost(
     if (input.isPinned !== undefined) {
       updateData.isPinned = input.isPinned
     }
-    if (input.category !== undefined || input.feedCategory !== undefined) {
-      updateData.feedCategory = targetFeedCategory
+    if (input.isFeed !== undefined || input.showInFeed !== undefined) {
+      updateData.isFeed = targetIsFeed
     }
 
     if (input.payload !== undefined) {
@@ -1687,18 +1677,17 @@ export async function recordPostViews(
   }
 }
 
-async function getFeedCandidatePosts(
-  executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0],
+export async function getFeedPosts(
   viewer: { profileId: bigint; isMale: boolean },
-  categories: FeedCategory[],
-  excludePostIds: bigint[] = [],
-  limit = 5
-): Promise<Post[]> {
+  query: FeedQueryDTO = {}
+): Promise<FeedPostsResult> {
+  const limit = Math.min(Math.max(query.limit ?? 20, 1), 100)
+  const offset = Math.max(query.offset ?? 0, 0)
+
   const conditions: SQL[] = [
-    isNotNull(posts.feedCategory),
-    inArray(posts.feedCategory, categories),
+    eq(posts.isFeed, true),
     isNull(posts.deletedAt),
-    gte(posts.createdAt, sql`NOW() - INTERVAL '48 HOURS'`),
+    gte(posts.createdAt, sql`NOW() - INTERVAL '168 HOURS'`),
     ne(posts.authorId, viewer.profileId),
     sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`,
     sql`NOT EXISTS (
@@ -1713,233 +1702,76 @@ async function getFeedCandidatePosts(
     )`,
   ]
 
-  if (excludePostIds.length > 0) {
-    conditions.push(notInArray(posts.id, excludePostIds))
+  if (query.cursor) {
+    try {
+      const cursorId = BigInt(query.cursor)
+      conditions.push(lt(posts.id, cursorId))
+    } catch {
+      // ignore invalid bigint cursor format
+    }
   }
 
-  const candidatePosts = await executor
-    .select()
-    .from(posts)
-    .where(and(...conditions)!)
-    .orderBy(desc(posts.createdAt))
-    .limit(limit)
+  const whereCondition = and(...conditions)!
 
-  return candidatePosts
-}
-
-async function hydrateFeedPosts(
-  executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0],
-  viewer: { profileId: bigint; isMale: boolean },
-  postIds: bigint[]
-): Promise<PostResponse[]> {
-  if (postIds.length === 0) {
-    return []
-  }
-
-  const rows = await executor
-    .select({
-      post: posts,
-      ...authorSelectFields,
-      isSaved: sql<boolean>`CASE WHEN ${postSaves.profileId} IS NOT NULL THEN true ELSE false END`,
-      isLiked: sql<boolean>`CASE WHEN ${postLikes.profileId} IS NOT NULL THEN true ELSE false END`,
-      isReadingAuthor: sql<boolean>`CASE WHEN ${viewerReaders.authorProfileId} IS NOT NULL THEN true ELSE false END`,
-    })
-    .from(posts)
-    .innerJoin(profiles, eq(posts.authorId, profiles.id))
-    .leftJoin(identities, eq(profiles.identityId, identities.id))
-    .leftJoin(accounts, eq(profiles.accountId, accounts.id))
-    .leftJoin(
-      postSaves,
-      and(
-        eq(postSaves.postId, posts.id),
-        eq(postSaves.profileId, viewer.profileId)
+  const [rows, totalResult] = await Promise.all([
+    db
+      .select({
+        post: posts,
+        ...authorSelectFields,
+        isSaved: sql<boolean>`CASE WHEN ${postSaves.profileId} IS NOT NULL THEN true ELSE false END`,
+        isLiked: sql<boolean>`CASE WHEN ${postLikes.profileId} IS NOT NULL THEN true ELSE false END`,
+      })
+      .from(posts)
+      .innerJoin(profiles, eq(posts.authorId, profiles.id))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .leftJoin(
+        postSaves,
+        and(
+          eq(postSaves.postId, posts.id),
+          eq(postSaves.profileId, viewer.profileId)
+        )
       )
-    )
-    .leftJoin(
-      postLikes,
-      and(
-        eq(postLikes.postId, posts.id),
-        eq(postLikes.profileId, viewer.profileId)
+      .leftJoin(
+        postLikes,
+        and(
+          eq(postLikes.postId, posts.id),
+          eq(postLikes.profileId, viewer.profileId)
+        )
       )
-    )
-    .leftJoin(
-      viewerReaders,
-      and(
-        eq(viewerReaders.readerProfileId, viewer.profileId),
-        eq(viewerReaders.authorProfileId, posts.authorId)
-      )
-    )
-    .where(and(inArray(posts.id, postIds), isNull(posts.deletedAt)))
+      .where(and(whereCondition, isNull(accounts.deletedAt))!)
+      .orderBy(desc(posts.createdAt), desc(posts.id))
+      .limit(limit + 1)
+      .offset(query.cursor ? 0 : offset),
+    db
+      .select({ count: count() })
+      .from(posts)
+      .innerJoin(profiles, eq(posts.authorId, profiles.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(and(whereCondition, isNull(accounts.deletedAt))!),
+  ])
 
-  const mapById = new Map(
-    rows.map((r) => [
-      r.post.id,
-      formatPost(
-        r.post,
-        mapAuthor(r, Boolean(r.isReadingAuthor)),
-        Boolean(r.isSaved),
-        viewer.profileId === r.post.authorId,
-        Boolean(r.isLiked)
-      ),
-    ])
+  const hasMore = rows.length > limit
+  const items = hasMore ? rows.slice(0, limit) : rows
+  const nextCursor = items.length > 0 ? items[items.length - 1].post.id.toString() : null
+
+  const formattedPosts = items.map((r) =>
+    formatPost(
+      r.post,
+      mapAuthor(r, false),
+      Boolean(r.isSaved),
+      viewer.profileId === r.post.authorId,
+      Boolean(r.isLiked)
+    )
   )
 
-  return postIds
-    .map((id) => mapById.get(id))
-    .filter((p): p is PostResponse => p !== undefined)
-}
-
-export async function getFeedPosts(
-  viewer: { profileId: bigint; isMale: boolean },
-  query: FeedQueryDTO = {}
-): Promise<FeedResult> {
-  const categories = query.categories && query.categories.length > 0 ? query.categories : [...FEED_CATEGORIES]
-  const now = new Date()
-
-  return await db.transaction(async (tx) => {
-    const activeCycle = await tx.query.feedCycles.findFirst({
-      where: and(
-        eq(feedCycles.profileId, viewer.profileId),
-        gt(feedCycles.expiresAt, now)
-      ),
-      orderBy: desc(feedCycles.createdAt),
-    })
-
-    if (!activeCycle) {
-      const startedAt = new Date()
-      const expiresAt = new Date(startedAt.getTime() + 24 * 60 * 60 * 1000)
-
-      const candidates = await getFeedCandidatePosts(tx, viewer, categories, [], 5)
-      const servedPostIds = candidates.map((p) => p.id.toString())
-
-      const [createdCycle] = await tx
-        .insert(feedCycles)
-        .values({
-          profileId: viewer.profileId,
-          startedAt,
-          expiresAt,
-          usedBatches: 1,
-          servedPostIds,
-        })
-        .returning()
-
-      const formattedPosts = await hydrateFeedPosts(
-        tx,
-        viewer,
-        candidates.map((p) => p.id)
-      )
-
-      const cooldownSecondsRemaining = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000))
-
-      return {
-        posts: formattedPosts,
-        meta: {
-          cycleId: createdCycle.id,
-          batchNumber: 1,
-          usedBatches: 1,
-          maxBatches: 5,
-          remainingBatches: 4,
-          batchSize: 5,
-          cycleStartedAt: startedAt,
-          cycleExpiresAt: expiresAt,
-          cooldownSecondsRemaining,
-          hasMore: candidates.length === 5,
-        },
-      }
-    }
-
-    const servedPostIds = (activeCycle.servedPostIds as string[]) || []
-    const allServed = query.allServed !== false
-    const targetServedIds = allServed ? servedPostIds : servedPostIds.slice(-5)
-    const targetBigIntIds = targetServedIds.map((id) => BigInt(id))
-
-    const posts = await hydrateFeedPosts(tx, viewer, targetBigIntIds)
-    const cooldownSecondsRemaining = Math.max(0, Math.floor((activeCycle.expiresAt.getTime() - Date.now()) / 1000))
-
-    return {
-      posts,
-      meta: {
-        cycleId: activeCycle.id,
-        usedBatches: activeCycle.usedBatches,
-        maxBatches: 5,
-        remainingBatches: Math.max(0, 5 - activeCycle.usedBatches),
-        batchSize: 5,
-        cycleStartedAt: activeCycle.startedAt,
-        cycleExpiresAt: activeCycle.expiresAt,
-        cooldownSecondsRemaining,
-        hasMore: activeCycle.usedBatches < 5,
-      },
-    }
-  })
-}
-
-export async function getNextFeedBatch(
-  viewer: { profileId: bigint; isMale: boolean },
-  input: FeedNextBatchDTO = {}
-): Promise<FeedResult> {
-  const categories = input.categories && input.categories.length > 0 ? input.categories : [...FEED_CATEGORIES]
-  const now = new Date()
-
-  return await db.transaction(async (tx) => {
-    const activeCycle = await tx.query.feedCycles.findFirst({
-      where: and(
-        eq(feedCycles.profileId, viewer.profileId),
-        gt(feedCycles.expiresAt, now)
-      ),
-      orderBy: desc(feedCycles.createdAt),
-    })
-
-    if (!activeCycle) {
-      return await getFeedPosts(viewer, { categories, allServed: false })
-    }
-
-    if (activeCycle.usedBatches >= 5) {
-      throw new HTTPException(429, {
-        message: 'Daily feed limit reached (5 of 5 batches used). Please wait for the cooldown to reset.',
-      })
-    }
-
-    const currentServedIds = (activeCycle.servedPostIds as string[]) || []
-    const excludeBigIntIds = currentServedIds.map((id) => BigInt(id))
-
-    const newCandidates = await getFeedCandidatePosts(tx, viewer, categories, excludeBigIntIds, 5)
-    const newServedIds = newCandidates.map((p) => p.id.toString())
-    const updatedServedIds = [...currentServedIds, ...newServedIds]
-    const nextBatchNumber = activeCycle.usedBatches + 1
-
-    const [updatedCycle] = await tx
-      .update(feedCycles)
-      .set({
-        usedBatches: nextBatchNumber,
-        servedPostIds: updatedServedIds,
-        updatedAt: new Date(),
-      })
-      .where(eq(feedCycles.id, activeCycle.id))
-      .returning()
-
-    const formattedPosts = await hydrateFeedPosts(
-      tx,
-      viewer,
-      newCandidates.map((p) => p.id)
-    )
-
-    const cooldownSecondsRemaining = Math.max(0, Math.floor((activeCycle.expiresAt.getTime() - Date.now()) / 1000))
-
-    return {
-      posts: formattedPosts,
-      meta: {
-        cycleId: activeCycle.id,
-        batchNumber: nextBatchNumber,
-        usedBatches: nextBatchNumber,
-        maxBatches: 5,
-        remainingBatches: Math.max(0, 5 - nextBatchNumber),
-        batchSize: 5,
-        cycleStartedAt: activeCycle.startedAt,
-        cycleExpiresAt: activeCycle.expiresAt,
-        cooldownSecondsRemaining,
-        hasMore: nextBatchNumber < 5 && newCandidates.length === 5,
-      },
-    }
-  })
+  return {
+    posts: formattedPosts,
+    total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
+    nextCursor: hasMore ? nextCursor : null,
+    hasMore,
+  }
 }
 

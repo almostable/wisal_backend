@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception'
 import type { SafeAccount } from '../../../db/schema/accounts'
 import type { Session } from '../../../db/schema/sessions'
 import type { ProfileWithIdentity } from '../../../db/schema/profiles'
-import type { PostResponse, FeedResult } from '../types'
+import type { PostResponse, FeedPostsResult } from '../types'
 
 describe('Feed and Feed Posts Feature Tests', () => {
   const viewerAccount: SafeAccount = {
@@ -52,10 +52,10 @@ describe('Feed and Feed Posts Feature Tests', () => {
     authorId: 555555555555555n,
     type: 'text',
     payload: {},
-    content: 'Awesome new project announcement!',
+    content: 'Awesome post for the feed!',
     genderScope: 'all',
     accessLevel: 'public',
-    feedCategory: 'project',
+    isFeed: true,
     isPinned: false,
     savesCount: 0,
     commentsCount: 0,
@@ -75,29 +75,17 @@ describe('Feed and Feed Posts Feature Tests', () => {
     },
   }
 
-  it('rejects unauthenticated requests to /posts/feed and /feed with 401', async () => {
-    const res1 = await app.request('/posts/feed', { method: 'GET' })
-    expect(res1.status).toBe(401)
-
-    const res2 = await app.request('/feed', { method: 'GET' })
-    expect(res2.status).toBe(401)
-
-    const resNext1 = await app.request('/posts/feed/next', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(resNext1.status).toBe(401)
-
-    const resNext2 = await app.request('/feed/next', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(resNext2.status).toBe(401)
+  it('rejects unauthenticated requests to /feed with 401', async () => {
+    const res = await app.request('/feed', { method: 'GET' })
+    expect(res.status).toBe(401)
   })
 
-  it('rejects users without onboarding on /posts/feed with 403', async () => {
+  it('verifies /posts/feed is not treated as a feed route', async () => {
+    const res = await app.request('/posts/feed', { method: 'GET' })
+    expect(res.status).toBe(400) // matches /posts/:id and fails snowflake param validation
+  })
+
+  it('rejects users without onboarding on /feed with 403', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: viewerAccount,
@@ -114,7 +102,7 @@ describe('Feed and Feed Posts Feature Tests', () => {
       isOnboardingCompleted: () => false,
     }))
 
-    const res = await app.request('/posts/feed', {
+    const res = await app.request('/feed', {
       method: 'GET',
       headers: { Authorization: 'Bearer valid_token' },
     })
@@ -122,7 +110,7 @@ describe('Feed and Feed Posts Feature Tests', () => {
     expect(res.status).toBe(403)
   })
 
-  it('POST /posts creates post with feed category successfully', async () => {
+  it('POST /posts creates post with isFeed=true successfully', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: viewerAccount,
@@ -140,7 +128,7 @@ describe('Feed and Feed Posts Feature Tests', () => {
         ...sampleFeedPost,
         authorId,
         content: input.content,
-        feedCategory: input.category ?? input.feedCategory ?? null,
+        isFeed: input.isFeed ?? input.showInFeed ?? false,
       }),
     }))
 
@@ -151,15 +139,15 @@ describe('Feed and Feed Posts Feature Tests', () => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        content: 'Sharing a fresh thought',
-        category: 'thought',
+        content: 'Sharing a fresh post to feed',
+        showInFeed: true,
       }),
     })
 
     expect(res.status).toBe(201)
     const body = (await res.json()) as { success: boolean; post: PostResponse }
     expect(body.success).toBe(true)
-    expect(body.post.feedCategory).toBe('thought')
+    expect(body.post.isFeed).toBe(true)
   })
 
   it('POST /posts rejects second feed post within 24 hours with 429', async () => {
@@ -191,7 +179,7 @@ describe('Feed and Feed Posts Feature Tests', () => {
       },
       body: JSON.stringify({
         content: 'Another feed post too soon',
-        category: 'thought',
+        isFeed: true,
       }),
     })
 
@@ -200,7 +188,7 @@ describe('Feed and Feed Posts Feature Tests', () => {
     expect(body.error).toBe('You can only publish to the feed once every 24 hours')
   })
 
-  it('GET /posts/feed returns current feed posts and cycle metadata', async () => {
+  it('GET /feed returns feed posts with pagination (20 posts)', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: viewerAccount,
@@ -213,75 +201,17 @@ describe('Feed and Feed Posts Feature Tests', () => {
       isOnboardingCompleted: () => true,
     }))
 
-    const mockFeedResult: FeedResult = {
+    const mockFeedResult: FeedPostsResult = {
       posts: [sampleFeedPost],
-      meta: {
-        cycleId: 888888888888881n,
-        batchNumber: 1,
-        usedBatches: 1,
-        maxBatches: 5,
-        remainingBatches: 4,
-        batchSize: 5,
-        cycleStartedAt: new Date(),
-        cycleExpiresAt: new Date(Date.now() + 86400000),
-        cooldownSecondsRemaining: 86400,
-        hasMore: true,
-      },
+      total: 1,
+      limit: 20,
+      offset: 0,
+      nextCursor: null,
+      hasMore: false,
     }
 
     mock.module('../service', () => ({
       getFeedPosts: async (_viewer: any, _query: any) => mockFeedResult,
-    }))
-
-    const res = await app.request('/posts/feed?categories=thought,project', {
-      method: 'GET',
-      headers: {
-        Authorization: 'Bearer valid_token',
-      },
-    })
-
-    expect(res.status).toBe(200)
-    const body = (await res.json()) as { success: boolean; posts: any[]; meta: any }
-    expect(body.success).toBe(true)
-    expect(body.posts).toHaveLength(1)
-    expect(body.posts[0].feedCategory).toBe('project')
-    expect(body.meta.usedBatches).toBe(1)
-    expect(body.meta.maxBatches).toBe(5)
-    expect(body.meta.remainingBatches).toBe(4)
-    expect(body.meta.hasMore).toBe(true)
-  })
-
-  it('GET /feed alias works identically to /posts/feed', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: viewerAccount,
-        session: viewerSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => viewerProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    const mockFeedResult: FeedResult = {
-      posts: [sampleFeedPost],
-      meta: {
-        cycleId: 888888888888881n,
-        batchNumber: 1,
-        usedBatches: 1,
-        maxBatches: 5,
-        remainingBatches: 4,
-        batchSize: 5,
-        cycleStartedAt: new Date(),
-        cycleExpiresAt: new Date(Date.now() + 86400000),
-        cooldownSecondsRemaining: 86400,
-        hasMore: true,
-      },
-    }
-
-    mock.module('../service', () => ({
-      getFeedPosts: async () => mockFeedResult,
     }))
 
     const res = await app.request('/feed', {
@@ -292,12 +222,16 @@ describe('Feed and Feed Posts Feature Tests', () => {
     })
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { success: boolean; posts: any[]; meta: any }
+    const body = (await res.json()) as { success: boolean; posts: any[]; total: number; limit: number; offset: number; hasMore: boolean }
     expect(body.success).toBe(true)
-    expect(body.meta.usedBatches).toBe(1)
+    expect(body.posts).toHaveLength(1)
+    expect(body.posts[0].isFeed).toBe(true)
+    expect(body.limit).toBe(20)
+    expect(body.offset).toBe(0)
+    expect(body.hasMore).toBe(false)
   })
 
-  it('POST /posts/feed/next advances to next batch and returns new posts', async () => {
+  it('GET /feed handles cursor pagination query params', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: viewerAccount,
@@ -310,77 +244,33 @@ describe('Feed and Feed Posts Feature Tests', () => {
       isOnboardingCompleted: () => true,
     }))
 
-    const mockNextBatchResult: FeedResult = {
-      posts: [{ ...sampleFeedPost, id: 999999999999992n, content: 'Next batch post' }],
-      meta: {
-        cycleId: 888888888888881n,
-        batchNumber: 2,
-        usedBatches: 2,
-        maxBatches: 5,
-        remainingBatches: 3,
-        batchSize: 5,
-        cycleStartedAt: new Date(),
-        cycleExpiresAt: new Date(Date.now() + 86400000),
-        cooldownSecondsRemaining: 82000,
-        hasMore: true,
-      },
+    const mockFeedResult: FeedPostsResult = {
+      posts: [{ ...sampleFeedPost, id: 999999999999990n }],
+      total: 25,
+      limit: 20,
+      offset: 0,
+      nextCursor: '999999999999990',
+      hasMore: true,
     }
 
     mock.module('../service', () => ({
-      getNextFeedBatch: async (_viewer: any, _input: any) => mockNextBatchResult,
+      getFeedPosts: async (_viewer: any, query: any) => {
+        expect(query.cursor).toBe('999999999999991')
+        return mockFeedResult
+      },
     }))
 
-    const res = await app.request('/posts/feed/next', {
-      method: 'POST',
+    const res = await app.request('/feed?cursor=999999999999991', {
+      method: 'GET',
       headers: {
         Authorization: 'Bearer valid_token',
-        'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        categories: ['project', 'request'],
-      }),
     })
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { success: boolean; posts: any[]; meta: any }
+    const body = (await res.json()) as { success: boolean; posts: any[]; nextCursor: string; hasMore: boolean }
     expect(body.success).toBe(true)
-    expect(body.meta.batchNumber).toBe(2)
-    expect(body.meta.usedBatches).toBe(2)
-    expect(body.meta.remainingBatches).toBe(3)
-  })
-
-  it('POST /posts/feed/next returns 429 when daily batch limit of 5 is exceeded', async () => {
-    mock.module('../../../lib/session', () => ({
-      validateSessionToken: async () => ({
-        account: viewerAccount,
-        session: viewerSession,
-      }),
-    }))
-
-    mock.module('../../../lib/profile', () => ({
-      getProfileByAccountId: async () => viewerProfile,
-      isOnboardingCompleted: () => true,
-    }))
-
-    mock.module('../service', () => ({
-      getNextFeedBatch: async () => {
-        throw new HTTPException(429, {
-          message: 'Daily feed limit reached (5 of 5 batches used). Please wait for the cooldown to reset.',
-        })
-      },
-    }))
-
-    const res = await app.request('/posts/feed/next', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer valid_token',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    })
-
-    expect(res.status).toBe(429)
-    const body = (await res.json()) as { error: string }
-    expect(body.error).toContain('Daily feed limit reached')
+    expect(body.hasMore).toBe(true)
+    expect(body.nextCursor).toBe('999999999999990')
   })
 })

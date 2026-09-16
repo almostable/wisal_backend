@@ -7,18 +7,17 @@ import {
   POST_TYPES,
   GENDER_SCOPES,
   ACCESS_LEVELS,
-  FEED_CATEGORIES,
 } from '../posts'
 
 describe('Posts Schema Tests', () => {
-  it('validates a valid post insertion payload with feedCategory', () => {
+  it('validates a valid post insertion payload with isFeed', () => {
     const validData = {
       authorId: 100000000000001n,
       authorGender: true,
       content: 'Hello Wisal community!',
       genderScope: 'same_gender',
       accessLevel: 'registered',
-      feedCategory: 'thought',
+      isFeed: true,
       isPinned: true,
     }
 
@@ -28,23 +27,22 @@ describe('Posts Schema Tests', () => {
     expect(parsed.content).toBe('Hello Wisal community!')
     expect(parsed.genderScope).toBe('same_gender')
     expect(parsed.accessLevel).toBe('registered')
-    expect(parsed.feedCategory).toBe('thought')
+    expect(parsed.isFeed).toBe(true)
     expect(parsed.isPinned).toBe(true)
     expect(parsed.savesCount).toBeUndefined()
     expect(parsed.type).toBe('text')
     expect(parsed.payload).toEqual({})
   })
 
-  it('allows null feedCategory for profile-only posts', () => {
+  it('defaults isFeed to false for profile-only posts', () => {
     const validData = {
       authorId: 100000000000001n,
       authorGender: true,
       content: 'Profile only post',
-      feedCategory: null,
     }
 
     const parsed = insertPostSchema.parse(validData)
-    expect(parsed.feedCategory).toBeNull()
+    expect(parsed.isFeed).toBe(false)
   })
 
   it('rejects empty content in insertPostSchema', () => {
@@ -57,7 +55,7 @@ describe('Posts Schema Tests', () => {
     expect(() => insertPostSchema.parse(invalidData)).toThrow('Content cannot be empty')
   })
 
-  it('rejects invalid genderScope, accessLevel or feedCategory', () => {
+  it('rejects invalid genderScope or accessLevel', () => {
     expect(() =>
       insertPostSchema.parse({
         authorId: 100000000000001n,
@@ -75,15 +73,6 @@ describe('Posts Schema Tests', () => {
         accessLevel: 'invalid_access',
       })
     ).toThrow()
-
-    expect(() =>
-      insertPostSchema.parse({
-        authorId: 100000000000001n,
-        authorGender: true,
-        content: 'Valid content',
-        feedCategory: 'invalid_category',
-      })
-    ).toThrow()
   })
 
   it('validates selectPostSchema with all fields including soft delete', () => {
@@ -97,7 +86,7 @@ describe('Posts Schema Tests', () => {
       content: 'Sample post',
       genderScope: 'all',
       accessLevel: 'public',
-      feedCategory: 'thought',
+      isFeed: true,
       isPinned: false,
       savesCount: 5,
       likesCount: 12,
@@ -112,7 +101,7 @@ describe('Posts Schema Tests', () => {
     const parsed = selectPostSchema.parse(record)
     expect(parsed.id).toBe(900000000000001n)
     expect(parsed.authorGender).toBe(true)
-    expect(parsed.feedCategory).toBe('thought')
+    expect(parsed.isFeed).toBe(true)
     expect(parsed.savesCount).toBe(5)
     expect(parsed.likesCount).toBe(12)
     expect(parsed.commentsCount).toBe(2)
@@ -141,7 +130,6 @@ describe('Posts Schema Tests', () => {
     expect(POST_TYPES).toEqual(['text', 'media'])
     expect(GENDER_SCOPES).toEqual(['all', 'same_gender'])
     expect(ACCESS_LEVELS).toEqual(['public', 'registered'])
-    expect(FEED_CATEGORIES).toEqual(['thought', 'project', 'request'])
   })
 })
 

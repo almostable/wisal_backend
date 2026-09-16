@@ -16,7 +16,6 @@ import {
   listCommentsQuerySchema,
   recordViewsSchema,
   feedQuerySchema,
-  feedNextBatchSchema,
 } from './schema'
 import {
   createPost,
@@ -36,7 +35,6 @@ import {
   deleteComment,
   recordPostViews,
   getFeedPosts,
-  getNextFeedBatch,
 } from './service'
 
 export const postsRouter = new Hono()
@@ -59,24 +57,6 @@ feedRouter.get('/', ...auth, zValidator('query', feedQuerySchema), async (c) => 
     ...result,
   })
 })
-
-feedRouter.post('/next', ...auth, zValidator('json', feedNextBatchSchema), async (c) => {
-  const profile = c.get('profile')
-  const data = c.req.valid('json')
-
-  const result = await getNextFeedBatch(
-    { profileId: profile.id, isMale: profile.isMale! },
-    data
-  )
-
-  return c.json({
-    success: true,
-    ...result,
-  })
-})
-
-postsRouter.route('/feed', feedRouter)
-
 
 postsRouter.post('/', ...auth, zValidator('json', createPostSchema), async (c) => {
   const profile = c.get('profile')
