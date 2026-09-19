@@ -154,6 +154,57 @@ describe('Authors and Monotonic Read Feature Tests', () => {
     })
   })
 
+  describe('GET /profile/:identity/authors Route', () => {
+    it('returns target author subscriptions list without private unread counts', async () => {
+      mock.module('../../../lib/session', () => ({
+        validateSessionToken: async () => ({
+          account: mockAccount,
+          session: mockSession,
+        }),
+      }))
+
+      mock.module('../../../lib/profile', () => ({
+        getProfileByAccountId: async () => mockProfile,
+        isOnboardingCompleted: () => true,
+      }))
+
+      mock.module('../service', () => ({
+        getUserSubscribedAuthorsByIdentity: async (handle: string) => ({
+          authors: [
+            {
+              id: 999999999999999n,
+              name: 'Subscribed Author',
+              avatarKey: 'author-pic.png',
+              description: 'Author bio',
+              identity: 'favauthor',
+              isVerified: true,
+              readAt: new Date(),
+            },
+          ],
+          total: 1,
+          limit: 50,
+          offset: 0,
+        }),
+      }))
+
+      const res = await app.request('/profile/readeruser/authors', {
+        method: 'GET',
+        headers: {
+          Authorization: 'Bearer valid_token',
+        },
+      })
+
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as any
+      expect(body.success).toBe(true)
+      expect(body.total).toBe(1)
+      expect(body.authors[0].identity).toBe('favauthor')
+      expect(body.authors[0].description).toBe('Author bio')
+      expect(body.authors[0].isVerified).toBe(true)
+      expect(body.authors[0].unreadCount).toBeUndefined()
+    })
+  })
+
   describe('POST /profile/:author_id/read Route', () => {
     it('updates read position when payload is passed', async () => {
       mock.module('../../../lib/session', () => ({

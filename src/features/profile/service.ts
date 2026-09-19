@@ -58,6 +58,8 @@ import type {
   ListReadersResult,
   AuthorSubscriptionItem,
   ListAuthorsResult,
+  SubscribedAuthorItem,
+  ListTargetAuthorsResult,
   MarkAuthorReadResult,
   ReadActionResult,
   BlockedProfileItem,
@@ -408,6 +410,79 @@ export async function getUserReadersByIdentity(
   }
 
   return getReaders(targetProfileId, options)
+}
+
+export async function getUserSubscribedAuthorsByIdentity(
+  identityHandle: string,
+  options: ListAuthorsQuery = { limit: 50, offset: 0 },
+  viewerProfileId?: bigint
+): Promise<ListTargetAuthorsResult> {
+  const targetProfileId = await getProfileIdByIdentity(identityHandle)
+  if (!targetProfileId) {
+    throw new HTTPException(404, { message: 'Profile not found' })
+  }
+
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
+  const offset = Math.max(options.offset ?? 0, 0)
+
+  if (viewerProfileId && viewerProfileId !== targetProfileId) {
+    const isBlocked = await checkBlockExists(viewerProfileId, targetProfileId)
+    if (isBlocked) {
+      return {
+        authors: [],
+        total: 0,
+        limit,
+        offset,
+      }
+    }
+  }
+
+  const whereClause = and(
+    eq(readers.readerProfileId, targetProfileId),
+    isNull(accounts.deletedAt)
+  )
+
+  const [items, totalResult] = await Promise.all([
+    db
+      .select({
+        id: profiles.id,
+        name: profiles.name,
+        avatarKey: profiles.avatarKey,
+        description: profiles.description,
+        identity: identities.identity,
+        isVerified: sql<boolean>`${profiles.verifiedAt} is not null`,
+        readAt: readers.createdAt,
+      })
+      .from(readers)
+      .innerJoin(profiles, eq(readers.authorProfileId, profiles.id))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(whereClause)
+      .orderBy(desc(readers.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(readers)
+      .innerJoin(profiles, eq(readers.authorProfileId, profiles.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(whereClause),
+  ])
+
+  return {
+    authors: items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      avatarKey: item.avatarKey,
+      description: item.description,
+      identity: item.identity,
+      isVerified: Boolean(item.isVerified),
+      readAt: item.readAt,
+    })),
+    total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
+  }
 }
 
 export async function getSubscribedAuthors(

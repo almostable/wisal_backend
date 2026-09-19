@@ -150,7 +150,7 @@ describe('Feed and Feed Posts Feature Tests', () => {
     expect(body.post.isFeed).toBe(true)
   })
 
-  it('POST /posts rejects second feed post within 24 hours with 429', async () => {
+  it('POST /posts rejects feed post exceeding 24h limit (max 3) with 429', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: viewerAccount,
@@ -166,7 +166,7 @@ describe('Feed and Feed Posts Feature Tests', () => {
     mock.module('../service', () => ({
       createPost: async () => {
         throw new HTTPException(429, {
-          message: 'You can only publish to the feed once every 24 hours',
+          message: 'You can only publish to the feed up to 3 times every 24 hours',
         })
       },
     }))
@@ -178,14 +178,14 @@ describe('Feed and Feed Posts Feature Tests', () => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        content: 'Another feed post too soon',
+        content: 'Fourth feed post too soon',
         isFeed: true,
       }),
     })
 
     expect(res.status).toBe(429)
     const body = (await res.json()) as { error: string }
-    expect(body.error).toBe('You can only publish to the feed once every 24 hours')
+    expect(body.error).toBe('You can only publish to the feed up to 3 times every 24 hours')
   })
 
   it('GET /feed returns feed posts with pagination (20 posts)', async () => {

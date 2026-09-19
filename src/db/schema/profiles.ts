@@ -100,7 +100,7 @@ export const descriptionSchema = z
   .string()
   .trim()
   .min(1, 'Description must be at least 1 character')
-  .max(110, 'Description must be at most 110 characters')
+  .max(200, 'Description must be at most 200 characters')
 
 export const onboardingInputSchema = z.object({
   name: nameSchema,

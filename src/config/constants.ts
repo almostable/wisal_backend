@@ -13,10 +13,11 @@ export const ADMIN_SESSION_TTL_DAYS = 30
 export const ADMIN_COOKIE_NAME = 'admin_session'
 
 /**
- * Content editing limits
+ * Content editing and feed limits
  */
 export const CONTENT_EDIT_WINDOW_MINUTES = 15
 export const CONTENT_EDIT_WINDOW_MS = CONTENT_EDIT_WINDOW_MINUTES * 60 * 1000
+export const MAX_FEED_POSTS_PER_24_HOURS = 3
 
 /**
  * Media uploads

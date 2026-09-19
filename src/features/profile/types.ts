@@ -78,6 +78,23 @@ export interface ListAuthorsResult {
   offset: number
 }
 
+export interface SubscribedAuthorItem {
+  id: bigint
+  name: string | null
+  avatarKey: string | null
+  description: string | null
+  identity: string | null
+  isVerified: boolean
+  readAt: Date
+}
+
+export interface ListTargetAuthorsResult {
+  authors: SubscribedAuthorItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
 export type AuthorsListResult = ListAuthorsResult
 
 export interface MarkAuthorReadResult {

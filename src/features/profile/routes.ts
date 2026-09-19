@@ -28,6 +28,7 @@ import {
   getSubscribedAuthors,
   markAuthorPostsRead,
   getUserReadersByIdentity,
+  getUserSubscribedAuthorsByIdentity,
   readProfile,
   unreadProfile,
   blockProfile,
@@ -287,6 +288,25 @@ profileRouter.get(
     const { identity } = c.req.valid('param')
     const query = c.req.valid('query')
     const result = await getUserReadersByIdentity(identity, query, profile?.id)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+profileRouter.get(
+  '/:identity/authors',
+  authMiddleware,
+  zValidator('param', identityParamSchema),
+  zValidator('query', listAuthorsQuerySchema),
+  async (c) => {
+    const account = c.get('account')
+    const profile = await getProfileByAccountId(account.id)
+    const { identity } = c.req.valid('param')
+    const query = c.req.valid('query')
+    const result = await getUserSubscribedAuthorsByIdentity(identity, query, profile?.id)
 
     return c.json({
       success: true,

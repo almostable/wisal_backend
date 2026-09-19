@@ -41,7 +41,7 @@ import {
   markEntityMediaDeleted,
   reconcileEntityMedia,
 } from '../uploads/service'
-import { CONTENT_EDIT_WINDOW_MS } from '../../config/constants'
+import { CONTENT_EDIT_WINDOW_MS, MAX_FEED_POSTS_PER_24_HOURS } from '../../config/constants'
 import type {
   CreatePostDTO,
   UpdatePostDTO,
@@ -304,19 +304,21 @@ export async function createPost(
 
   return await db.transaction(async (tx) => {
     if (isFeed) {
-      const recentFeedPost = await tx.query.posts.findFirst({
-        where: and(
-          eq(posts.authorId, authorProfileId),
-          eq(posts.isFeed, true),
-          isNull(posts.deletedAt),
-          gte(posts.createdAt, sql`NOW() - INTERVAL '24 HOURS'`)
-        ),
-        orderBy: desc(posts.createdAt),
-      })
+      const [recentFeedCount] = await tx
+        .select({ count: count() })
+        .from(posts)
+        .where(
+          and(
+            eq(posts.authorId, authorProfileId),
+            eq(posts.isFeed, true),
+            isNull(posts.deletedAt),
+            gte(posts.createdAt, sql`NOW() - INTERVAL '24 HOURS'`)
+          )
+        )
 
-      if (recentFeedPost) {
+      if ((recentFeedCount?.count ?? 0) >= MAX_FEED_POSTS_PER_24_HOURS) {
         throw new HTTPException(429, {
-          message: 'You can only publish to the feed once every 24 hours',
+          message: `You can only publish to the feed up to ${MAX_FEED_POSTS_PER_24_HOURS} times every 24 hours`,
         })
       }
     }
@@ -421,20 +423,22 @@ export async function updatePost(
           : existing.isFeed
 
     if (targetIsFeed && !existing.isFeed) {
-      const recentFeedPost = await tx.query.posts.findFirst({
-        where: and(
-          eq(posts.authorId, authorProfileId),
-          eq(posts.isFeed, true),
-          ne(posts.id, postId),
-          isNull(posts.deletedAt),
-          gte(posts.createdAt, sql`NOW() - INTERVAL '24 HOURS'`)
-        ),
-        orderBy: desc(posts.createdAt),
-      })
+      const [recentFeedCount] = await tx
+        .select({ count: count() })
+        .from(posts)
+        .where(
+          and(
+            eq(posts.authorId, authorProfileId),
+            eq(posts.isFeed, true),
+            ne(posts.id, postId),
+            isNull(posts.deletedAt),
+            gte(posts.createdAt, sql`NOW() - INTERVAL '24 HOURS'`)
+          )
+        )
 
-      if (recentFeedPost) {
+      if ((recentFeedCount?.count ?? 0) >= MAX_FEED_POSTS_PER_24_HOURS) {
         throw new HTTPException(429, {
-          message: 'You can only publish to the feed once every 24 hours',
+          message: `You can only publish to the feed up to ${MAX_FEED_POSTS_PER_24_HOURS} times every 24 hours`,
         })
       }
     }

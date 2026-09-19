@@ -273,7 +273,7 @@ describe('Profile Feature Route Tests', () => {
       }),
     }))
 
-    // Invalid description (> 110 chars)
+    // Invalid description (> 200 chars)
     const res1 = await app.request('/profile/onboarding', {
       method: 'POST',
       headers: {
@@ -284,7 +284,7 @@ describe('Profile Feature Route Tests', () => {
         name: 'John Doe',
         isMale: true,
         identity: 'johndoe',
-        description: 'a'.repeat(111),
+        description: 'a'.repeat(201),
       }),
     })
     expect(res1.status).toBe(400)
@@ -826,6 +826,61 @@ describe('Profile Feature Route Tests', () => {
     expect(bodyFollowers.profiles[0].identity).toBe('publicfan')
 
     const res404 = await app.request('/profile/nonexistent/readers', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_user_token' },
+    })
+    expect(res404.status).toBe(404)
+  })
+
+  it('GET /profile/:identity/authors returns public list of authors', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: mockAccount,
+        session: mockSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => mockProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      getUserSubscribedAuthorsByIdentity: async (handle: string) => {
+        if (handle === 'targetuser') {
+          return {
+            authors: [
+              {
+                id: 22222n,
+                name: 'Subscribed Author',
+                avatarKey: null,
+                description: 'Author bio',
+                identity: 'subauthor',
+                isVerified: true,
+                readAt: new Date(),
+              },
+            ],
+            total: 1,
+            limit: 50,
+            offset: 0,
+          }
+        }
+        throw new HTTPException(404, { message: 'Profile not found' })
+      },
+    }))
+
+    const resAuthors = await app.request('/profile/targetuser/authors', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer valid_user_token' },
+    })
+    expect(resAuthors.status).toBe(200)
+    const bodyAuthors = (await resAuthors.json()) as { success: boolean; authors: any[]; total: number }
+    expect(bodyAuthors.success).toBe(true)
+    expect(bodyAuthors.authors.length).toBe(1)
+    expect(bodyAuthors.authors[0].identity).toBe('subauthor')
+    expect(bodyAuthors.authors[0].isVerified).toBe(true)
+
+    const res404 = await app.request('/profile/nonexistent/authors', {
       method: 'GET',
       headers: { Authorization: 'Bearer valid_user_token' },
     })

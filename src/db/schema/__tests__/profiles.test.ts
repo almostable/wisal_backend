@@ -61,13 +61,13 @@ describe('Profiles Schema Tests', () => {
     expect(() => contactsSchema.parse({ email: 'not-an-email' })).toThrow()
   })
 
-  it('validates descriptionSchema (1 to 110 chars, spaces allowed, no empty string)', () => {
+  it('validates descriptionSchema (1 to 200 chars, spaces allowed, no empty string)', () => {
     expect(descriptionSchema.parse('a')).toBe('a')
     expect(descriptionSchema.parse('Coffee & Code')).toBe('Coffee & Code')
-    expect(descriptionSchema.parse('a'.repeat(110))).toBe('a'.repeat(110))
+    expect(descriptionSchema.parse('a'.repeat(200))).toBe('a'.repeat(200))
     expect(() => descriptionSchema.parse('')).toThrow()
     expect(() => descriptionSchema.parse('   ')).toThrow()
-    expect(() => descriptionSchema.parse('a'.repeat(111))).toThrow()
+    expect(() => descriptionSchema.parse('a'.repeat(201))).toThrow()
   })
 
   it('validates onboardingInputSchema with new optional fields', () => {
