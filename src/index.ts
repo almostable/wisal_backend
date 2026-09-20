@@ -1,3 +1,4 @@
+import './lib/sentry'
 import './lib/snowflake'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
@@ -8,8 +9,9 @@ import { compress } from 'hono/compress'
 import { bodyLimit } from 'hono/body-limit'
 import { timeout } from 'hono/timeout'
 import { sql } from 'drizzle-orm'
-import { db } from './db'
+import { db, client } from './db'
 import { env } from './config/env'
+import { captureAppException } from './lib/sentry'
 import { adminRouter } from './features/admin'
 import { authRouter } from './features/auth'
 import { profileRouter } from './features/profile'
@@ -18,10 +20,45 @@ import { reportsRouter } from './features/reports'
 import { uploadsRouter } from './features/uploads'
 import { initRegularFollowersCron } from './jobs/recalculate-regular-followers'
 import { initMediaGcCron } from './jobs/media-gc'
+import type { Cron } from 'croner'
+
+let regularCron: Cron | null = null
+let mediaGcCron: Cron | null = null
 
 if (env.NODE_ENV !== 'test') {
-  initRegularFollowersCron()
-  initMediaGcCron()
+  regularCron = initRegularFollowersCron()
+  mediaGcCron = initMediaGcCron()
+}
+
+// Graceful Shutdown
+let isShuttingDown = false
+
+async function shutdown(signal: string) {
+  if (isShuttingDown) return
+  isShuttingDown = true
+  console.log(`\n[SHUTDOWN] Received ${signal}. Starting graceful shutdown...`)
+
+  if (regularCron) {
+    regularCron.stop()
+  }
+  if (mediaGcCron) {
+    mediaGcCron.stop()
+  }
+
+  try {
+    await client.end({ timeout: 5 })
+    console.log('[SHUTDOWN] Database connection pool drained.')
+  } catch (err) {
+    console.error('[SHUTDOWN] Error closing database pool:', err)
+  }
+
+  console.log('[SHUTDOWN] Graceful shutdown completed. Exiting.')
+  process.exit(0)
+}
+
+if (env.NODE_ENV !== 'test') {
+  process.on('SIGINT', () => shutdown('SIGINT'))
+  process.on('SIGTERM', () => shutdown('SIGTERM'))
 }
 
 const app = new Hono()
@@ -53,6 +90,7 @@ app.onError((err, c) => {
     return c.json({ error: 'Conflict: A resource with this identifier already exists' }, 409)
   }
 
+  captureAppException(err, c)
   console.error('Unhandled server error:', err)
   return c.json({ error: 'Internal Server Error' }, 500)
 })
@@ -60,6 +98,16 @@ app.onError((err, c) => {
 app.notFound((c) => {
   return c.json({ error: 'Not Found' }, 404)
 })
+
+if (env.NODE_ENV !== 'production') {
+  app.get('/debug-sentry', () => {
+    throw new Error('Sentry debug test error')
+  })
+
+  app.get('/api/debug-sentry', () => {
+    throw new Error('Sentry debug test error')
+  })
+}
 
 app.get('/db-health', async (c) => {
   try {
@@ -70,11 +118,11 @@ app.get('/db-health', async (c) => {
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
+    captureAppException(error, c)
     return c.json(
       {
         status: 'unhealthy',
         database: 'disconnected',
-        error: error instanceof Error ? error.message : 'Unknown database error',
         timestamp: new Date().toISOString(),
       },
       503
@@ -89,7 +137,6 @@ app.route('/posts', postsRouter)
 app.route('/feed', feedRouter)
 app.route('/reports', reportsRouter)
 app.route('/uploads', uploadsRouter)
-
 
 export { app }
 

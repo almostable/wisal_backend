@@ -18,6 +18,7 @@ export const adminSessions = pgTable(
   (table) => [
     uniqueIndex('admin_sessions_token_hash_unique_idx').on(table.tokenHash),
     index('admin_sessions_admin_id_idx').on(table.adminId),
+    index('admin_sessions_expires_at_idx').on(table.expiresAt),
   ]
 )
 

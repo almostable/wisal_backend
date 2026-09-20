@@ -72,7 +72,8 @@ export async function createPresignedUploadUrl(
   const today = new Date().toISOString().slice(0, 10)
   const fileId = generateSnowflakeId().toString()
   const fileKey = `media/${today}/${fileId}.${normalizedExt}`
-  const ttl = options.expiresIn ?? DEFAULT_PRESIGN_TTL_SECONDS
+  const rawTtl = options.expiresIn ?? DEFAULT_PRESIGN_TTL_SECONDS
+  const ttl = Math.min(Math.max(rawTtl, 1), 604800) // S3 max TTL is 7 days (604800 seconds)
 
   const command = new PutObjectCommand({
     Bucket: env.R2_BUCKET_NAME,
@@ -106,25 +107,43 @@ export async function deleteObjectsFromR2(keys: string[]): Promise<S3DeleteResul
     return { deleted: [], errors: [] }
   }
 
-  const command = new DeleteObjectsCommand({
-    Bucket: env.R2_BUCKET_NAME,
-    Delete: {
-      Objects: keys.map((key) => ({ Key: key })),
-      Quiet: false,
-    },
-  })
+  const allDeleted: string[] = []
+  const allErrors: S3DeleteResult['errors'] = []
+  const CHUNK_SIZE = 1000
 
-  const response = await s3Client.send(command)
+  for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
+    const chunk = keys.slice(i, i + CHUNK_SIZE)
+    const command = new DeleteObjectsCommand({
+      Bucket: env.R2_BUCKET_NAME,
+      Delete: {
+        Objects: chunk.map((key) => ({ Key: key })),
+        Quiet: false,
+      },
+    })
 
-  const deleted = (response.Deleted ?? [])
-    .map((item) => item.Key)
-    .filter((key): key is string => Boolean(key))
+    try {
+      const response = await s3Client.send(command)
 
-  const errors = (response.Errors ?? []).map((err) => ({
-    key: err.Key,
-    code: err.Code,
-    message: err.Message,
-  }))
+      const deleted = (response.Deleted ?? [])
+        .map((item) => item.Key)
+        .filter((key): key is string => Boolean(key))
+      allDeleted.push(...deleted)
 
-  return { deleted, errors }
+      if (response.Errors && response.Errors.length > 0) {
+        allErrors.push(
+          ...response.Errors.map((err) => ({
+            key: err.Key,
+            code: err.Code,
+            message: err.Message,
+          }))
+        )
+      }
+    } catch (err) {
+      allErrors.push({
+        message: err instanceof Error ? err.message : 'Failed to delete batch from S3/R2',
+      })
+    }
+  }
+
+  return { deleted: allDeleted, errors: allErrors }
 }

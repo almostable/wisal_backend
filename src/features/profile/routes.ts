@@ -183,29 +183,29 @@ profileRouter.post(
       throw new HTTPException(404, { message: 'Profile not found' })
     }
     const { author_id } = c.req.valid('param')
-
-    let body: any = null
     const contentType = c.req.header('content-type')
+
     if (contentType?.includes('application/json')) {
+      let body: any
       try {
         body = await c.req.json()
       } catch {
-        // empty or malformed JSON
+        throw new HTTPException(400, { message: 'Malformed JSON payload' })
       }
-    }
 
-    if (body && (body.last_post_id !== undefined || body.lastPostId !== undefined)) {
-      const parsed = markAuthorReadSchema.safeParse(body)
-      if (!parsed.success) {
-        throw new HTTPException(400, {
-          message: parsed.error.issues[0]?.message ?? 'Invalid last_post_id',
+      if (body && typeof body === 'object' && (body.last_post_id !== undefined || body.lastPostId !== undefined)) {
+        const parsed = markAuthorReadSchema.safeParse(body)
+        if (!parsed.success) {
+          throw new HTTPException(400, {
+            message: parsed.error.issues[0]?.message ?? 'Invalid last_post_id',
+          })
+        }
+        const result = await markAuthorPostsRead(profile.id, author_id, parsed.data.lastPostId)
+        return c.json({
+          success: true,
+          ...result,
         })
       }
-      const result = await markAuthorPostsRead(profile.id, author_id, parsed.data.lastPostId)
-      return c.json({
-        success: true,
-        ...result,
-      })
     }
 
     const result = await readProfile(profile.id, author_id)

@@ -48,7 +48,7 @@ feedRouter.get('/', ...auth, zValidator('query', feedQuerySchema), async (c) => 
   const query = c.req.valid('query')
 
   const result = await getFeedPosts(
-    { profileId: profile.id, isMale: profile.isMale! },
+    { profileId: profile.id, isMale: profile.isMale },
     query
   )
 
@@ -62,7 +62,7 @@ postsRouter.post('/', ...auth, zValidator('json', createPostSchema), async (c) =
   const profile = c.get('profile')
   const data = c.req.valid('json')
 
-  const post = await createPost(profile.id, profile.isMale!, data)
+  const post = await createPost(profile.id, profile.isMale, data)
 
   return c.json(
     {
@@ -77,7 +77,7 @@ postsRouter.post('/views', ...auth, zValidator('json', recordViewsSchema), async
   const profile = c.get('profile')
   const { postIds } = c.req.valid('json')
   const result = await recordPostViews(
-    { profileId: profile.id, isMale: profile.isMale! },
+    { profileId: profile.id, isMale: profile.isMale },
     postIds.map((id) => BigInt(id))
   )
 
@@ -96,7 +96,7 @@ postsRouter.get(
 
     const result = await getUserPosts(
       identity,
-      { profileId: profile.id, isMale: profile.isMale! },
+      { profileId: profile.id, isMale: profile.isMale },
       query
     )
 
@@ -112,7 +112,7 @@ postsRouter.get('/saves', ...auth, zValidator('query', savedPostsQuerySchema), a
   const query = c.req.valid('query')
 
   const result = await getSavedPosts(
-    { profileId: profile.id, isMale: profile.isMale! },
+    { profileId: profile.id, isMale: profile.isMale },
     query
   )
 
@@ -167,7 +167,7 @@ postsRouter.get(
 
     const result = await getPostComments(
       id,
-      { profileId: profile.id, isMale: profile.isMale! },
+      { profileId: profile.id, isMale: profile.isMale },
       query
     )
 
@@ -191,7 +191,7 @@ postsRouter.post(
     const comment = await createComment(
       id,
       profile.id,
-      { profileId: profile.id, isMale: profile.isMale! },
+      { profileId: profile.id, isMale: profile.isMale },
       {
         content: data.content,
         parentId: data.parentId ? BigInt(data.parentId) : null,
@@ -216,7 +216,7 @@ postsRouter.get('/:id', optionalAuthMiddleware, zValidator('param', postIdParamS
 
   const post = await getPostById(
     id,
-    profile ? { profileId: profile.id, isMale: profile.isMale! } : undefined
+    profile && profile.isMale !== null ? { profileId: profile.id, isMale: profile.isMale } : undefined
   )
 
   return c.json({
@@ -269,7 +269,7 @@ postsRouter.post('/:id/save', ...auth, zValidator('param', postIdParamSchema), a
 
   const result = await savePost(id, {
     profileId: profile.id,
-    isMale: profile.isMale!,
+    isMale: profile.isMale,
   })
 
   return c.json({
@@ -284,7 +284,7 @@ postsRouter.post('/:id/unsave', ...auth, zValidator('param', postIdParamSchema),
 
   const result = await unsavePost(id, {
     profileId: profile.id,
-    isMale: profile.isMale!,
+    isMale: profile.isMale,
   })
 
   return c.json({
@@ -299,7 +299,7 @@ postsRouter.post('/:id/like', ...auth, zValidator('param', postIdParamSchema), a
 
   const result = await likePost(id, {
     profileId: profile.id,
-    isMale: profile.isMale!,
+    isMale: profile.isMale,
   })
 
   return c.json({
@@ -314,7 +314,7 @@ postsRouter.post('/:id/unlike', ...auth, zValidator('param', postIdParamSchema),
 
   const result = await unlikePost(id, {
     profileId: profile.id,
-    isMale: profile.isMale!,
+    isMale: profile.isMale,
   })
 
   return c.json({

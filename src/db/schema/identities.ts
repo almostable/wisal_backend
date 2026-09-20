@@ -38,11 +38,21 @@ export const RESERVED_IDENTITIES = [
   'onboarding',
   'invites',
   'blocks',
+  'readers',
+  'authors',
   'followers',
   'following',
   'check',
   'views',
   'saves',
+  'likes',
+  'settings',
+  'billing',
+  'notifications',
+  'auth',
+  'login',
+  'register',
+  'logout',
 ] as const
 
 export const createIdentityFormatSchema = (isVerified: boolean = false) => {

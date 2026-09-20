@@ -3,13 +3,18 @@ import { HTTPException } from 'hono/http-exception'
 import { getProfileByAccountId, isOnboardingCompleted } from '../lib/profile'
 import type { ProfileWithIdentity } from '../db/schema/profiles'
 
+export type OnboardedProfile = ProfileWithIdentity & {
+  isMale: boolean
+  name: string
+}
+
 export type OnboardingVariables = {
-  profile: ProfileWithIdentity
+  profile: OnboardedProfile
 }
 
 declare module 'hono' {
   interface ContextVariableMap {
-    profile: ProfileWithIdentity
+    profile: OnboardedProfile
   }
 }
 
@@ -28,7 +33,7 @@ export const onboardingMiddleware = createMiddleware<{
     throw new HTTPException(403, { message: 'Profile onboarding required' })
   }
 
-  c.set('profile', profile)
+  c.set('profile', profile as OnboardedProfile)
 
   await next()
 })

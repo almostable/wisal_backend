@@ -1,10 +1,11 @@
-import { sql, and, or, eq, inArray } from 'drizzle-orm'
+import { sql, and, or, eq, inArray, notInArray } from 'drizzle-orm'
 import { Cron } from 'croner'
 import { db } from '../db'
 import { mediaUploads } from '../db/schema/media-uploads'
 import { deleteObjectsFromR2 } from '../lib/s3'
 import { cleanupExpiredSessions } from '../lib/session'
 import { cleanupExpiredAdminSessions } from '../lib/admin-session'
+import { captureAppException } from '../lib/sentry'
 
 export interface MediaGcOptions {
   batchSize?: number
@@ -27,18 +28,22 @@ export async function runMediaGc(
   const deleter = options?.s3Deleter ?? deleteObjectsFromR2
   let processedBatches = 0
   let purgedKeysCount = 0
+  const failedKeys = new Set<string>()
 
   while (true) {
     const candidates = await executor
       .select({ fileKey: mediaUploads.fileKey })
       .from(mediaUploads)
       .where(
-        or(
-          and(
-            eq(mediaUploads.status, 'pending'),
-            sql`${mediaUploads.createdAt} < NOW() - INTERVAL '24 HOURS'`
+        and(
+          or(
+            and(
+              eq(mediaUploads.status, 'pending'),
+              sql`${mediaUploads.createdAt} < NOW() - INTERVAL '24 HOURS'`
+            ),
+            eq(mediaUploads.status, 'deleted')
           ),
-          eq(mediaUploads.status, 'deleted')
+          failedKeys.size > 0 ? notInArray(mediaUploads.fileKey, Array.from(failedKeys)) : undefined
         )
       )
       .limit(batchSize)
@@ -53,6 +58,11 @@ export async function runMediaGc(
     const { deleted: confirmedDeletedKeys, errors } = await deleter(keys)
     if (errors && errors.length > 0) {
       console.warn(`[GC Worker] S3 reported ${errors.length} errors while deleting keys`, errors)
+      for (const err of errors) {
+        if (err.key) {
+          failedKeys.add(err.key)
+        }
+      }
     }
 
     if (confirmedDeletedKeys.length > 0) {
@@ -105,6 +115,7 @@ export function initMediaGcCron(): Cron {
         `[CRON] [${result.timestamp}] Finished media GC: ${result.purgedKeysCount} purged from R2, ${result.databaseCleanedCount} deleted from DB. Cleaned ${purgedUserSessions} user sessions, ${purgedAdminSessions} admin sessions.`
       )
     } catch (error) {
+      captureAppException(error)
       console.error(`[CRON] [${new Date().toISOString()}] Error during media garbage collection:`, error)
     }
   })

@@ -967,8 +967,8 @@ export async function searchProfiles(
       AND ${profileBlocks.blockedProfileId} = ${profiles.id}
   )`
 
-  // Primary filtering: GIN-indexed searchText or identities.identity substring
-  const primarySearchFilter = sql`(${profiles.searchText} LIKE ${subPattern} OR lower(${identities.identity}) LIKE ${subPattern})`
+  // Primary filtering: GIN-indexed searchText (contains identity, name, and description)
+  const primarySearchFilter = sql`${profiles.searchText} LIKE ${subPattern}`
 
   const whereCondition = and(
     ne(profiles.id, viewerProfileId),

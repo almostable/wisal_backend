@@ -129,6 +129,33 @@ describe('S3 / R2 Utilities', () => {
     }
   })
 
+  it('deleteObjectsFromR2 chunks requests into batches of 1000 keys', async () => {
+    const originalSend = s3Client.send
+    const sentBatches: any[] = []
+
+    s3Client.send = (async (command: any) => {
+      sentBatches.push(command)
+      return {
+        Deleted: command.input.Delete.Objects.map((o: any) => ({ Key: o.Key })),
+        Errors: [],
+      }
+    }) as any
+
+    try {
+      const largeKeyList = Array.from({ length: 2500 }, (_, i) => `media/2026-09-04/${i}.jpg`)
+      const result = await deleteObjectsFromR2(largeKeyList)
+
+      expect(sentBatches.length).toBe(3) // 1000 + 1000 + 500
+      expect(sentBatches[0].input.Delete.Objects.length).toBe(1000)
+      expect(sentBatches[1].input.Delete.Objects.length).toBe(1000)
+      expect(sentBatches[2].input.Delete.Objects.length).toBe(500)
+      expect(result.deleted.length).toBe(2500)
+      expect(result.errors.length).toBe(0)
+    } finally {
+      s3Client.send = originalSend
+    }
+  })
+
   it('has expected image extensions and limits defined', () => {
     expect(ALLOWED_IMAGE_EXTENSIONS).toEqual(['jpg', 'jpeg', 'png', 'webp'])
     expect(ALLOWED_TYPES.jpg).toEqual(['image/jpeg'])

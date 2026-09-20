@@ -4,6 +4,8 @@ import { db } from '../db'
 
 import { REGULAR_READERS_WINDOW_DAYS } from '../config/constants'
 
+import { captureAppException } from '../lib/sentry'
+
 export interface RecalculateResult {
   success: boolean
   timestamp: string
@@ -13,33 +15,43 @@ export async function recalculateRegularReaders(
   executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0] = db
 ): Promise<RecalculateResult> {
   const nowIso = new Date().toISOString()
+  const intervalString = `${REGULAR_READERS_WINDOW_DAYS} days`
 
-  // 1. Update authors who have active readers in the last 180 days
-  await executor.execute(sql`
-    WITH calculated_stats AS (
-      SELECT author_profile_id, COUNT(*) AS active_count
-      FROM readers
-      WHERE last_read_at >= NOW() - INTERVAL '180 days'
-      GROUP BY author_profile_id
-    )
-    UPDATE profiles p
-    SET regular_readers_count = cs.active_count
-    FROM calculated_stats cs
-    WHERE p.id = cs.author_profile_id
-      AND p.regular_readers_count != cs.active_count
-  `)
-
-  // 2. Reset regular_readers_count to 0 for authors with no active reads in the last 180 days
-  await executor.execute(sql`
-    UPDATE profiles
-    SET regular_readers_count = 0
-    WHERE regular_readers_count > 0
-      AND id NOT IN (
-        SELECT DISTINCT author_profile_id
+  const runUpdates = async (tx: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+    // 1. Update authors who have active readers in the window
+    await tx.execute(sql`
+      WITH calculated_stats AS (
+        SELECT author_profile_id, COUNT(*)::int AS active_count
         FROM readers
-        WHERE last_read_at >= NOW() - INTERVAL '180 days'
+        WHERE last_read_at >= NOW() - (${intervalString})::interval
+        GROUP BY author_profile_id
       )
-  `)
+      UPDATE profiles p
+      SET regular_readers_count = cs.active_count
+      FROM calculated_stats cs
+      WHERE p.id = cs.author_profile_id
+        AND p.regular_readers_count != cs.active_count
+    `)
+
+    // 2. Reset regular_readers_count to 0 for authors with no active reads in the window
+    await tx.execute(sql`
+      UPDATE profiles p
+      SET regular_readers_count = 0
+      WHERE p.regular_readers_count > 0
+        AND NOT EXISTS (
+          SELECT 1
+          FROM readers r
+          WHERE r.author_profile_id = p.id
+            AND r.last_read_at >= NOW() - (${intervalString})::interval
+        )
+    `)
+  }
+
+  if (typeof (executor as any).transaction === 'function') {
+    await (executor as any).transaction(runUpdates)
+  } else {
+    await runUpdates(executor)
+  }
 
   return {
     success: true,
@@ -57,6 +69,7 @@ export function initRegularReadersCron(): Cron {
       const result = await recalculateRegularReaders()
       console.log(`[CRON] [${result.timestamp}] Finished daily recalculation of regular readers successfully.`)
     } catch (error) {
+      captureAppException(error)
       console.error(`[CRON] [${new Date().toISOString()}] Error during regular readers recalculation:`, error)
     }
   })

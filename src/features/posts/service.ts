@@ -1717,43 +1717,46 @@ export async function getFeedPosts(
 
   const whereCondition = and(...conditions)!
 
-  const [rows, totalResult] = await Promise.all([
-    db
-      .select({
-        post: posts,
-        ...authorSelectFields,
-        isSaved: sql<boolean>`CASE WHEN ${postSaves.profileId} IS NOT NULL THEN true ELSE false END`,
-        isLiked: sql<boolean>`CASE WHEN ${postLikes.profileId} IS NOT NULL THEN true ELSE false END`,
-      })
-      .from(posts)
-      .innerJoin(profiles, eq(posts.authorId, profiles.id))
-      .leftJoin(identities, eq(profiles.identityId, identities.id))
-      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
-      .leftJoin(
-        postSaves,
-        and(
-          eq(postSaves.postId, posts.id),
-          eq(postSaves.profileId, viewer.profileId)
-        )
+  const fetchRowsPromise = db
+    .select({
+      post: posts,
+      ...authorSelectFields,
+      isSaved: sql<boolean>`CASE WHEN ${postSaves.profileId} IS NOT NULL THEN true ELSE false END`,
+      isLiked: sql<boolean>`CASE WHEN ${postLikes.profileId} IS NOT NULL THEN true ELSE false END`,
+    })
+    .from(posts)
+    .innerJoin(profiles, eq(posts.authorId, profiles.id))
+    .leftJoin(identities, eq(profiles.identityId, identities.id))
+    .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+    .leftJoin(
+      postSaves,
+      and(
+        eq(postSaves.postId, posts.id),
+        eq(postSaves.profileId, viewer.profileId)
       )
-      .leftJoin(
-        postLikes,
-        and(
-          eq(postLikes.postId, posts.id),
-          eq(postLikes.profileId, viewer.profileId)
-        )
+    )
+    .leftJoin(
+      postLikes,
+      and(
+        eq(postLikes.postId, posts.id),
+        eq(postLikes.profileId, viewer.profileId)
       )
-      .where(and(whereCondition, isNull(accounts.deletedAt))!)
-      .orderBy(desc(posts.createdAt), desc(posts.id))
-      .limit(limit + 1)
-      .offset(query.cursor ? 0 : offset),
-    db
-      .select({ count: count() })
-      .from(posts)
-      .innerJoin(profiles, eq(posts.authorId, profiles.id))
-      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
-      .where(and(whereCondition, isNull(accounts.deletedAt))!),
-  ])
+    )
+    .where(and(whereCondition, isNull(accounts.deletedAt))!)
+    .orderBy(desc(posts.createdAt), desc(posts.id))
+    .limit(limit + 1)
+    .offset(query.cursor ? 0 : offset)
+
+  const fetchTotalPromise = query.cursor
+    ? Promise.resolve([{ count: 0 }])
+    : db
+        .select({ count: count() })
+        .from(posts)
+        .innerJoin(profiles, eq(posts.authorId, profiles.id))
+        .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+        .where(and(whereCondition, isNull(accounts.deletedAt))!)
+
+  const [rows, totalResult] = await Promise.all([fetchRowsPromise, fetchTotalPromise])
 
   const hasMore = rows.length > limit
   const items = hasMore ? rows.slice(0, limit) : rows
