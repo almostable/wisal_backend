@@ -10,6 +10,7 @@ describe('Authors and Monotonic Read Feature Tests', () => {
   const mockAccount: SafeAccount = {
     id: 111111111111111n,
     email: 'reader@wisal.dev',
+    bannedAt: null,
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),

@@ -16,6 +16,7 @@ describe('Profile Utility Tests', () => {
       regularReadersCount: 0,
       readersCount: 15,
       verifiedAt: null,
+      notificationsReadAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: {
@@ -47,6 +48,7 @@ describe('Profile Utility Tests', () => {
       regularReadersCount: 0,
       readersCount: 0,
       verifiedAt: null,
+      notificationsReadAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: {
@@ -73,6 +75,7 @@ describe('Profile Utility Tests', () => {
       regularReadersCount: 0,
       readersCount: 0,
       verifiedAt: null,
+      notificationsReadAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: {
@@ -99,6 +102,7 @@ describe('Profile Utility Tests', () => {
       regularReadersCount: 0,
       readersCount: 0,
       verifiedAt: null,
+      notificationsReadAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: null,
@@ -134,6 +138,7 @@ describe('Profile Utility Tests', () => {
       regularReadersCount: 42,
       readersCount: 50,
       verifiedAt: null,
+      notificationsReadAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: {
@@ -180,6 +185,7 @@ describe('Profile Utility Tests', () => {
       regularReadersCount: 42,
       readersCount: 50,
       verifiedAt: new Date(),
+      notificationsReadAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       identity: {

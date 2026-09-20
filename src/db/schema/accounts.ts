@@ -13,6 +13,7 @@ export const accounts = pgTable(
     id: snowflakePrimaryKey(),
     email: varchar('email', { length: 255 }).notNull(),
     passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+    bannedAt: timestamp('banned_at', { withTimezone: true, mode: 'date' }),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
     ...timestamps,
   },
@@ -20,6 +21,7 @@ export const accounts = pgTable(
     uniqueIndex('accounts_email_unique_idx').on(sql`lower(${table.email})`),
     index('accounts_created_at_idx').on(table.createdAt),
     index('accounts_deleted_at_idx').on(table.deletedAt),
+    index('accounts_banned_at_idx').on(table.bannedAt),
   ]
 )
 

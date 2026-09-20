@@ -9,7 +9,6 @@ import {
   loginInputSchema,
   createAdminInputSchema,
   createInviteInputSchema,
-  paginationQuerySchema,
   listAdminsQuerySchema,
   listUsersQuerySchema,
   listInvitesQuerySchema,
@@ -17,6 +16,12 @@ import {
   updateReportResolutionSchema,
   snowflakeParamSchema,
   adminUpdateUserProfileSchema,
+  banUserInputSchema,
+  unbanUserInputSchema,
+  listPostsAdminQuerySchema,
+  updatePostByAdminSchema,
+  listCommentsAdminQuerySchema,
+  resolveReportActionSchema,
 } from './schema'
 import {
   loginAdmin,
@@ -30,9 +35,22 @@ import {
   listUsers,
   getUserById,
   updateUserProfileByAdmin,
+  banUserAccount,
+  unbanUserAccount,
+  revokeUserSessions,
+  listPostsByAdmin,
+  getPostByIdByAdmin,
+  deletePostByAdmin,
+  restorePostByAdmin,
+  updatePostByAdmin,
+  listCommentsByAdmin,
+  getPostCommentsByAdmin,
+  deleteCommentByAdmin,
+  restoreCommentByAdmin,
   listReports,
   getReportById,
   updateReportResolution,
+  resolveReportWithAction,
 } from './service'
 
 export const adminRouter = new Hono()
@@ -80,6 +98,10 @@ adminRouter.get('/me', adminAuthMiddleware, async (c) => {
     admin,
   })
 })
+
+// ---------------------------------------------------------
+// Admins Management
+// ---------------------------------------------------------
 
 adminRouter.get(
   '/admins',
@@ -135,6 +157,10 @@ adminRouter.delete(
   }
 )
 
+// ---------------------------------------------------------
+// Invites Management
+// ---------------------------------------------------------
+
 adminRouter.post(
   '/invites',
   adminAuthMiddleware,
@@ -186,6 +212,10 @@ adminRouter.delete(
   }
 )
 
+// ---------------------------------------------------------
+// Users Management & Moderation
+// ---------------------------------------------------------
+
 adminRouter.get(
   '/users',
   adminAuthMiddleware,
@@ -235,6 +265,202 @@ adminRouter.patch(
   }
 )
 
+adminRouter.post(
+  '/users/:id/ban',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  zValidator('json', banUserInputSchema),
+  async (c) => {
+    const admin = c.get('admin')
+    const { id } = c.req.valid('param')
+    const data = c.req.valid('json')
+    const accountId = stringToSnowflake(id)
+    const result = await banUserAccount(admin, accountId, data)
+
+    return c.json(result)
+  }
+)
+
+adminRouter.post(
+  '/users/:id/unban',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  zValidator('json', unbanUserInputSchema),
+  async (c) => {
+    const admin = c.get('admin')
+    const { id } = c.req.valid('param')
+    const data = c.req.valid('json')
+    const accountId = stringToSnowflake(id)
+    const result = await unbanUserAccount(admin, accountId, data)
+
+    return c.json(result)
+  }
+)
+
+adminRouter.delete(
+  '/users/:id/sessions',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param')
+    const accountId = stringToSnowflake(id)
+    const result = await revokeUserSessions(accountId)
+
+    return c.json(result)
+  }
+)
+
+// ---------------------------------------------------------
+// Posts Moderation
+// ---------------------------------------------------------
+
+adminRouter.get(
+  '/posts',
+  adminAuthMiddleware,
+  zValidator('query', listPostsAdminQuerySchema),
+  async (c) => {
+    const query = c.req.valid('query')
+    const result = await listPostsByAdmin({
+      ...query,
+      authorId: query.authorId ? stringToSnowflake(query.authorId) : undefined,
+    })
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+adminRouter.get(
+  '/posts/:id',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param')
+    const postId = stringToSnowflake(id)
+    const post = await getPostByIdByAdmin(postId)
+
+    return c.json({
+      success: true,
+      post,
+    })
+  }
+)
+
+adminRouter.delete(
+  '/posts/:id',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param')
+    const postId = stringToSnowflake(id)
+    const result = await deletePostByAdmin(postId)
+
+    return c.json(result)
+  }
+)
+
+adminRouter.post(
+  '/posts/:id/restore',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param')
+    const postId = stringToSnowflake(id)
+    const result = await restorePostByAdmin(postId)
+
+    return c.json(result)
+  }
+)
+
+adminRouter.patch(
+  '/posts/:id',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  zValidator('json', updatePostByAdminSchema),
+  async (c) => {
+    const { id } = c.req.valid('param')
+    const postId = stringToSnowflake(id)
+    const data = c.req.valid('json')
+    const post = await updatePostByAdmin(postId, data)
+
+    return c.json({
+      success: true,
+      post,
+    })
+  }
+)
+
+// ---------------------------------------------------------
+// Comments Moderation
+// ---------------------------------------------------------
+
+adminRouter.get(
+  '/comments',
+  adminAuthMiddleware,
+  zValidator('query', listCommentsAdminQuerySchema),
+  async (c) => {
+    const query = c.req.valid('query')
+    const result = await listCommentsByAdmin({
+      ...query,
+      postId: query.postId ? stringToSnowflake(query.postId) : undefined,
+      authorId: query.authorId ? stringToSnowflake(query.authorId) : undefined,
+    })
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+adminRouter.get(
+  '/posts/:id/comments',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param')
+    const postId = stringToSnowflake(id)
+    const commentsList = await getPostCommentsByAdmin(postId)
+
+    return c.json({
+      success: true,
+      comments: commentsList,
+    })
+  }
+)
+
+adminRouter.delete(
+  '/comments/:id',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param')
+    const commentId = stringToSnowflake(id)
+    const result = await deleteCommentByAdmin(commentId)
+
+    return c.json(result)
+  }
+)
+
+adminRouter.post(
+  '/comments/:id/restore',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param')
+    const commentId = stringToSnowflake(id)
+    const result = await restoreCommentByAdmin(commentId)
+
+    return c.json(result)
+  }
+)
+
+// ---------------------------------------------------------
+// Reports Moderation & Actions
+// ---------------------------------------------------------
+
 adminRouter.get(
   '/reports',
   adminAuthMiddleware,
@@ -279,6 +505,26 @@ adminRouter.patch(
     const reportId = stringToSnowflake(id)
 
     const report = await updateReportResolution(admin, reportId, data)
+
+    return c.json({
+      success: true,
+      report,
+    })
+  }
+)
+
+adminRouter.post(
+  '/reports/:id/action',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  zValidator('json', resolveReportActionSchema),
+  async (c) => {
+    const admin = c.get('admin')
+    const { id } = c.req.valid('param')
+    const data = c.req.valid('json')
+    const reportId = stringToSnowflake(id)
+
+    const report = await resolveReportWithAction(admin, reportId, data)
 
     return c.json({
       success: true,

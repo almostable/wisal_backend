@@ -2,6 +2,7 @@ import {
   eq,
   sql,
   desc,
+  asc,
   count,
   and,
   or,
@@ -11,6 +12,7 @@ import {
   lte,
   ilike,
   aliasedTable,
+  inArray,
   type SQL,
 } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
@@ -21,8 +23,23 @@ import { invites } from '../../db/schema/invites'
 import { accounts, safeAccountSchema } from '../../db/schema/accounts'
 import { profiles, type Profile, type ProfileWithIdentity } from '../../db/schema/profiles'
 import { identities, type Identity } from '../../db/schema/identities'
-import { reconcileEntityMedia } from '../uploads/service'
-import type { AdminUpdateUserProfileInput } from './schema'
+import { posts, type PostType, type GenderScope, type AccessLevel } from '../../db/schema/posts'
+import { comments, type CommentType } from '../../db/schema/comments'
+import { readers } from '../../db/schema/readers'
+import { profileBlocks } from '../../db/schema/profile-blocks'
+import { postSaves } from '../../db/schema/post-saves'
+import { postLikes } from '../../db/schema/post-likes'
+import { sessions } from '../../db/schema/sessions'
+import { mediaUploads } from '../../db/schema/media-uploads'
+import { userRestrictions } from '../../db/schema/user-restrictions'
+import { reconcileEntityMedia, markEntityMediaDeleted } from '../uploads/service'
+import { createNotification } from '../notifications/service'
+import type {
+  AdminUpdateUserProfileInput,
+  BanUserInput,
+  UnbanUserInput,
+  UpdatePostByAdminInput,
+} from './schema'
 import {
   reports,
   type ReportTargetType,
@@ -52,10 +69,20 @@ import type {
   ListUsersOptions,
   ListUsersResult,
   UserListItem,
+  AdminUserDetail,
   AdminReportItem,
+  AdminReportTarget,
   ListReportsOptions,
   ListReportsResult,
   UpdateReportResolutionInput,
+  ResolveReportActionOptions,
+  AdminPostItem,
+  AdminPostAuthor,
+  ListPostsAdminOptions,
+  ListPostsAdminResult,
+  AdminCommentItem,
+  ListCommentsAdminOptions,
+  ListCommentsAdminResult,
 } from './types'
 
 export async function loginAdmin(input: AdminLoginInput): Promise<AdminLoginResult> {
@@ -447,6 +474,7 @@ export async function listUsers(options: ListUsersOptions = {}): Promise<ListUse
         account: {
           id: accounts.id,
           email: accounts.email,
+          bannedAt: accounts.bannedAt,
           deletedAt: accounts.deletedAt,
           createdAt: accounts.createdAt,
           updatedAt: accounts.updatedAt,
@@ -492,12 +520,13 @@ export async function listUsers(options: ListUsersOptions = {}): Promise<ListUse
   }
 }
 
-export async function getUserById(accountId: bigint): Promise<UserListItem> {
+export async function getUserById(accountId: bigint): Promise<AdminUserDetail> {
   const [record] = await db
     .select({
       account: {
         id: accounts.id,
         email: accounts.email,
+        bannedAt: accounts.bannedAt,
         deletedAt: accounts.deletedAt,
         createdAt: accounts.createdAt,
         updatedAt: accounts.updatedAt,
@@ -515,6 +544,101 @@ export async function getUserById(accountId: bigint): Promise<UserListItem> {
     throw new HTTPException(404, { message: 'User not found' })
   }
 
+  const profileId = record.profile?.id
+
+  const [
+    postsCountRes,
+    commentsCountRes,
+    readersCountRes,
+    authorsCountRes,
+    reportsReceivedRes,
+    reportsFiledRes,
+    blocksCountRes,
+    sessionsCountRes,
+    invitesStatsRes,
+    usedInviteRow,
+  ] = await Promise.all([
+    profileId
+      ? db
+          .select({ count: count() })
+          .from(posts)
+          .where(and(eq(posts.authorId, profileId), isNull(posts.deletedAt)))
+      : [{ count: 0 }],
+    profileId
+      ? db
+          .select({ count: count() })
+          .from(comments)
+          .where(and(eq(comments.authorId, profileId), isNull(comments.deletedAt)))
+      : [{ count: 0 }],
+    profileId
+      ? db
+          .select({ count: count() })
+          .from(readers)
+          .where(eq(readers.authorProfileId, profileId))
+      : [{ count: 0 }],
+    profileId
+      ? db
+          .select({ count: count() })
+          .from(readers)
+          .where(eq(readers.readerProfileId, profileId))
+      : [{ count: 0 }],
+    profileId
+      ? db
+          .select({ count: count() })
+          .from(reports)
+          .where(eq(reports.reportedProfileId, profileId))
+      : [{ count: 0 }],
+    profileId
+      ? db
+          .select({ count: count() })
+          .from(reports)
+          .where(eq(reports.reporterProfileId, profileId))
+      : [{ count: 0 }],
+    profileId
+      ? db
+          .select({ count: count() })
+          .from(profileBlocks)
+          .where(
+            or(
+              eq(profileBlocks.blockerProfileId, profileId),
+              eq(profileBlocks.blockedProfileId, profileId)
+            )
+          )
+      : [{ count: 0 }],
+    db
+      .select({ count: count() })
+      .from(sessions)
+      .where(and(eq(sessions.accountId, accountId), gt(sessions.expiresAt, sql`now()`))),
+    db
+      .select({
+        total: count(),
+        used: sql<number>`count(*) filter (where ${invites.usedAt} is not null)::int`,
+        active: sql<number>`count(*) filter (where ${invites.usedAt} is null and ${invites.expiresAt} > now())::int`,
+      })
+      .from(invites)
+      .where(eq(invites.inviterId, accountId)),
+    db
+      .select({
+        code: invites.code,
+        inviterAccount: {
+          id: accounts.id,
+          email: accounts.email,
+        },
+        inviterProfile: {
+          name: profiles.name,
+        },
+        inviterIdentity: {
+          identity: identities.identity,
+        },
+      })
+      .from(invites)
+      .leftJoin(accounts, eq(invites.inviterId, accounts.id))
+      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(eq(invites.usedById, accountId))
+      .limit(1),
+  ])
+
   const fullProfile: ProfileWithIdentity | null =
     record.profile && record.profile.id
       ? {
@@ -523,9 +647,42 @@ export async function getUserById(accountId: bigint): Promise<UserListItem> {
         }
       : null
 
+  const invitedBy =
+    usedInviteRow[0]
+      ? {
+          code: usedInviteRow[0].code,
+          inviter: usedInviteRow[0].inviterAccount?.id
+            ? {
+                id: usedInviteRow[0].inviterAccount.id,
+                email: usedInviteRow[0].inviterAccount.email,
+                name: usedInviteRow[0].inviterProfile?.name ?? null,
+                identity: usedInviteRow[0].inviterIdentity?.identity ?? null,
+              }
+            : null,
+        }
+      : null
+
+  const stats = {
+    postsCount: postsCountRes[0]?.count ?? 0,
+    commentsCount: commentsCountRes[0]?.count ?? 0,
+    readersCount: readersCountRes[0]?.count ?? 0,
+    authorsCount: authorsCountRes[0]?.count ?? 0,
+    reportsReceivedCount: reportsReceivedRes[0]?.count ?? 0,
+    reportsFiledCount: reportsFiledRes[0]?.count ?? 0,
+    blocksCount: blocksCountRes[0]?.count ?? 0,
+    activeSessionsCount: sessionsCountRes[0]?.count ?? 0,
+    invitesStats: {
+      total: Number(invitesStatsRes[0]?.total ?? 0),
+      used: Number(invitesStatsRes[0]?.used ?? 0),
+      active: Number(invitesStatsRes[0]?.active ?? 0),
+    },
+  }
+
   return {
     ...record.account,
     profile: formatProfileResponse(fullProfile),
+    stats,
+    invitedBy,
   }
 }
 
@@ -539,6 +696,7 @@ export async function updateUserProfileByAdmin(
         account: {
           id: accounts.id,
           email: accounts.email,
+          bannedAt: accounts.bannedAt,
           deletedAt: accounts.deletedAt,
           createdAt: accounts.createdAt,
           updatedAt: accounts.updatedAt,
@@ -694,6 +852,941 @@ export async function updateUserProfileByAdmin(
   })
 }
 
+// ---------------------------------------------------------
+// User Ban / Unban / Session Revoke
+// ---------------------------------------------------------
+
+export async function banUserAccount(
+  admin: { id: bigint },
+  accountId: bigint,
+  input: BanUserInput
+): Promise<{ success: boolean; message: string }> {
+  return await db.transaction(async (tx) => {
+    const [record] = await tx
+      .select({
+        account: accounts,
+        profile: profiles,
+        identity: identities,
+      })
+      .from(accounts)
+      .leftJoin(profiles, eq(accounts.id, profiles.accountId))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(eq(accounts.id, accountId))
+      .limit(1)
+
+    if (!record || !record.account || record.account.deletedAt !== null) {
+      throw new HTTPException(404, { message: 'User not found' })
+    }
+
+    if (record.account.bannedAt !== null) {
+      throw new HTTPException(400, { message: 'User is already banned' })
+    }
+
+    const now = new Date()
+
+    // 1. Set bannedAt on account
+    await tx
+      .update(accounts)
+      .set({ bannedAt: now })
+      .where(eq(accounts.id, accountId))
+
+    // 2. Insert into userRestrictions
+    await tx.insert(userRestrictions).values({
+      accountId,
+      adminId: admin.id,
+      type: 'ban',
+      reason: input.reason.trim(),
+      expiresAt: input.expiresAt ?? null,
+      isActive: true,
+    })
+
+    // 3. Invalidate all active sessions immediately
+    await tx.delete(sessions).where(eq(sessions.accountId, accountId))
+
+    if (record.profile) {
+      const profileId = record.profile.id
+
+      // 4. Soft-delete all posts of this user & mark media deleted
+      await tx
+        .update(posts)
+        .set({
+          deletedAt: now,
+          isPinned: false,
+        })
+        .where(and(eq(posts.authorId, profileId), isNull(posts.deletedAt)))
+
+      await tx
+        .update(mediaUploads)
+        .set({ status: 'deleted' })
+        .where(
+          and(
+            eq(mediaUploads.profileId, profileId),
+            eq(mediaUploads.status, 'attached')
+          )
+        )
+
+      // 5. Soft-delete all comments of this user
+      await tx
+        .update(comments)
+        .set({ deletedAt: now })
+        .where(and(eq(comments.authorId, profileId), isNull(comments.deletedAt)))
+
+      // 6. Delete all reader connections & decrement counters
+      // 6a. Decrement counts for authors whom this user was reading
+      const userReading = await tx
+        .select({ authorProfileId: readers.authorProfileId })
+        .from(readers)
+        .where(eq(readers.readerProfileId, profileId))
+
+      const readAuthorIds = userReading.map((r) => r.authorProfileId)
+      if (readAuthorIds.length > 0) {
+        await tx
+          .update(profiles)
+          .set({
+            readersCount: sql`GREATEST(0, ${profiles.readersCount} - 1)`,
+            regularReadersCount: sql`GREATEST(0, ${profiles.regularReadersCount} - 1)`,
+          })
+          .where(inArray(profiles.id, readAuthorIds))
+      }
+
+      await tx
+        .delete(readers)
+        .where(
+          or(
+            eq(readers.authorProfileId, profileId),
+            eq(readers.readerProfileId, profileId)
+          )
+        )
+
+      // 7. Clear identity & release handle
+      if (record.profile.identityId) {
+        const oldIdentityId = record.profile.identityId
+        await tx
+          .update(profiles)
+          .set({
+            identityId: null,
+            identity: null,
+            readersCount: 0,
+            regularReadersCount: 0,
+          })
+          .where(eq(profiles.id, profileId))
+
+        await tx.delete(identities).where(eq(identities.id, oldIdentityId))
+      }
+
+      // 8. Find inviter -> annul unused active invites -> send system_restriction notification
+      const usedInvite = await tx.query.invites.findFirst({
+        where: eq(invites.usedById, accountId),
+      })
+
+      if (usedInvite?.inviterId) {
+        await tx
+          .update(invites)
+          .set({ expiresAt: now })
+          .where(
+            and(
+              eq(invites.inviterId, usedInvite.inviterId),
+              isNull(invites.usedAt),
+              gt(invites.expiresAt, sql`now()`)
+            )
+          )
+
+        const inviterProfile = await tx.query.profiles.findFirst({
+          where: eq(profiles.accountId, usedInvite.inviterId),
+        })
+
+        if (inviterProfile) {
+          const bannedHandle = record.identity?.identity ? `@${record.identity.identity}` : 'пользователь'
+          await createNotification(
+            {
+              recipientProfileId: inviterProfile.id,
+              actorProfileId: null,
+              type: 'system_restriction',
+              targetType: 'system',
+              payload: {
+                reason: `Приглашенный вами пользователь (${bannedHandle}) был заблокирован за нарушение правил. Ваши неиспользованные инвайт-коды аннулированы.`,
+              },
+            },
+            tx
+          )
+        }
+      }
+    }
+
+    return {
+      success: true,
+      message: 'User banned successfully',
+    }
+  })
+}
+
+export async function unbanUserAccount(
+  admin: { id: bigint },
+  accountId: bigint,
+  input: UnbanUserInput
+): Promise<{ success: boolean; message: string }> {
+  return await db.transaction(async (tx) => {
+    const account = await tx.query.accounts.findFirst({
+      where: and(eq(accounts.id, accountId), isNull(accounts.deletedAt)),
+    })
+
+    if (!account) {
+      throw new HTTPException(404, { message: 'User not found' })
+    }
+
+    if (account.bannedAt === null) {
+      throw new HTTPException(400, { message: 'User is not banned' })
+    }
+
+    const now = new Date()
+
+    await tx
+      .update(accounts)
+      .set({ bannedAt: null })
+      .where(eq(accounts.id, accountId))
+
+    await tx
+      .update(userRestrictions)
+      .set({
+        isActive: false,
+        revokedAt: now,
+        revokedById: admin.id,
+        revokeReason: input.reason.trim(),
+      })
+      .where(
+        and(
+          eq(userRestrictions.accountId, accountId),
+          eq(userRestrictions.isActive, true)
+        )
+      )
+
+    return {
+      success: true,
+      message: 'User unbanned successfully',
+    }
+  })
+}
+
+export async function revokeUserSessions(accountId: bigint): Promise<{ success: boolean; count: number }> {
+  const deleted = await db
+    .delete(sessions)
+    .where(eq(sessions.accountId, accountId))
+    .returning({ id: sessions.id })
+
+  return {
+    success: true,
+    count: deleted.length,
+  }
+}
+
+// ---------------------------------------------------------
+// Posts Moderation
+// ---------------------------------------------------------
+
+export async function listPostsByAdmin(
+  options: ListPostsAdminOptions = {}
+): Promise<ListPostsAdminResult> {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
+  const offset = Math.max(options.offset ?? 0, 0)
+  const searchQuery = (options.q ?? options.search)?.trim()
+
+  const conditions: (SQL | undefined)[] = []
+
+  if (options.status === 'active') {
+    conditions.push(isNull(posts.deletedAt))
+  } else if (options.status === 'deleted') {
+    conditions.push(isNotNull(posts.deletedAt))
+  }
+
+  if (options.authorId) {
+    conditions.push(eq(posts.authorId, options.authorId))
+  }
+
+  if (options.type && options.type !== 'all') {
+    conditions.push(eq(posts.type, options.type))
+  }
+
+  if (options.genderScope && options.genderScope !== 'all') {
+    conditions.push(eq(posts.genderScope, options.genderScope))
+  }
+
+  if (options.accessLevel && options.accessLevel !== 'all') {
+    conditions.push(eq(posts.accessLevel, options.accessLevel))
+  }
+
+  if (options.isFeed === 'true') {
+    conditions.push(eq(posts.isFeed, true))
+  } else if (options.isFeed === 'false') {
+    conditions.push(eq(posts.isFeed, false))
+  }
+
+  if (options.isPinned === 'true') {
+    conditions.push(eq(posts.isPinned, true))
+  } else if (options.isPinned === 'false') {
+    conditions.push(eq(posts.isPinned, false))
+  }
+
+  if (searchQuery) {
+    const isNumericId = /^\d{1,20}$/.test(searchQuery)
+    const searchPattern = `%${searchQuery}%`
+    const searchCondition = isNumericId
+      ? or(
+          eq(posts.id, BigInt(searchQuery)),
+          eq(posts.authorId, BigInt(searchQuery)),
+          ilike(posts.content, searchPattern),
+          ilike(accounts.email, searchPattern),
+          ilike(profiles.name, searchPattern),
+          ilike(identities.identity, searchPattern)
+        )
+      : or(
+          ilike(posts.content, searchPattern),
+          ilike(accounts.email, searchPattern),
+          ilike(profiles.name, searchPattern),
+          ilike(identities.identity, searchPattern)
+        )
+    if (searchCondition) {
+      conditions.push(searchCondition)
+    }
+  }
+
+  const whereCondition = conditions.length > 0 ? and(...conditions) : undefined
+
+  const [rawPosts, totalResult] = await Promise.all([
+    db
+      .select({
+        post: posts,
+        author: {
+          id: profiles.id,
+          accountId: profiles.accountId,
+          email: accounts.email,
+          name: profiles.name,
+          avatarKey: profiles.avatarKey,
+          isMale: profiles.isMale,
+          verifiedAt: profiles.verifiedAt,
+        },
+        identity: {
+          identity: identities.identity,
+        },
+      })
+      .from(posts)
+      .leftJoin(profiles, eq(posts.authorId, profiles.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(whereCondition)
+      .orderBy(desc(posts.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(posts)
+      .leftJoin(profiles, eq(posts.authorId, profiles.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(whereCondition),
+  ])
+
+  const mappedPosts: AdminPostItem[] = rawPosts.map((item) => {
+    const author: AdminPostAuthor | null =
+      item.author && item.author.id && item.author.accountId && item.author.email
+        ? {
+            id: item.author.id,
+            accountId: item.author.accountId,
+            email: item.author.email,
+            name: item.author.name,
+            identity: item.identity?.identity ?? null,
+            avatarKey: item.author.avatarKey,
+            isMale: item.author.isMale,
+            isVerified: Boolean(item.author.verifiedAt),
+          }
+        : null
+
+    return {
+      id: item.post.id,
+      authorId: item.post.authorId,
+      type: item.post.type as PostType,
+      payload: item.post.payload as Record<string, unknown>,
+      content: item.post.content,
+      genderScope: item.post.genderScope as GenderScope,
+      accessLevel: item.post.accessLevel as AccessLevel,
+      isFeed: item.post.isFeed,
+      isPinned: item.post.isPinned,
+      savesCount: item.post.savesCount,
+      likesCount: item.post.likesCount,
+      commentsCount: item.post.commentsCount,
+      viewsCount: item.post.viewsCount,
+      deletedAt: item.post.deletedAt,
+      createdAt: item.post.createdAt,
+      updatedAt: item.post.updatedAt,
+      editedAt: item.post.editedAt,
+      author,
+    }
+  })
+
+  return {
+    posts: mappedPosts,
+    total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
+  }
+}
+
+export async function getPostByIdByAdmin(postId: bigint): Promise<AdminPostItem> {
+  const [item] = await db
+    .select({
+      post: posts,
+      author: {
+        id: profiles.id,
+        accountId: profiles.accountId,
+        email: accounts.email,
+        name: profiles.name,
+        avatarKey: profiles.avatarKey,
+        isMale: profiles.isMale,
+        verifiedAt: profiles.verifiedAt,
+      },
+      identity: {
+        identity: identities.identity,
+      },
+    })
+    .from(posts)
+    .leftJoin(profiles, eq(posts.authorId, profiles.id))
+    .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+    .leftJoin(identities, eq(profiles.identityId, identities.id))
+    .where(eq(posts.id, postId))
+    .limit(1)
+
+  if (!item) {
+    throw new HTTPException(404, { message: 'Post not found' })
+  }
+
+  const author: AdminPostAuthor | null =
+    item.author && item.author.id && item.author.accountId && item.author.email
+      ? {
+          id: item.author.id,
+          accountId: item.author.accountId,
+          email: item.author.email,
+          name: item.author.name,
+          identity: item.identity?.identity ?? null,
+          avatarKey: item.author.avatarKey,
+          isMale: item.author.isMale,
+          isVerified: Boolean(item.author.verifiedAt),
+        }
+      : null
+
+  return {
+    id: item.post.id,
+    authorId: item.post.authorId,
+    type: item.post.type as PostType,
+    payload: item.post.payload as Record<string, unknown>,
+    content: item.post.content,
+    genderScope: item.post.genderScope as GenderScope,
+    accessLevel: item.post.accessLevel as AccessLevel,
+    isFeed: item.post.isFeed,
+    isPinned: item.post.isPinned,
+    savesCount: item.post.savesCount,
+    likesCount: item.post.likesCount,
+    commentsCount: item.post.commentsCount,
+    viewsCount: item.post.viewsCount,
+    deletedAt: item.post.deletedAt,
+    createdAt: item.post.createdAt,
+    updatedAt: item.post.updatedAt,
+    editedAt: item.post.editedAt,
+    author,
+  }
+}
+
+export async function deletePostByAdmin(postId: bigint): Promise<{ success: boolean; message: string }> {
+  return await db.transaction(async (tx) => {
+    const existing = await tx.query.posts.findFirst({
+      where: eq(posts.id, postId),
+    })
+
+    if (!existing) {
+      throw new HTTPException(404, { message: 'Post not found' })
+    }
+
+    if (existing.deletedAt !== null) {
+      throw new HTTPException(400, { message: 'Post is already deleted' })
+    }
+
+    await tx
+      .update(posts)
+      .set({
+        deletedAt: new Date(),
+        isPinned: false,
+      })
+      .where(eq(posts.id, postId))
+
+    await markEntityMediaDeleted(tx, {
+      entityType: 'post',
+      entityId: postId,
+    })
+
+    await tx.execute(sql`
+      UPDATE media_uploads
+      SET status = 'deleted'
+      WHERE entity_type = 'comment'
+        AND status = 'attached'
+        AND entity_id IN (
+          SELECT id FROM comments WHERE post_id = ${postId}
+        )
+    `)
+
+    return {
+      success: true,
+      message: 'Post deleted successfully by admin',
+    }
+  })
+}
+
+export async function restorePostByAdmin(postId: bigint): Promise<{ success: boolean; message: string }> {
+  return await db.transaction(async (tx) => {
+    const existing = await tx.query.posts.findFirst({
+      where: eq(posts.id, postId),
+    })
+
+    if (!existing) {
+      throw new HTTPException(404, { message: 'Post not found' })
+    }
+
+    if (existing.deletedAt === null) {
+      throw new HTTPException(400, { message: 'Post is not deleted' })
+    }
+
+    await tx
+      .update(posts)
+      .set({ deletedAt: null })
+      .where(eq(posts.id, postId))
+
+    await tx
+      .update(mediaUploads)
+      .set({ status: 'attached' })
+      .where(
+        and(
+          eq(mediaUploads.entityType, 'post'),
+          eq(mediaUploads.entityId, postId),
+          eq(mediaUploads.status, 'deleted')
+        )
+      )
+
+    return {
+      success: true,
+      message: 'Post restored successfully',
+    }
+  })
+}
+
+export async function updatePostByAdmin(
+  postId: bigint,
+  input: UpdatePostByAdminInput
+): Promise<AdminPostItem> {
+  const existing = await db.query.posts.findFirst({
+    where: eq(posts.id, postId),
+  })
+
+  if (!existing) {
+    throw new HTTPException(404, { message: 'Post not found' })
+  }
+
+  const updateData: Partial<typeof posts.$inferInsert> = {
+    updatedAt: new Date(),
+  }
+
+  if (input.isFeed !== undefined) {
+    updateData.isFeed = input.isFeed
+  }
+  if (input.isPinned !== undefined) {
+    updateData.isPinned = input.isPinned
+  }
+  if (input.content !== undefined) {
+    updateData.content = input.content
+  }
+  if (input.payload !== undefined) {
+    updateData.payload = input.payload
+  }
+
+  await db.update(posts).set(updateData).where(eq(posts.id, postId))
+
+  return getPostByIdByAdmin(postId)
+}
+
+// ---------------------------------------------------------
+// Comments Moderation
+// ---------------------------------------------------------
+
+export async function listCommentsByAdmin(
+  options: ListCommentsAdminOptions = {}
+): Promise<ListCommentsAdminResult> {
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
+  const offset = Math.max(options.offset ?? 0, 0)
+  const searchQuery = (options.q ?? options.search)?.trim()
+
+  const conditions: (SQL | undefined)[] = []
+
+  if (options.status === 'active') {
+    conditions.push(isNull(comments.deletedAt))
+  } else if (options.status === 'deleted') {
+    conditions.push(isNotNull(comments.deletedAt))
+  }
+
+  if (options.postId) {
+    conditions.push(eq(comments.postId, options.postId))
+  }
+
+  if (options.authorId) {
+    conditions.push(eq(comments.authorId, options.authorId))
+  }
+
+  if (searchQuery) {
+    const isNumericId = /^\d{1,20}$/.test(searchQuery)
+    const searchPattern = `%${searchQuery}%`
+    const searchCondition = isNumericId
+      ? or(
+          eq(comments.id, BigInt(searchQuery)),
+          eq(comments.postId, BigInt(searchQuery)),
+          eq(comments.authorId, BigInt(searchQuery)),
+          ilike(comments.content, searchPattern),
+          ilike(accounts.email, searchPattern),
+          ilike(profiles.name, searchPattern),
+          ilike(identities.identity, searchPattern)
+        )
+      : or(
+          ilike(comments.content, searchPattern),
+          ilike(accounts.email, searchPattern),
+          ilike(profiles.name, searchPattern),
+          ilike(identities.identity, searchPattern)
+        )
+    if (searchCondition) {
+      conditions.push(searchCondition)
+    }
+  }
+
+  const whereCondition = conditions.length > 0 ? and(...conditions) : undefined
+
+  const [rawComments, totalResult] = await Promise.all([
+    db
+      .select({
+        comment: comments,
+        author: {
+          id: profiles.id,
+          accountId: profiles.accountId,
+          email: accounts.email,
+          name: profiles.name,
+          avatarKey: profiles.avatarKey,
+          isMale: profiles.isMale,
+          verifiedAt: profiles.verifiedAt,
+        },
+        identity: {
+          identity: identities.identity,
+        },
+      })
+      .from(comments)
+      .leftJoin(profiles, eq(comments.authorId, profiles.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(whereCondition)
+      .orderBy(desc(comments.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: count() })
+      .from(comments)
+      .leftJoin(profiles, eq(comments.authorId, profiles.id))
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(whereCondition),
+  ])
+
+  const mappedComments: AdminCommentItem[] = rawComments.map((item) => {
+    const author: AdminPostAuthor | null =
+      item.author && item.author.id && item.author.accountId && item.author.email
+        ? {
+            id: item.author.id,
+            accountId: item.author.accountId,
+            email: item.author.email,
+            name: item.author.name,
+            identity: item.identity?.identity ?? null,
+            avatarKey: item.author.avatarKey,
+            isMale: item.author.isMale,
+            isVerified: Boolean(item.author.verifiedAt),
+          }
+        : null
+
+    return {
+      id: item.comment.id,
+      postId: item.comment.postId,
+      authorId: item.comment.authorId,
+      parentId: item.comment.parentId,
+      replyToCommentId: item.comment.replyToCommentId,
+      replyToProfileId: item.comment.replyToProfileId,
+      type: item.comment.type as CommentType,
+      payload: item.comment.payload as Record<string, unknown>,
+      content: item.comment.content,
+      repliesCount: item.comment.repliesCount,
+      deletedAt: item.comment.deletedAt,
+      createdAt: item.comment.createdAt,
+      updatedAt: item.comment.updatedAt,
+      editedAt: item.comment.editedAt,
+      author,
+    }
+  })
+
+  return {
+    comments: mappedComments,
+    total: totalResult[0]?.count ?? 0,
+    limit,
+    offset,
+  }
+}
+
+export async function getPostCommentsByAdmin(postId: bigint): Promise<AdminCommentItem[]> {
+  const rawComments = await db
+    .select({
+      comment: comments,
+      author: {
+        id: profiles.id,
+        accountId: profiles.accountId,
+        email: accounts.email,
+        name: profiles.name,
+        avatarKey: profiles.avatarKey,
+        isMale: profiles.isMale,
+        verifiedAt: profiles.verifiedAt,
+      },
+      identity: {
+        identity: identities.identity,
+      },
+    })
+    .from(comments)
+    .leftJoin(profiles, eq(comments.authorId, profiles.id))
+    .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+    .leftJoin(identities, eq(profiles.identityId, identities.id))
+    .where(eq(comments.postId, postId))
+    .orderBy(asc(comments.createdAt))
+
+  return rawComments.map((item) => {
+    const author: AdminPostAuthor | null =
+      item.author && item.author.id && item.author.accountId && item.author.email
+        ? {
+            id: item.author.id,
+            accountId: item.author.accountId,
+            email: item.author.email,
+            name: item.author.name,
+            identity: item.identity?.identity ?? null,
+            avatarKey: item.author.avatarKey,
+            isMale: item.author.isMale,
+            isVerified: Boolean(item.author.verifiedAt),
+          }
+        : null
+
+    return {
+      id: item.comment.id,
+      postId: item.comment.postId,
+      authorId: item.comment.authorId,
+      parentId: item.comment.parentId,
+      replyToCommentId: item.comment.replyToCommentId,
+      replyToProfileId: item.comment.replyToProfileId,
+      type: item.comment.type as CommentType,
+      payload: item.comment.payload as Record<string, unknown>,
+      content: item.comment.content,
+      repliesCount: item.comment.repliesCount,
+      deletedAt: item.comment.deletedAt,
+      createdAt: item.comment.createdAt,
+      updatedAt: item.comment.updatedAt,
+      editedAt: item.comment.editedAt,
+      author,
+    }
+  })
+}
+
+export async function deleteCommentByAdmin(commentId: bigint): Promise<{ success: boolean; message: string }> {
+  return await db.transaction(async (tx) => {
+    const existing = await tx.query.comments.findFirst({
+      where: eq(comments.id, commentId),
+    })
+
+    if (!existing) {
+      throw new HTTPException(404, { message: 'Comment not found' })
+    }
+
+    if (existing.deletedAt !== null) {
+      throw new HTTPException(400, { message: 'Comment is already deleted' })
+    }
+
+    await tx
+      .update(comments)
+      .set({ deletedAt: new Date() })
+      .where(eq(comments.id, commentId))
+
+    await markEntityMediaDeleted(tx, {
+      entityType: 'comment',
+      entityId: commentId,
+    })
+
+    return {
+      success: true,
+      message: 'Comment deleted successfully by admin',
+    }
+  })
+}
+
+export async function restoreCommentByAdmin(commentId: bigint): Promise<{ success: boolean; message: string }> {
+  return await db.transaction(async (tx) => {
+    const existing = await tx.query.comments.findFirst({
+      where: eq(comments.id, commentId),
+    })
+
+    if (!existing) {
+      throw new HTTPException(404, { message: 'Comment not found' })
+    }
+
+    if (existing.deletedAt === null) {
+      throw new HTTPException(400, { message: 'Comment is not deleted' })
+    }
+
+    await tx
+      .update(comments)
+      .set({ deletedAt: null })
+      .where(eq(comments.id, commentId))
+
+    await tx
+      .update(mediaUploads)
+      .set({ status: 'attached' })
+      .where(
+        and(
+          eq(mediaUploads.entityType, 'comment'),
+          eq(mediaUploads.entityId, commentId),
+          eq(mediaUploads.status, 'deleted')
+        )
+      )
+
+    return {
+      success: true,
+      message: 'Comment restored successfully',
+    }
+  })
+}
+
+// ---------------------------------------------------------
+// Reports & Target Enrichment
+// ---------------------------------------------------------
+
+async function fetchReportTarget(
+  targetType: ReportTargetType,
+  targetId: bigint
+): Promise<AdminReportTarget | null> {
+  if (targetType === 'post') {
+    const [item] = await db
+      .select({
+        post: posts,
+        author: {
+          id: profiles.id,
+          name: profiles.name,
+          avatarKey: profiles.avatarKey,
+        },
+        identity: {
+          identity: identities.identity,
+        },
+      })
+      .from(posts)
+      .leftJoin(profiles, eq(posts.authorId, profiles.id))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(eq(posts.id, targetId))
+      .limit(1)
+
+    if (!item) return { type: 'post', post: null }
+
+    return {
+      type: 'post',
+      post: {
+        id: item.post.id,
+        authorId: item.post.authorId,
+        content: item.post.content,
+        type: item.post.type as PostType,
+        payload: item.post.payload as Record<string, unknown>,
+        deletedAt: item.post.deletedAt,
+        author: item.author?.id
+          ? {
+              id: item.author.id,
+              name: item.author.name,
+              identity: item.identity?.identity ?? null,
+              avatarKey: item.author.avatarKey,
+            }
+          : null,
+      },
+    }
+  }
+
+  if (targetType === 'comment') {
+    const [item] = await db
+      .select({
+        comment: comments,
+        author: {
+          id: profiles.id,
+          name: profiles.name,
+          avatarKey: profiles.avatarKey,
+        },
+        identity: {
+          identity: identities.identity,
+        },
+      })
+      .from(comments)
+      .leftJoin(profiles, eq(comments.authorId, profiles.id))
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(eq(comments.id, targetId))
+      .limit(1)
+
+    if (!item) return { type: 'comment', comment: null }
+
+    return {
+      type: 'comment',
+      comment: {
+        id: item.comment.id,
+        postId: item.comment.postId,
+        authorId: item.comment.authorId,
+        content: item.comment.content,
+        type: item.comment.type as CommentType,
+        payload: item.comment.payload as Record<string, unknown>,
+        deletedAt: item.comment.deletedAt,
+        author: item.author?.id
+          ? {
+              id: item.author.id,
+              name: item.author.name,
+              identity: item.identity?.identity ?? null,
+              avatarKey: item.author.avatarKey,
+            }
+          : null,
+      },
+    }
+  }
+
+  if (targetType === 'profile') {
+    const [item] = await db
+      .select({
+        profile: profiles,
+        identity: identities,
+      })
+      .from(profiles)
+      .leftJoin(identities, eq(profiles.identityId, identities.id))
+      .where(eq(profiles.id, targetId))
+      .limit(1)
+
+    if (!item) return { type: 'profile', profile: null }
+
+    return {
+      type: 'profile',
+      profile: {
+        id: item.profile.id,
+        name: item.profile.name,
+        identity: item.identity?.identity ?? null,
+        avatarKey: item.profile.avatarKey,
+        description: item.profile.description,
+        isMale: item.profile.isMale,
+      },
+    }
+  }
+
+  return null
+}
+
 export async function listReports(options: ListReportsOptions = {}): Promise<ListReportsResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
@@ -831,7 +1924,17 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
       .from(reports),
   ])
 
-  const mappedReports: AdminReportItem[] = items.map((item) => {
+  // Fetch targets in parallel
+  const targets = await Promise.all(
+    items.map((item) =>
+      fetchReportTarget(
+        item.report.targetType as ReportTargetType,
+        item.report.targetId
+      )
+    )
+  )
+
+  const mappedReports: AdminReportItem[] = items.map((item, index) => {
     const reporterInfo =
       item.reporter && item.reporter.id
         ? {
@@ -875,6 +1978,7 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
       reportedUser: reportedUserInfo,
       resolvedBy: resolverInfo,
       resolvedAt: item.report.resolvedAt,
+      target: targets[index],
       createdAt: item.report.createdAt,
       updatedAt: item.report.updatedAt,
     }
@@ -951,6 +2055,11 @@ export async function getReportById(reportId: bigint): Promise<AdminReportItem> 
     throw new HTTPException(404, { message: 'Report not found' })
   }
 
+  const target = await fetchReportTarget(
+    item.report.targetType as ReportTargetType,
+    item.report.targetId
+  )
+
   const reporterInfo =
     item.reporter && item.reporter.id
       ? {
@@ -994,6 +2103,7 @@ export async function getReportById(reportId: bigint): Promise<AdminReportItem> 
     reportedUser: reportedUserInfo,
     resolvedBy: resolverInfo,
     resolvedAt: item.report.resolvedAt,
+    target,
     createdAt: item.report.createdAt,
     updatedAt: item.report.updatedAt,
   }
@@ -1034,4 +2144,88 @@ export async function updateReportResolution(
   }
 
   return getReportById(reportId)
+}
+
+export async function resolveReportWithAction(
+  admin: { id: bigint; role: AdminRole },
+  reportId: bigint,
+  options: ResolveReportActionOptions
+): Promise<AdminReportItem> {
+  return await db.transaction(async (tx) => {
+    const report = await tx.query.reports.findFirst({
+      where: eq(reports.id, reportId),
+    })
+
+    if (!report) {
+      throw new HTTPException(404, { message: 'Report not found' })
+    }
+
+    const { status, modNote, action, banReason, banExpiresAt } = options
+
+    // Apply action
+    if (action === 'delete_target') {
+      if (report.targetType === 'post') {
+        await tx
+          .update(posts)
+          .set({ deletedAt: new Date(), isPinned: false })
+          .where(eq(posts.id, report.targetId))
+        await markEntityMediaDeleted(tx, { entityType: 'post', entityId: report.targetId })
+      } else if (report.targetType === 'comment') {
+        await tx
+          .update(comments)
+          .set({ deletedAt: new Date() })
+          .where(eq(comments.id, report.targetId))
+        await markEntityMediaDeleted(tx, { entityType: 'comment', entityId: report.targetId })
+      }
+    } else if (action === 'ban_user') {
+      const reportedProfile = await tx.query.profiles.findFirst({
+        where: eq(profiles.id, report.reportedProfileId),
+      })
+      if (reportedProfile) {
+        await banUserAccount(
+          { id: admin.id },
+          reportedProfile.accountId,
+          {
+            reason: banReason ?? report.reason,
+            expiresAt: banExpiresAt,
+          }
+        )
+      }
+    } else if (action === 'remove_avatar') {
+      const reportedProfile = await tx.query.profiles.findFirst({
+        where: eq(profiles.id, report.reportedProfileId),
+      })
+      if (reportedProfile && reportedProfile.avatarKey) {
+        const oldKey = reportedProfile.avatarKey
+        await tx
+          .update(profiles)
+          .set({ avatarKey: null })
+          .where(eq(profiles.id, reportedProfile.id))
+        await reconcileEntityMedia(tx, {
+          entityType: 'avatar',
+          entityId: reportedProfile.id,
+          profileId: reportedProfile.id,
+          newFileKeys: [],
+          oldFileKeys: [oldKey],
+        })
+      }
+    }
+
+    const isResolving = status !== 'pending'
+    const resolvedAt = isResolving ? new Date() : null
+    const resolvedById = isResolving ? admin.id : null
+
+    await tx
+      .update(reports)
+      .set({
+        status,
+        modNote: modNote !== undefined ? (modNote && modNote.trim().length > 0 ? modNote.trim() : null) : report.modNote,
+        resolvedById,
+        resolvedAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(reports.id, reportId))
+
+    return getReportById(reportId)
+  })
 }

@@ -157,6 +157,7 @@ describe('Profiles Schema Tests', () => {
       regularReadersCount: 0,
       readersCount: 0,
       verifiedAt: null,
+      notificationsReadAt: null,
       searchText: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -168,6 +169,7 @@ describe('Profiles Schema Tests', () => {
     expect(parsedSelect.regularReadersCount).toBe(0)
     expect(parsedSelect.readersCount).toBe(0)
     expect(parsedSelect.verifiedAt).toBeNull()
+    expect(parsedSelect.notificationsReadAt).toBeNull()
     expect(parsedSelect.identity).toBeNull()
     expect(parsedSelect.searchText).toBeNull()
   })

@@ -4,6 +4,7 @@ import { validateSessionToken } from '../lib/session'
 import { getProfileByAccountId, isOnboardingCompleted } from '../lib/profile'
 import type { Session } from '../db/schema/sessions'
 import type { SafeAccount } from '../db/schema/accounts'
+import type { OnboardedProfile } from './onboarding'
 
 export type AuthVariables = {
   session: Session
@@ -65,9 +66,10 @@ export const optionalAuthMiddleware = createMiddleware(async (c, next) => {
 
     const profile = await getProfileByAccountId(result.account.id)
     if (profile && isOnboardingCompleted(profile)) {
-      c.set('profile', profile)
+      c.set('profile', profile as OnboardedProfile)
     }
   }
 
   await next()
 })
+

@@ -21,6 +21,7 @@ describe('Onboarding Middleware Unit Tests', () => {
   const mockAccount: SafeAccount = {
     id: 111111111111111n,
     email: 'user@wisal.dev',
+    bannedAt: null,
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -38,6 +39,7 @@ describe('Onboarding Middleware Unit Tests', () => {
     regularReadersCount: 0,
     readersCount: 0,
     verifiedAt: null,
+    notificationsReadAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     identity: {

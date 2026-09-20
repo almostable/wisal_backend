@@ -17,6 +17,7 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
     regularReadersCount: 25,
     readersCount: 150,
     verifiedAt: new Date('2026-01-01T00:00:00Z'),
+    notificationsReadAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     identity: {

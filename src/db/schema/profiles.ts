@@ -58,6 +58,7 @@ export const profiles = pgTable(
     regularReadersCount: integer('regular_readers_count').notNull().default(0),
     readersCount: integer('readers_count').notNull().default(0),
     verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
+    notificationsReadAt: timestamp('notifications_read_at', { withTimezone: true, mode: 'date' }),
     searchText: text('search_text').generatedAlwaysAs(
       sql`lower(coalesce(identity, '') || ' ' || coalesce(name, '') || ' ' || coalesce(description, ''))`
     ),

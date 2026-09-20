@@ -104,6 +104,63 @@ export const adminUpdateUserProfileSchema = z.object({
   isVerified: z.boolean().optional(),
 })
 
+export const banUserInputSchema = z.object({
+  reason: z.string().trim().min(1, 'Ban reason is required'),
+  expiresAt: z.coerce
+    .date({ message: 'expiresAt must be a valid future date' })
+    .refine((date) => date.getTime() > Date.now(), {
+      message: 'Expiration date must be in the future',
+    })
+    .optional(),
+})
+
+export const unbanUserInputSchema = z.object({
+  reason: z.string().trim().min(1, 'Unban reason is required'),
+})
+
+export const listPostsAdminQuerySchema = baseAdminSearchQuerySchema.extend({
+  status: z.enum(['all', 'active', 'deleted']).default('all'),
+  authorId: snowflakeParamSchema.shape.id.optional(),
+  type: z.enum(['all', 'text', 'media']).default('all'),
+  genderScope: z.enum(['all', 'same_gender']).optional(),
+  accessLevel: z.enum(['all', 'public', 'registered']).optional(),
+  isFeed: z.enum(['all', 'true', 'false']).default('all'),
+  isPinned: z.enum(['all', 'true', 'false']).default('all'),
+})
+
+export const updatePostByAdminSchema = z.object({
+  isFeed: z.boolean().optional(),
+  isPinned: z.boolean().optional(),
+  content: z.string().trim().max(5000, 'Content must be at most 5000 characters').optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
+})
+
+export const listCommentsAdminQuerySchema = baseAdminSearchQuerySchema.extend({
+  status: z.enum(['all', 'active', 'deleted']).default('all'),
+  postId: snowflakeParamSchema.shape.id.optional(),
+  authorId: snowflakeParamSchema.shape.id.optional(),
+})
+
+export const resolveReportActionSchema = z.object({
+  status: z.enum(REPORT_STATUSES, {
+    message: `status must be one of: ${REPORT_STATUSES.join(', ')}`,
+  }),
+  modNote: z
+    .string()
+    .trim()
+    .max(1000, 'Moderator note must be at most 1000 characters')
+    .nullable()
+    .optional(),
+  action: z.enum(['none', 'delete_target', 'ban_user', 'remove_avatar']).default('none'),
+  banReason: z.string().trim().min(1, 'Ban reason is required when action is ban_user').optional(),
+  banExpiresAt: z.coerce
+    .date()
+    .refine((date) => date.getTime() > Date.now(), {
+      message: 'Expiration date must be in the future',
+    })
+    .optional(),
+})
+
 export { snowflakeParamSchema, paginationQuerySchema }
 
 export type SnowflakeParam = z.infer<typeof snowflakeParamSchema>
@@ -115,3 +172,9 @@ export type ListInvitesQueryInput = z.infer<typeof listInvitesQuerySchema>
 export type ListReportsQueryInput = z.infer<typeof listReportsQuerySchema>
 export type UpdateReportResolutionRouteInput = z.infer<typeof updateReportResolutionSchema>
 export type AdminUpdateUserProfileInput = z.infer<typeof adminUpdateUserProfileSchema>
+export type BanUserInput = z.infer<typeof banUserInputSchema>
+export type UnbanUserInput = z.infer<typeof unbanUserInputSchema>
+export type ListPostsAdminQuery = z.infer<typeof listPostsAdminQuerySchema>
+export type UpdatePostByAdminInput = z.infer<typeof updatePostByAdminSchema>
+export type ListCommentsAdminQuery = z.infer<typeof listCommentsAdminQuerySchema>
+export type ResolveReportActionInput = z.infer<typeof resolveReportActionSchema>

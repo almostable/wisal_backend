@@ -13,6 +13,7 @@ import { readers } from '../../db/schema/readers'
 import { profileBlocks } from '../../db/schema/profile-blocks'
 import { mediaUploads } from '../../db/schema/media-uploads'
 import { markEntityMediaDeleted } from '../uploads/service'
+import { createNotification } from '../notifications/service'
 import { hashPassword, verifyPassword } from '../../lib/password'
 import {
   INITIAL_USER_INVITES_COUNT,
@@ -127,6 +128,25 @@ export async function registerUser(input: RegisterInput): Promise<AuthSessionRes
     const tokenHash = hashSessionToken(sessionToken)
     const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)
 
+    if (lockedInvite.inviterId) {
+      const inviterProfile = await tx.query.profiles.findFirst({
+        where: eq(profiles.accountId, lockedInvite.inviterId),
+      })
+      if (inviterProfile) {
+        await createNotification(
+          {
+            recipientProfileId: inviterProfile.id,
+            actorProfileId: null,
+            type: 'invite_used',
+            targetType: 'invite',
+            targetId: lockedInvite.id,
+            payload: { inviteCode: lockedInvite.code },
+          },
+          tx
+        )
+      }
+    }
+
     const [createdSession] = await tx
       .insert(sessions)
       .values({
@@ -164,6 +184,10 @@ export async function loginUser(input: LoginInput): Promise<AuthSessionResult> {
 
   if (!account) {
     throw new HTTPException(401, { message: 'Invalid email or password' })
+  }
+
+  if (account.bannedAt !== null) {
+    throw new HTTPException(403, { message: 'Your account has been suspended' })
   }
 
   const isPasswordValid = await verifyPassword(account.passwordHash, input.password)

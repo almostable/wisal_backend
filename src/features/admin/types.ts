@@ -7,6 +7,8 @@ import type {
   ReportStatus,
 } from '../../db/schema/reports'
 import type { SafeProfile } from '../../lib/profile'
+import type { PostType, GenderScope, AccessLevel } from '../../db/schema/posts'
+import type { CommentType } from '../../db/schema/comments'
 import type {
   InviteStatus,
   AdminReportStatusFilter,
@@ -111,8 +113,37 @@ export interface ListUsersOptions {
   status?: AdminUserStatusFilter
 }
 
+export interface UserStatsSummary {
+  postsCount: number
+  commentsCount: number
+  readersCount: number
+  authorsCount: number
+  reportsReceivedCount: number
+  reportsFiledCount: number
+  blocksCount: number
+  activeSessionsCount: number
+  invitesStats: {
+    total: number
+    used: number
+    active: number
+  }
+}
+
 export interface UserListItem extends SafeAccount {
   profile: SafeProfile | null
+}
+
+export interface AdminUserDetail extends UserListItem {
+  stats: UserStatsSummary
+  invitedBy: {
+    code: string
+    inviter: {
+      id: bigint
+      email: string
+      name: string | null
+      identity: string | null
+    } | null
+  } | null
 }
 
 export interface ListUsersResult {
@@ -136,6 +167,51 @@ export interface ReportResolverSummary {
   role: AdminRole
 }
 
+export interface AdminReportTargetPost {
+  id: bigint
+  authorId: bigint
+  content: string
+  type: PostType
+  payload: Record<string, unknown>
+  deletedAt: Date | null
+  author: {
+    id: bigint
+    name: string | null
+    identity: string | null
+    avatarKey: string | null
+  } | null
+}
+
+export interface AdminReportTargetComment {
+  id: bigint
+  postId: bigint
+  authorId: bigint
+  content: string
+  type: CommentType
+  payload: Record<string, unknown>
+  deletedAt: Date | null
+  author: {
+    id: bigint
+    name: string | null
+    identity: string | null
+    avatarKey: string | null
+  } | null
+}
+
+export interface AdminReportTargetProfile {
+  id: bigint
+  name: string | null
+  identity: string | null
+  avatarKey: string | null
+  description: string | null
+  isMale: boolean | null
+}
+
+export type AdminReportTarget =
+  | { type: 'post'; post: AdminReportTargetPost | null }
+  | { type: 'comment'; comment: AdminReportTargetComment | null }
+  | { type: 'profile'; profile: AdminReportTargetProfile | null }
+
 export interface AdminReportItem {
   id: bigint
   targetType: ReportTargetType
@@ -148,6 +224,7 @@ export interface AdminReportItem {
   reportedUser: ReportUserSummary | null
   resolvedBy: ReportResolverSummary | null
   resolvedAt: Date | null
+  target?: AdminReportTarget | null
   createdAt: Date
   updatedAt: Date
 }
@@ -179,4 +256,100 @@ export interface ListReportsResult {
 export interface UpdateReportResolutionInput {
   status: ReportStatus
   modNote?: string | null
+}
+
+export interface ResolveReportActionOptions {
+  status: ReportStatus
+  modNote?: string | null
+  action: 'none' | 'delete_target' | 'ban_user' | 'remove_avatar'
+  banReason?: string
+  banExpiresAt?: Date
+}
+
+export interface AdminPostAuthor {
+  id: bigint
+  accountId: bigint
+  email: string
+  name: string | null
+  identity: string | null
+  avatarKey: string | null
+  isMale: boolean | null
+  isVerified: boolean
+}
+
+export interface AdminPostItem {
+  id: bigint
+  authorId: bigint
+  type: PostType
+  payload: Record<string, unknown>
+  content: string
+  genderScope: GenderScope
+  accessLevel: AccessLevel
+  isFeed: boolean
+  isPinned: boolean
+  savesCount: number
+  likesCount: number
+  commentsCount: number
+  viewsCount: number
+  deletedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+  editedAt: Date | null
+  author: AdminPostAuthor | null
+}
+
+export interface ListPostsAdminOptions {
+  limit?: number
+  offset?: number
+  q?: string
+  search?: string
+  status?: 'all' | 'active' | 'deleted'
+  authorId?: bigint
+  type?: 'all' | 'text' | 'media'
+  genderScope?: 'all' | 'same_gender'
+  accessLevel?: 'all' | 'public' | 'registered'
+  isFeed?: 'all' | 'true' | 'false'
+  isPinned?: 'all' | 'true' | 'false'
+}
+
+export interface ListPostsAdminResult {
+  posts: AdminPostItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface AdminCommentItem {
+  id: bigint
+  postId: bigint
+  authorId: bigint
+  parentId: bigint | null
+  replyToCommentId: bigint | null
+  replyToProfileId: bigint | null
+  type: CommentType
+  payload: Record<string, unknown>
+  content: string
+  repliesCount: number
+  deletedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+  editedAt: Date | null
+  author: AdminPostAuthor | null
+}
+
+export interface ListCommentsAdminOptions {
+  limit?: number
+  offset?: number
+  q?: string
+  search?: string
+  status?: 'all' | 'active' | 'deleted'
+  postId?: bigint
+  authorId?: bigint
+}
+
+export interface ListCommentsAdminResult {
+  comments: AdminCommentItem[]
+  total: number
+  limit: number
+  offset: number
 }

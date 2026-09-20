@@ -29,11 +29,13 @@ describe('Accounts Schema Tests', () => {
     expect(() => emailSchema.parse('invalid-email-address')).toThrow()
   })
 
-  it('safeAccountSchema removes passwordHash field and parses deletedAt', () => {
+  it('safeAccountSchema removes passwordHash field and parses deletedAt and bannedAt', () => {
     const deletedDate = new Date()
+    const bannedDate = new Date()
     const safe = safeAccountSchema.parse({
       id: 1000n,
       email: 'user@wisal.dev',
+      bannedAt: bannedDate,
       deletedAt: deletedDate,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -42,6 +44,7 @@ describe('Accounts Schema Tests', () => {
 
     expect((safe as any).passwordHash).toBeUndefined()
     expect(safe.email).toBe('user@wisal.dev')
+    expect(safe.bannedAt).toEqual(bannedDate)
     expect(safe.deletedAt).toEqual(deletedDate)
   })
 
@@ -51,16 +54,19 @@ describe('Accounts Schema Tests', () => {
       id: 1000n,
       email: 'user@wisal.dev',
       passwordHash: 'hash',
+      bannedAt: null,
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
     })
+    expect(active.bannedAt).toBeNull()
     expect(active.deletedAt).toBeNull()
 
     const deleted = selectAccountSchema.parse({
       id: 1000n,
       email: '1000@deleted.invalid',
       passwordHash: '!ACCOUNT_DELETED!',
+      bannedAt: null,
       deletedAt: now,
       createdAt: now,
       updatedAt: now,
@@ -74,5 +80,6 @@ describe('Accounts Schema Tests', () => {
     expect(indexNames).toContain('accounts_email_unique_idx')
     expect(indexNames).toContain('accounts_created_at_idx')
     expect(indexNames).toContain('accounts_deleted_at_idx')
+    expect(indexNames).toContain('accounts_banned_at_idx')
   })
 })

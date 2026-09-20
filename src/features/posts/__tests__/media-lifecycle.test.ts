@@ -10,6 +10,7 @@ describe('Posts & Comments Media Lifecycle Route Integration Tests', () => {
   const authorAccount: SafeAccount = {
     id: 111111111111111n,
     email: 'author@wisal.dev',
+    bannedAt: null,
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -36,6 +37,7 @@ describe('Posts & Comments Media Lifecycle Route Integration Tests', () => {
     regularReadersCount: 0,
     readersCount: 0,
     verifiedAt: null,
+    notificationsReadAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     identity: {

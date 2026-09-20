@@ -41,6 +41,7 @@ import {
   markEntityMediaDeleted,
   reconcileEntityMedia,
 } from '../uploads/service'
+import { createNotification } from '../notifications/service'
 import { CONTENT_EDIT_WINDOW_MS, MAX_FEED_POSTS_PER_24_HOURS } from '../../config/constants'
 import type {
   CreatePostDTO,
@@ -1289,7 +1290,7 @@ export async function createComment(
   input: CreateCommentDTO
 ): Promise<CommentResponse> {
   return await db.transaction(async (tx) => {
-    await checkPostAccess(tx, postId, viewer)
+    const post = await checkPostAccess(tx, postId, viewer)
 
     let threadRootId: bigint | null = null
     let replyToCommentId: bigint | null = null
@@ -1400,6 +1401,51 @@ export async function createComment(
         commentsCount: sql`${posts.commentsCount} + 1`,
       })
       .where(eq(posts.id, postId))
+
+    // Send notifications
+    const commentSnippet = content.length > 0 ? content.slice(0, 100) : ''
+    if (replyToProfileId) {
+      // It's a reply: notify the author of the comment being replied to
+      await createNotification(
+        {
+          recipientProfileId: replyToProfileId,
+          actorProfileId: authorProfileId,
+          type: 'comment_reply',
+          targetType: 'comment',
+          targetId: created.id,
+          payload: { postId: post.id, commentSnippet },
+        },
+        tx
+      )
+
+      // Also notify post author if they are not the reply recipient and not the commenter
+      if (post.authorId !== replyToProfileId && post.authorId !== authorProfileId) {
+        await createNotification(
+          {
+            recipientProfileId: post.authorId,
+            actorProfileId: authorProfileId,
+            type: 'new_comment',
+            targetType: 'post',
+            targetId: post.id,
+            payload: { commentId: created.id, commentSnippet },
+          },
+          tx
+        )
+      }
+    } else {
+      // Root comment: notify post author
+      await createNotification(
+        {
+          recipientProfileId: post.authorId,
+          actorProfileId: authorProfileId,
+          type: 'new_comment',
+          targetType: 'post',
+          targetId: post.id,
+          payload: { commentId: created.id, commentSnippet },
+        },
+        tx
+      )
+    }
 
     const [authorData] = await tx
       .select(authorSelectFields)

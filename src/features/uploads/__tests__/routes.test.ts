@@ -9,6 +9,7 @@ describe('Uploads Feature Route Tests', () => {
   const userAccount: SafeAccount = {
     id: 111111111111111n,
     email: 'uploader@wisal.dev',
+    bannedAt: null,
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -35,6 +36,7 @@ describe('Uploads Feature Route Tests', () => {
     regularReadersCount: 0,
     readersCount: 0,
     verifiedAt: null,
+    notificationsReadAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     identity: {

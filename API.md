@@ -1444,6 +1444,73 @@ Header `Authorization: Bearer <token>`.
 
 ---
 
+## Уведомления (`/notifications`)
+
+### `GET /notifications`
+- **Доступ:** Авторизованный пользователь с онбордингом
+- **Описание:** Возвращает список уведомлений пользователя с пагинацией. Поле `isRead` вычисляется динамически на основе временной метки `notificationsReadAt` профиля (`createdAt <= notificationsReadAt`).
+- **Query-параметры:**
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "notifications": [
+      {
+        "id": "112233445566778",
+        "type": "new_comment",
+        "targetType": "post",
+        "targetId": "888888888888881",
+        "payload": {
+          "commentId": "777777777777771",
+          "preview": "Отличная мысль!"
+        },
+        "isRead": false,
+        "createdAt": "2026-08-21T12:00:00.000Z",
+        "actor": {
+          "id": "222222222222222",
+          "name": "Jane Doe",
+          "identity": "janedoe",
+          "avatarKey": "avatars/jane.jpg",
+          "isMale": false
+        }
+      }
+    ],
+    "total": 1,
+    "unreadCount": 1,
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `GET /notifications/unread-count`
+- **Доступ:** Авторизованный пользователь с онбордингом
+- **Описание:** Легковесный быстрый эндпоинт для бейджа непрочитанных уведомлений.
+- **Тело запроса:** Нет
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "unreadCount": 1
+  }
+  ```
+
+### `POST /notifications/read`
+- **Доступ:** Авторизованный пользователь с онбордингом
+- **Описание:** Отмечает все текущие уведомления как прочитанные, обновляя `notificationsReadAt` в профиле на текущее время (`NOW()`).
+- **Тело запроса:** Нет
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "message": "All notifications marked as read",
+    "unreadCount": 0
+  }
+  ```
+
+---
+
 # Admin API
 
 ### Авторизация
@@ -1698,6 +1765,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
     "user": {
       "id": "100000000000000",
       "email": "user@wisal.dev",
+      "bannedAt": null,
       "createdAt": "2026-08-18T00:00:00.000Z",
       "updatedAt": "2026-08-18T00:00:00.000Z",
       "profile": {
@@ -1710,6 +1778,30 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         "identity": "username",
         "regularReadersCount": 10,
         "isVerified": true
+      },
+      "stats": {
+        "postsCount": 12,
+        "commentsCount": 45,
+        "readersCount": 10,
+        "authorsCount": 5,
+        "reportsReceivedCount": 1,
+        "reportsFiledCount": 0,
+        "blocksCount": 0,
+        "activeSessionsCount": 1,
+        "invitesStats": {
+          "total": 5,
+          "used": 2,
+          "active": 3
+        }
+      },
+      "invitedBy": {
+        "code": "WISAL-A1B2-C3D4",
+        "inviter": {
+          "id": "999999999999999",
+          "email": "inviter@wisal.dev",
+          "name": "Inviter Name",
+          "identity": "inviter_handle"
+        }
       }
     }
   }
@@ -1748,6 +1840,344 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         "isVerified": true
       }
     }
+  }
+  ```
+
+### `POST /admin/users/:id/ban`
+- **Доступ:** `admin`, `moderator`
+- **Описание:** Блокировка учетной записи пользователя (перманентная или временная). Выполняет каскадные действия в единой транзакции:
+  - Устанавливает `banned_at = NOW()` в `accounts`.
+  - Добавляет запись в `user_restrictions` (`type = 'ban'`, `admin_id`, `reason`, `expires_at`, `is_active = true`).
+  - Мгновенно инвалидирует и удаляет все активные пользовательские сессии из `sessions`.
+  - Выполняет soft-delete всех постов пользователя (`deleted_at = NOW()`, `is_pinned = false`) и переводит медиа постов в статус `deleted`.
+  - Выполняет soft-delete всех комментариев пользователя (`deleted_at = NOW()`).
+  - Удаляет все связи подписок пользователя (в качестве автора и читателя) с декрементом счетчиков у авторов.
+  - Очищает `identity` профиля и освобождает юзернейм в таблице `identities`.
+  - Аннулирует все неиспользованные активные инвайты пригласившего пользователя и отправляет пригласившему системное уведомление `system_restriction`.
+- **URL-параметры:**
+  - `id` *(string / snowflake, обязательное)* — Snowflake ID аккаунта пользователя
+- **Тело запроса (JSON):**
+  - `reason` *(string, обязательное)* — причина блокировки
+  - `expiresAt` *(string/ISO date, опционально)* — срок окончания блокировки (если не указано — перманентно)
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "message": "User banned successfully"
+  }
+  ```
+
+### `POST /admin/users/:id/unban`
+- **Доступ:** `admin`, `moderator`
+- **Описание:** Досрочное снятие блокировки пользователя. Сбрасывает `banned_at = null` в `accounts` и деактивирует активное ограничение в `user_restrictions` с фиксацией `revoked_at`, `revoked_by_id` и `revoke_reason`.
+- **URL-параметры:**
+  - `id` *(string / snowflake, обязательное)* — Snowflake ID аккаунта пользователя
+- **Тело запроса (JSON):**
+  - `reason` *(string, обязательное)* — причина разблокировки
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "message": "User unbanned successfully"
+  }
+  ```
+
+### `DELETE /admin/users/:id/sessions`
+- **Доступ:** `admin`, `moderator`
+- **Описание:** Принудительный сброс (отзыв) всех активных сессий пользователя.
+- **URL-параметры:**
+  - `id` *(string / snowflake, обязательное)* — Snowflake ID аккаунта пользователя
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "count": 2
+  }
+  ```
+
+---
+
+## Модерация публикаций (`/admin/posts`)
+
+### `GET /admin/posts`
+- **Доступ:** `admin`, `moderator`
+- **Query-параметры:**
+  - `status` *(string, опционально, `"all" | "active" | "deleted"`, по умолчанию: `"all"`)*
+  - `authorId` *(string / snowflake, опционально)* — фильтр по автору
+  - `type` *(string, опционально, `"all" | "text" | "media"`, по умолчанию: `"all"`)*
+  - `genderScope` *(string, опционально, `"all" | "same_gender"`)*
+  - `accessLevel` *(string, опционально, `"all" | "public" | "registered"`)*
+  - `isFeed` *(string, опционально, `"all" | "true" | "false"`)*
+  - `isPinned` *(string, опционально, `"all" | "true" | "false"`)*
+  - `q` / `search` *(string, опционально)* — поиск по контенту поста
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "posts": [
+      {
+        "id": "888888888888881",
+        "authorId": "200000000000000",
+        "type": "text",
+        "payload": {},
+        "content": "Текст публикации",
+        "genderScope": "all",
+        "accessLevel": "public",
+        "isFeed": true,
+        "isPinned": false,
+        "savesCount": 5,
+        "likesCount": 12,
+        "commentsCount": 3,
+        "viewsCount": 120,
+        "deletedAt": null,
+        "createdAt": "2026-08-20T10:00:00.000Z",
+        "updatedAt": "2026-08-20T10:00:00.000Z",
+        "editedAt": null,
+        "author": {
+          "id": "200000000000000",
+          "accountId": "100000000000000",
+          "email": "user@wisal.dev",
+          "name": "User Name",
+          "identity": "username",
+          "avatarKey": null,
+          "isMale": true,
+          "isVerified": false
+        }
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `GET /admin/posts/:id`
+- **Доступ:** `admin`, `moderator`
+- **URL-параметры:**
+  - `id` *(string / snowflake, обязательное)* — Snowflake ID публикации
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "post": {
+      "id": "888888888888881",
+      "authorId": "200000000000000",
+      "type": "text",
+      "payload": {},
+      "content": "Текст публикации",
+      "genderScope": "all",
+      "accessLevel": "public",
+      "isFeed": true,
+      "isPinned": false,
+      "savesCount": 5,
+      "likesCount": 12,
+      "commentsCount": 3,
+      "viewsCount": 120,
+      "deletedAt": null,
+      "createdAt": "2026-08-20T10:00:00.000Z",
+      "updatedAt": "2026-08-20T10:00:00.000Z",
+      "editedAt": null,
+      "author": {
+        "id": "200000000000000",
+        "accountId": "100000000000000",
+        "email": "user@wisal.dev",
+        "name": "User Name",
+        "identity": "username",
+        "avatarKey": null,
+        "isMale": true,
+        "isVerified": false
+      }
+    }
+  }
+  ```
+
+### `DELETE /admin/posts/:id`
+- **Доступ:** `admin`, `moderator`
+- **Описание:** Soft-delete публикации администратором (`deletedAt = NOW()`, `isPinned = false`) и перевод медиа в статус `deleted`.
+- **URL-параметры:**
+  - `id` *(string / snowflake, обязательное)* — Snowflake ID публикации
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "message": "Post deleted successfully"
+  }
+  ```
+
+### `POST /admin/posts/:id/restore`
+- **Доступ:** `admin`, `moderator`
+- **Описание:** Восстановление удаленной публикации (`deletedAt = null`) и возврат медиа в статус `attached`.
+- **URL-параметры:**
+  - `id` *(string / snowflake, обязательное)* — Snowflake ID публикации
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "message": "Post restored successfully"
+  }
+  ```
+
+### `PATCH /admin/posts/:id`
+- **Доступ:** `admin`, `moderator`
+- **URL-параметры:**
+  - `id` *(string / snowflake, обязательное)* — Snowflake ID публикации
+- **Тело запроса (JSON):**
+  - `content` *(string, опционально, макс. 5000 симв.)*
+  - `payload` *(object, опционально)*
+  - `isFeed` *(boolean, опционально)* — включение/исключение поста из общей ленты
+  - `isPinned` *(boolean, опционально)* — закрепление в профиле автора
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "post": {
+      "id": "888888888888881",
+      "authorId": "200000000000000",
+      "type": "text",
+      "payload": {},
+      "content": "Отредактированный текст публикации",
+      "genderScope": "all",
+      "accessLevel": "public",
+      "isFeed": false,
+      "isPinned": false,
+      "savesCount": 5,
+      "likesCount": 12,
+      "commentsCount": 3,
+      "viewsCount": 120,
+      "deletedAt": null,
+      "createdAt": "2026-08-20T10:00:00.000Z",
+      "updatedAt": "2026-08-20T11:00:00.000Z",
+      "editedAt": "2026-08-20T11:00:00.000Z",
+      "author": {
+        "id": "200000000000000",
+        "accountId": "100000000000000",
+        "email": "user@wisal.dev",
+        "name": "User Name",
+        "identity": "username",
+        "avatarKey": null,
+        "isMale": true,
+        "isVerified": false
+      }
+    }
+  }
+  ```
+
+---
+
+## Модерация комментариев (`/admin/comments`)
+
+### `GET /admin/comments`
+- **Доступ:** `admin`, `moderator`
+- **Query-параметры:**
+  - `status` *(string, опционально, `"all" | "active" | "deleted"`, по умолчанию: `"all"`)*
+  - `postId` *(string / snowflake, опционально)* — комментарии конкретного поста
+  - `authorId` *(string / snowflake, опционально)* — комментарии конкретного автора
+  - `q` / `search` *(string, опционально)* — поиск по тексту комментария
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "comments": [
+      {
+        "id": "777777777777771",
+        "postId": "888888888888881",
+        "authorId": "200000000000000",
+        "parentId": null,
+        "replyToCommentId": null,
+        "replyToProfileId": null,
+        "type": "text",
+        "payload": {},
+        "content": "Текст комментария",
+        "repliesCount": 0,
+        "deletedAt": null,
+        "createdAt": "2026-08-20T12:00:00.000Z",
+        "updatedAt": "2026-08-20T12:00:00.000Z",
+        "editedAt": null,
+        "author": {
+          "id": "200000000000000",
+          "accountId": "100000000000000",
+          "email": "user@wisal.dev",
+          "name": "User Name",
+          "identity": "username",
+          "avatarKey": null,
+          "isMale": true,
+          "isVerified": false
+        }
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `GET /admin/posts/:id/comments`
+- **Доступ:** `admin`, `moderator`
+- **Описание:** Получение всех комментариев под постом для модерации (включая удаленные).
+- **URL-параметры:**
+  - `id` *(string / snowflake, обязательное)* — Snowflake ID публикации
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "comments": [
+      {
+        "id": "777777777777771",
+        "postId": "888888888888881",
+        "authorId": "200000000000000",
+        "parentId": null,
+        "replyToCommentId": null,
+        "replyToProfileId": null,
+        "type": "text",
+        "payload": {},
+        "content": "Текст комментария",
+        "repliesCount": 0,
+        "deletedAt": null,
+        "createdAt": "2026-08-20T12:00:00.000Z",
+        "updatedAt": "2026-08-20T12:00:00.000Z",
+        "editedAt": null,
+        "author": {
+          "id": "200000000000000",
+          "accountId": "100000000000000",
+          "email": "user@wisal.dev",
+          "name": "User Name",
+          "identity": "username",
+          "avatarKey": null,
+          "isMale": true,
+          "isVerified": false
+        }
+      }
+    ]
+  }
+  ```
+
+### `DELETE /admin/comments/:id`
+- **Доступ:** `admin`, `moderator`
+- **Описание:** Soft-delete комментария администратором (`deletedAt = NOW()`) и перевод медиа в статус `deleted`.
+- **URL-параметры:**
+  - `id` *(string / snowflake, обязательное)* — Snowflake ID комментария
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "message": "Comment deleted successfully"
+  }
+  ```
+
+### `POST /admin/comments/:id/restore`
+- **Доступ:** `admin`, `moderator`
+- **Описание:** Восстановление удаленного комментария (`deletedAt = null`) и возврат медиа в статус `attached`.
+- **URL-параметры:**
+  - `id` *(string / snowflake, обязательное)* — Snowflake ID комментария
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "message": "Comment restored successfully"
   }
   ```
 
@@ -1793,6 +2223,23 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         },
         "resolvedBy": null,
         "resolvedAt": null,
+        "target": {
+          "type": "post",
+          "post": {
+            "id": "888888888888881",
+            "authorId": "222222222222222",
+            "content": "Spam content",
+            "type": "text",
+            "payload": {},
+            "deletedAt": null,
+            "author": {
+              "id": "222222222222222",
+              "name": "Spammer Name",
+              "identity": "spammer_handle",
+              "avatarKey": null
+            }
+          }
+        },
         "createdAt": "2026-08-21T00:00:00.000Z",
         "updatedAt": "2026-08-21T00:00:00.000Z"
       }
@@ -1840,6 +2287,23 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
       },
       "resolvedBy": null,
       "resolvedAt": null,
+      "target": {
+        "type": "post",
+        "post": {
+          "id": "888888888888881",
+          "authorId": "222222222222222",
+          "content": "Spam content",
+          "type": "text",
+          "payload": {},
+          "deletedAt": null,
+          "author": {
+            "id": "222222222222222",
+            "name": "Spammer Name",
+            "identity": "spammer_handle",
+            "avatarKey": null
+          }
+        }
+      },
       "createdAt": "2026-08-21T00:00:00.000Z",
       "updatedAt": "2026-08-21T00:00:00.000Z"
     }
@@ -1864,7 +2328,60 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
       "reason": "spam",
       "details": "Spam post details",
       "status": "resolved",
-      "modNote": "Post was removed and user warned",
+      "modNote": "Post was reviewed and dismissed",
+      "reporter": {
+        "id": "111111111111111",
+        "email": "reporter@wisal.dev",
+        "name": "Reporter Name",
+        "identity": "reporter_handle",
+        "avatarKey": null
+      },
+      "reportedUser": {
+        "id": "222222222222222",
+        "email": "spammer@wisal.dev",
+        "name": "Spammer Name",
+        "identity": "spammer_handle",
+        "avatarKey": null
+      },
+      "resolvedBy": {
+        "id": "111111111111111",
+        "email": "admin@wisal.dev",
+        "role": "admin"
+      },
+      "resolvedAt": "2026-08-21T01:00:00.000Z",
+      "createdAt": "2026-08-21T00:00:00.000Z",
+      "updatedAt": "2026-08-21T01:00:00.000Z"
+    }
+  }
+  ```
+
+### `POST /admin/reports/:id/action`
+- **Доступ:** `admin`, `moderator`
+- **Описание:** Комплексная резолюция жалобы с одновременным выполнением модераторского действия:
+  - `none` — только смена статуса и заметка (без изменений целевого контента).
+  - `delete_target` — soft-delete целевого поста или комментария.
+  - `ban_user` — полная блокировка аккаунта нарушителя (с каскадным удалением постов, сбросом сессий, аннулированием инвайтов пригласившего).
+  - `remove_avatar` — удаление аватара профиля нарушителя (`avatarKey = null`, `status = 'deleted'`).
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID жалобы
+- **Тело запроса (JSON):**
+  - `status` *(string, обязательное, `"pending" | "resolved" | "rejected"`)*
+  - `action` *(string, обязательное, `"none" | "delete_target" | "ban_user" | "remove_avatar"`, по умолчанию: `"none"`)*
+  - `modNote` *(string | null, опционально, макс. 1000 симв.)*
+  - `banReason` *(string, обязательно при `action: "ban_user"`)* — причина блокировки
+  - `banExpiresAt` *(string/ISO date, опционально)* — срок окончания блокировки при временном бане
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "report": {
+      "id": "999999999999991",
+      "targetType": "post",
+      "targetId": "888888888888881",
+      "reason": "spam",
+      "details": "Spam post details",
+      "status": "resolved",
+      "modNote": "Post deleted and spammer banned",
       "reporter": {
         "id": "111111111111111",
         "email": "reporter@wisal.dev",

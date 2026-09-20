@@ -54,6 +54,7 @@ export async function validateSessionToken(
       account: {
         id: accounts.id,
         email: accounts.email,
+        bannedAt: accounts.bannedAt,
         deletedAt: accounts.deletedAt,
         createdAt: accounts.createdAt,
         updatedAt: accounts.updatedAt,
@@ -65,7 +66,8 @@ export async function validateSessionToken(
       and(
         eq(sessions.tokenHash, tokenHash),
         gt(sessions.expiresAt, sql`now()`),
-        isNull(accounts.deletedAt)
+        isNull(accounts.deletedAt),
+        isNull(accounts.bannedAt)
       )
     )
     .limit(1)
