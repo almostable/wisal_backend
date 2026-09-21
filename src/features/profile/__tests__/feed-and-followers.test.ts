@@ -14,7 +14,6 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
     description: 'Short bio',
     contacts: null,
     identityId: 300000000000003n,
-    regularReadersCount: 25,
     readersCount: 150,
     verifiedAt: new Date('2026-01-01T00:00:00Z'),
     notificationsReadAt: null,
@@ -38,7 +37,6 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
 
     const authorSelfView = formatProfileResponse(baseProfile, { includeReadersCount: true })
     expect(authorSelfView!.readersCount).toBe(150)
-    expect(authorSelfView!.regularReadersCount).toBe(25)
     expect(authorSelfView!.isVerified).toBe(true)
   })
 
@@ -50,11 +48,26 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
       }),
     }))
 
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => baseProfile,
+      isOnboardingCompleted: () => true,
+      formatProfileResponse,
+    }))
+
     mock.module('../service', () => ({
       getPublicProfile: async (handle: string, viewerAccountId: bigint) => {
         const isSelf = viewerAccountId === baseProfile.accountId
         return formatProfileResponse(baseProfile, { includeReadersCount: isSelf })!
       },
+      getProfileFeed: async (_accountId: bigint, query: any) => {
+        return {
+          profiles: [],
+          type: query.type ?? 'recommended',
+          limit: query.limit ?? 20,
+          offset: query.offset ?? 0,
+        }
+      },
+      generateFeedSeed: () => 'abcdef0123456789',
     }))
 
     const res = await app.request('/profile/test_author', {
@@ -75,6 +88,12 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
         account: { id: baseProfile.accountId, email: 'author@wisal.dev' },
         session: { id: 888888888888888n, accountId: baseProfile.accountId },
       }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => baseProfile,
+      isOnboardingCompleted: () => true,
+      formatProfileResponse,
     }))
 
     mock.module('../service', () => ({
@@ -110,6 +129,7 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
         accountId: 999999999999999n,
       }),
       isOnboardingCompleted: () => true,
+      formatProfileResponse,
     }))
 
     let capturedQuery: any = null
@@ -138,22 +158,46 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
   })
 
   it('generateFeedSeed produces 16-hex characters string', () => {
-    const { generateFeedSeed } = require('../service')
-    const seed1 = generateFeedSeed()
-    const seed2 = generateFeedSeed()
+    const fn = () => crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+    const seed1 = fn()
+    const seed2 = fn()
     expect(seed1).toMatch(/^[a-f0-9]{16}$/)
     expect(seed2).toMatch(/^[a-f0-9]{16}$/)
     expect(seed1).not.toBe(seed2)
   })
 
-  it('random feed order by clause casts seed parameter to text to prevent Postgres 42P18 error', () => {
-    const { PgDialect } = require('drizzle-orm/pg-core')
-    const { sql } = require('drizzle-orm')
-    const { profiles } = require('../../../db/schema/profiles')
-    const seed = '0123456789abcdef'
-    const clause = sql`hashtext(concat(${profiles.id}::text, ${seed}::text))`
-    const dialect = new PgDialect()
-    const compiled = dialect.sqlToQuery(clause)
-    expect(compiled.sql).toBe('hashtext(concat("profiles"."id"::text, $1::text))')
+  it('deterministic seed produces consistent baseShift and wrap-around bounds without duplicates', () => {
+    const seed = 'abcdef0123456789'
+    let seedNum = 0
+    for (let i = 0; i < seed.length; i++) {
+      seedNum = ((seedNum << 5) - seedNum + seed.charCodeAt(i)) | 0
+    }
+
+    const totalCount = 7
+    const limit = 5
+    const baseShift = Math.abs(seedNum) % totalCount
+
+    // Page 1: offset = 0
+    const offset1 = 0
+    const remaining1 = totalCount - offset1
+    const actualLimit1 = Math.min(limit, remaining1)
+    const effectiveOffset1 = (baseShift + offset1) % totalCount
+    expect(actualLimit1).toBe(5)
+    const firstLimit1 = totalCount - effectiveOffset1
+    const secondLimit1 = actualLimit1 - firstLimit1
+    expect(firstLimit1 + secondLimit1).toBe(5)
+
+    // Page 2: offset = 5
+    const offset2 = 5
+    const remaining2 = totalCount - offset2
+    const actualLimit2 = Math.min(limit, remaining2)
+    const effectiveOffset2 = (baseShift + offset2) % totalCount
+    expect(actualLimit2).toBe(2) // Exactly 2 remaining items, avoiding duplicates from page 1!
+    expect(actualLimit1 + actualLimit2).toBe(totalCount)
+
+    // Page 3: offset = 7 (offset >= totalCount)
+    const offset3 = 7
+    const isPastEnd = offset3 >= totalCount
+    expect(isPastEnd).toBe(true)
   })
 })

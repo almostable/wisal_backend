@@ -37,7 +37,6 @@ describe('Comments Anonymization Integration Tests', () => {
     description: null,
     contacts: null,
     identityId: 444444444444444n,
-    regularReadersCount: 0,
     readersCount: 0,
     verifiedAt: null,
     notificationsReadAt: null,

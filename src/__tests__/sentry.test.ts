@@ -65,7 +65,7 @@ describe('Sentry Integration Tests', () => {
 
       expect(sanitized.id).toBe('123456')
       expect(sanitized.name).toBe('Test User')
-      expect(sanitized.email).toBe('user@wisal.dev')
+      expect(sanitized.email).toBe('[REDACTED]')
       expect(sanitized.avatarKey).toBe('media/2026-09-01/123.jpg')
       expect(sanitized.fileKey).toBe('media/2026-09-01/avatar.png')
 
@@ -135,7 +135,7 @@ describe('Sentry Integration Tests', () => {
       expect(result.request?.headers?.['Content-Type']).toBe('application/json')
       expect(result.request?.headers?.['User-Agent']).toBe('WisalClient/1.0')
 
-      expect((result.request?.data as any)?.email).toBe('user@wisal.dev')
+      expect((result.request?.data as any)?.email).toBe('[REDACTED]')
       expect((result.request?.data as any)?.password).toBe('[REDACTED]')
 
       expect(result.request?.query_string).toContain('token=%5BREDACTED%5D')

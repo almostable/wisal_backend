@@ -106,12 +106,6 @@ export const adminUpdateUserProfileSchema = z.object({
 
 export const banUserInputSchema = z.object({
   reason: z.string().trim().min(1, 'Ban reason is required'),
-  expiresAt: z.coerce
-    .date({ message: 'expiresAt must be a valid future date' })
-    .refine((date) => date.getTime() > Date.now(), {
-      message: 'Expiration date must be in the future',
-    })
-    .optional(),
 })
 
 export const unbanUserInputSchema = z.object({
@@ -123,7 +117,6 @@ export const listPostsAdminQuerySchema = baseAdminSearchQuerySchema.extend({
   authorId: snowflakeParamSchema.shape.id.optional(),
   type: z.enum(['all', 'text', 'media']).default('all'),
   genderScope: z.enum(['all', 'same_gender']).optional(),
-  accessLevel: z.enum(['all', 'public', 'registered']).optional(),
   isFeed: z.enum(['all', 'true', 'false']).default('all'),
   isPinned: z.enum(['all', 'true', 'false']).default('all'),
 })
@@ -153,12 +146,6 @@ export const resolveReportActionSchema = z.object({
     .optional(),
   action: z.enum(['none', 'delete_target', 'ban_user', 'remove_avatar']).default('none'),
   banReason: z.string().trim().min(1, 'Ban reason is required when action is ban_user').optional(),
-  banExpiresAt: z.coerce
-    .date()
-    .refine((date) => date.getTime() > Date.now(), {
-      message: 'Expiration date must be in the future',
-    })
-    .optional(),
 })
 
 export { snowflakeParamSchema, paginationQuerySchema }

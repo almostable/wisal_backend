@@ -28,8 +28,7 @@ describe('Profile Search Endpoint (GET /profile/search)', () => {
     description: 'Bio',
     contacts: null,
     identityId: 400000000000001n,
-    regularFollowersCount: 0,
-    followersCount: 0,
+    readersCount: 0,
     verifiedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -137,7 +136,7 @@ describe('Profile Search Endpoint (GET /profile/search)', () => {
         avatarKey: null,
         identity: 'it',
         description: 'Developer',
-        regularFollowersCount: 50,
+        readersCount: 50,
         isVerified: true,
       },
     ]

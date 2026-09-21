@@ -55,7 +55,6 @@ export const profiles = pgTable(
     identityId: snowflakeId('identity_id')
       .unique()
       .references(() => identities.id, { onDelete: 'restrict' }),
-    regularReadersCount: integer('regular_readers_count').notNull().default(0),
     readersCount: integer('readers_count').notNull().default(0),
     verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
     notificationsReadAt: timestamp('notifications_read_at', { withTimezone: true, mode: 'date' }),

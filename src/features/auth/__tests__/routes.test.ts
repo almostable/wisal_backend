@@ -183,7 +183,6 @@ describe('Auth Feature Route Tests', () => {
     description: 'Test description',
     contacts: null,
     identity: 'wisaluser',
-    regularReadersCount: 0,
     isVerified: false,
   }
 
@@ -382,7 +381,7 @@ describe('Auth Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      logoutAllSessions: async (accountId: bigint) => {
+      logoutAllUserSessions: async (accountId: bigint) => {
         if (accountId === mockAccount.id) {
           logoutAllCalled = true
         }
@@ -412,7 +411,7 @@ describe('Auth Feature Route Tests', () => {
     }))
 
     mock.module('../service', () => ({
-      getAuthMe: async () => ({
+      getMe: async () => ({
         account: mockAccount,
         isOnboardingCompleted: true,
       }),

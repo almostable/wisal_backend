@@ -1,19 +1,20 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { authMiddleware } from '../../middleware/auth'
+import { authRegisterRateLimiter, authLoginRateLimiter } from '../../middleware/rate-limiter'
 import { registerInputSchema, loginInputSchema, deleteAccountInputSchema } from './schema'
 import {
   registerUser,
   loginUser,
   logoutUser,
-  logoutAllSessions,
-  getAuthMe,
+  logoutAllUserSessions,
+  getMe,
   deleteAccount,
 } from './service'
 
 export const authRouter = new Hono()
 
-authRouter.post('/register', zValidator('json', registerInputSchema), async (c) => {
+authRouter.post('/register', authRegisterRateLimiter, zValidator('json', registerInputSchema), async (c) => {
   const data = c.req.valid('json')
   const result = await registerUser(data)
 
@@ -26,7 +27,7 @@ authRouter.post('/register', zValidator('json', registerInputSchema), async (c) 
   )
 })
 
-authRouter.post('/login', zValidator('json', loginInputSchema), async (c) => {
+authRouter.post('/login', authLoginRateLimiter, zValidator('json', loginInputSchema), async (c) => {
   const data = c.req.valid('json')
   const result = await loginUser(data)
 
@@ -53,7 +54,7 @@ authRouter.post('/logout-all', authMiddleware, async (c) => {
   const account = c.get('account')
 
   if (account) {
-    await logoutAllSessions(account.id)
+    await logoutAllUserSessions(account.id)
   }
 
   return c.json({
@@ -64,7 +65,7 @@ authRouter.post('/logout-all', authMiddleware, async (c) => {
 
 authRouter.get('/me', authMiddleware, async (c) => {
   const account = c.get('account')
-  const result = await getAuthMe(account.id)
+  const result = await getMe(account.id)
 
   return c.json({
     success: true,

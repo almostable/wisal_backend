@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { paginationQuerySchema, createPaginationSchema } from '../../db/schema/common'
+import { paginationQuerySchema, createPaginationSchema, MAX_PG_BIGINT } from '../../db/schema/common'
 import {
   onboardingInputSchema,
   updateProfileInputSchema,
@@ -16,14 +16,30 @@ export const authorParamSchema = z.object({
   author_id: z.string().min(1, 'Author ID or identity is required'),
 })
 
+const postIdFieldSchema = z
+  .union([
+    z
+      .string()
+      .regex(/^\d{1,19}$/, 'Invalid post ID')
+      .refine((val) => {
+        try {
+          const b = BigInt(val)
+          return b > 0n && b <= MAX_PG_BIGINT
+        } catch {
+          return false
+        }
+      }, 'Invalid post ID'),
+    z
+      .number()
+      .int('Invalid post ID')
+      .positive('Invalid post ID')
+      .refine((val) => BigInt(val) <= MAX_PG_BIGINT, 'Invalid post ID'),
+  ])
+
 export const markAuthorReadSchema = z
   .object({
-    last_post_id: z
-      .union([z.string().regex(/^\d{1,20}$/, 'Invalid post ID'), z.number().int().positive()])
-      .optional(),
-    lastPostId: z
-      .union([z.string().regex(/^\d{1,20}$/, 'Invalid post ID'), z.number().int().positive()])
-      .optional(),
+    last_post_id: postIdFieldSchema.optional(),
+    lastPostId: postIdFieldSchema.optional(),
   })
   .refine((data) => data.last_post_id !== undefined || data.lastPostId !== undefined, {
     message: 'last_post_id or lastPostId is required',

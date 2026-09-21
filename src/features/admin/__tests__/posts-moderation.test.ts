@@ -30,7 +30,6 @@ describe('Admin Posts Moderation Tests', () => {
     payload: {},
     content: 'Admin visible post content',
     genderScope: 'same_gender',
-    accessLevel: 'registered',
     isFeed: true,
     isPinned: false,
     savesCount: 5,

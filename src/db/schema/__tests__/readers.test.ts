@@ -73,11 +73,11 @@ describe('Readers Schema Tests', () => {
     expect(checkConstraint).toBeDefined()
   })
 
-  it('has indexes on author_profile_id, created_at, and regular_readers', () => {
+  it('has indexes on author_profile_id, created_at, and author_profile_id_last_read_at', () => {
     const config = getTableConfig(readers)
     const indexNames = config.indexes.map((idx) => idx.config.name)
     expect(indexNames).toContain('readers_author_profile_id_idx')
     expect(indexNames).toContain('readers_created_at_idx')
-    expect(indexNames).toContain('idx_readers_regular_readers')
+    expect(indexNames).toContain('readers_author_profile_id_last_read_at_idx')
   })
 })

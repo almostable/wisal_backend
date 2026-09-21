@@ -24,7 +24,6 @@ import {
   type Post,
   type PostType,
   type GenderScope,
-  type AccessLevel,
 } from '../../db/schema/posts'
 import { comments, type Comment, type CommentType } from '../../db/schema/comments'
 import { profileBlocks } from '../../db/schema/profile-blocks'
@@ -131,9 +130,8 @@ function mapAuthor(
 
   if (isPublicGuest) {
     return {
-      id: data.authorProfile.id,
       name: data.authorProfile.name ?? null,
-      avatarKey: data.authorProfile.avatarKey ?? null,
+      avatarKey: data.authorProfile.isMale === true ? (data.authorProfile.avatarKey ?? null) : null,
       identity: data.authorIdentity?.identity ?? null,
       isVerified: Boolean(data.authorProfile.verifiedAt),
     }
@@ -170,6 +168,38 @@ function mapReplyToProfile(data: ReplyToProfileSelectResult | null | undefined):
   }
 }
 
+function mapCommentAuthor(
+  data: AuthorSelectResult,
+  isBlocked?: boolean,
+  isHidden?: boolean
+): CommentAuthorInfo {
+  const isDeleted = Boolean(data.authorAccount?.deletedAt)
+  if (isDeleted || !data.authorProfile) {
+    return {
+      id: data.authorProfile?.id ?? 0n,
+      name: null,
+      identity: null,
+      avatarKey: null,
+      isMale: null,
+      isDeleted: true,
+      ...(isBlocked ? { isBlocked: true } : {}),
+      ...(isHidden ? { isHidden: true } : {}),
+    }
+  }
+
+  const isRestricted = Boolean(isBlocked || isHidden)
+
+  return {
+    id: data.authorProfile.id,
+    name: data.authorProfile.name ?? null,
+    avatarKey: isRestricted ? null : (data.authorProfile.avatarKey ?? null),
+    identity: data.authorIdentity?.identity ?? null,
+    isMale: data.authorProfile.isMale ?? null,
+    ...(isBlocked ? { isBlocked: true } : {}),
+    ...(isHidden ? { isHidden: true } : {}),
+  }
+}
+
 function formatPost(
   post: Post,
   author?: PostAuthorInfo | null,
@@ -184,7 +214,6 @@ function formatPost(
     payload: (post.payload as Record<string, unknown>) ?? {},
     content: post.content,
     genderScope: post.genderScope as GenderScope,
-    accessLevel: post.accessLevel as AccessLevel,
     isFeed: post.isFeed ?? false,
     isPinned: post.isPinned,
     ...(canViewAuthorCounts
@@ -241,7 +270,7 @@ async function checkPostAccess(
   }
 
   if (!viewer) {
-    if (post.accessLevel !== 'public') {
+    if (post.genderScope !== 'all') {
       throw new HTTPException(404, { message: 'Post not found' })
     }
 
@@ -304,6 +333,12 @@ export async function createPost(
   const isFeed = input.isFeed ?? input.showInFeed ?? false
 
   return await db.transaction(async (tx) => {
+    await tx
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, authorProfileId))
+      .for('update')
+
     if (isFeed) {
       const [recentFeedCount] = await tx
         .select({ count: count() })
@@ -340,11 +375,7 @@ export async function createPost(
     const content = input.content ? input.content.trim() : ''
     const postType = input.type ?? 'text'
     const payload = input.payload ?? {}
-    const accessLevel = input.accessLevel ?? 'public'
-    if (accessLevel === 'public' && input.genderScope === 'same_gender') {
-      throw new HTTPException(400, { message: "genderScope must be 'all' when accessLevel is 'public'" })
-    }
-    const genderScope = accessLevel === 'public' ? 'all' : (input.genderScope ?? 'all')
+    const genderScope = input.genderScope ?? 'all'
 
     const [created] = await tx
       .insert(posts)
@@ -355,7 +386,6 @@ export async function createPost(
         payload,
         content,
         genderScope,
-        accessLevel,
         isFeed,
         isPinned,
       })
@@ -423,6 +453,14 @@ export async function updatePost(
           ? input.showInFeed
           : existing.isFeed
 
+    if ((targetIsFeed && !existing.isFeed) || input.isPinned === true) {
+      await tx
+        .select()
+        .from(profiles)
+        .where(eq(profiles.id, authorProfileId))
+        .for('update')
+    }
+
     if (targetIsFeed && !existing.isFeed) {
       const [recentFeedCount] = await tx
         .select({ count: count() })
@@ -463,17 +501,6 @@ export async function updatePost(
       editedAt: new Date(),
     }
 
-    const targetAccessLevel = input.accessLevel !== undefined ? input.accessLevel : existing.accessLevel
-    const targetGenderScope = input.genderScope !== undefined ? input.genderScope : existing.genderScope
-
-    if (targetAccessLevel === 'public' && targetGenderScope === 'same_gender') {
-      if (input.accessLevel === 'public' && input.genderScope === undefined) {
-        updateData.genderScope = 'all'
-      } else {
-        throw new HTTPException(400, { message: "genderScope must be 'all' when accessLevel is 'public'" })
-      }
-    }
-
     if (input.content !== undefined) {
       updateData.content = input.content ? input.content.trim() : ''
     }
@@ -482,9 +509,6 @@ export async function updatePost(
     }
     if (input.genderScope !== undefined) {
       updateData.genderScope = input.genderScope
-    }
-    if (input.accessLevel !== undefined) {
-      updateData.accessLevel = input.accessLevel
     }
     if (input.isPinned !== undefined) {
       updateData.isPinned = input.isPinned
@@ -622,6 +646,12 @@ export async function pinPost(
   const isPinned = input.isPinned ?? true
 
   return await db.transaction(async (tx) => {
+    await tx
+      .select()
+      .from(profiles)
+      .where(eq(profiles.id, authorProfileId))
+      .for('update')
+
     const existing = await tx.query.posts.findFirst({
       where: and(eq(posts.id, postId), isNull(posts.deletedAt)),
     })
@@ -1272,7 +1302,7 @@ export async function getPostComments(
       }
     }
 
-    return formatComment(item.comment, mapAuthor(item), mappedReplyToProfileInfo)
+    return formatComment(item.comment, mapCommentAuthor(item), mappedReplyToProfileInfo)
   })
 
   return {
@@ -1478,7 +1508,7 @@ export async function createComment(
 
     return formatComment(
       created,
-      authorData ? mapAuthor(authorData) : null,
+      authorData ? mapCommentAuthor(authorData) : null,
       replyToProfileData
     )
   })
@@ -1654,7 +1684,7 @@ export async function updateComment(
 
     return formatComment(
       updated,
-      authorData ? mapAuthor(authorData) : null,
+      authorData ? mapCommentAuthor(authorData) : null,
       replyToProfileData
     )
   })
@@ -1699,10 +1729,12 @@ export async function recordPostViews(
     return { success: true, updatedCount: 0 }
   }
 
-  const rowsToInsert = accessiblePosts.map((p) => ({
-    postId: p.id,
-    profileId: viewer.profileId,
-  }))
+  const rowsToInsert = accessiblePosts
+    .map((p) => ({
+      postId: p.id,
+      profileId: viewer.profileId,
+    }))
+    .sort((a, b) => (a.postId < b.postId ? -1 : a.postId > b.postId ? 1 : 0))
 
   const insertedViews = await executor
     .insert(postViews)
@@ -1711,7 +1743,9 @@ export async function recordPostViews(
     .returning({ postId: postViews.postId })
 
   if (insertedViews.length > 0) {
-    const newlyViewedPostIds = insertedViews.map((v) => v.postId)
+    const newlyViewedPostIds = insertedViews
+      .map((v) => v.postId)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
 
     await executor
       .update(posts)

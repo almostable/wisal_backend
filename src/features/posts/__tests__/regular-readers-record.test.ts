@@ -1,7 +1,7 @@
 import { describe, it, expect, mock } from 'bun:test'
 import { recordAuthorPostRead, getPostById } from '../service'
 
-describe('Regular Readers - Record Post Read Tests', () => {
+describe('Readers - Record Post Read Tests', () => {
   it('recordAuthorPostRead executes conditional update on follows', async () => {
     let capturedWhere: any = null
     let capturedSet: any = null

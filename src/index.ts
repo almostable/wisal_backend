@@ -11,6 +11,7 @@ import { timeout } from 'hono/timeout'
 import { sql } from 'drizzle-orm'
 import { db, client } from './db'
 import { env } from './config/env'
+import { ERROR_CODES } from './config/error-codes'
 import { captureAppException } from './lib/sentry'
 import { adminRouter } from './features/admin'
 import { authRouter } from './features/auth'
@@ -19,29 +20,27 @@ import { postsRouter, feedRouter } from './features/posts'
 import { reportsRouter } from './features/reports'
 import { uploadsRouter } from './features/uploads'
 import { notificationsRouter } from './features/notifications'
-import { initRegularFollowersCron } from './jobs/recalculate-regular-followers'
 import { initMediaGcCron } from './jobs/media-gc'
 import type { Cron } from 'croner'
 
-let regularCron: Cron | null = null
 let mediaGcCron: Cron | null = null
 
 if (env.NODE_ENV !== 'test') {
-  regularCron = initRegularFollowersCron()
   mediaGcCron = initMediaGcCron()
 }
 
 // Graceful Shutdown
 let isShuttingDown = false
 
+export function setShuttingDownForTest(state: boolean) {
+  isShuttingDown = state
+}
+
 async function shutdown(signal: string) {
   if (isShuttingDown) return
   isShuttingDown = true
   console.log(`\n[SHUTDOWN] Received ${signal}. Starting graceful shutdown...`)
 
-  if (regularCron) {
-    regularCron.stop()
-  }
   if (mediaGcCron) {
     mediaGcCron.stop()
   }
@@ -70,25 +69,50 @@ app.use('*', logger())
 app.use('*', compress())
 app.use('*', bodyLimit({ maxSize: 1024 * 1024 }))
 app.use('*', timeout(10000))
+app.use('*', async (c, next) => {
+  if (isShuttingDown) {
+    c.header('Connection', 'close')
+    return c.json(
+      { error: 'Service is shutting down', code: ERROR_CODES.SERVICE_UNAVAILABLE },
+      503
+    )
+  }
+  await next()
+})
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) {
     return c.json({ error: err.message }, err.status)
   }
 
+  if (err instanceof SyntaxError) {
+    return c.json(
+      { error: 'Malformed JSON payload', code: ERROR_CODES.MALFORMED_JSON },
+      400
+    )
+  }
+
   const pgError = (err as any)?.cause ?? err
-  if (pgError && typeof pgError === 'object' && pgError.code === '23505') {
-    const constraint = String(pgError.constraint ?? '')
-    if (constraint.includes('accounts_email')) {
-      return c.json({ error: 'Email is already registered' }, 409)
+  if (pgError && typeof pgError === 'object') {
+    if (pgError.code === '22003' || pgError.code === '22P02') {
+      return c.json(
+        { error: 'Invalid parameter format', code: ERROR_CODES.INVALID_PARAMETER_FORMAT },
+        400
+      )
     }
-    if (constraint.includes('identities_identity')) {
-      return c.json({ error: 'Identity handle is already taken' }, 409)
+    if (pgError.code === '23505') {
+      const constraint = String(pgError.constraint ?? '')
+      if (constraint.includes('accounts_email')) {
+        return c.json({ error: 'Email is already registered' }, 409)
+      }
+      if (constraint.includes('identities_identity')) {
+        return c.json({ error: 'Identity handle is already taken' }, 409)
+      }
+      if (constraint.includes('posts_author_pinned')) {
+        return c.json({ error: 'Another post is already pinned' }, 409)
+      }
+      return c.json({ error: 'Conflict: A resource with this identifier already exists' }, 409)
     }
-    if (constraint.includes('posts_author_pinned')) {
-      return c.json({ error: 'Another post is already pinned' }, 409)
-    }
-    return c.json({ error: 'Conflict: A resource with this identifier already exists' }, 409)
   }
 
   captureAppException(err, c)

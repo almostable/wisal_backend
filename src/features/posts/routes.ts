@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { authMiddleware, optionalAuthMiddleware } from '../../middleware/auth'
 import { onboardingMiddleware } from '../../middleware/onboarding'
+import { createPostRateLimiter } from '../../middleware/rate-limiter'
 import {
   postIdParamSchema,
   commentIdParamSchema,
@@ -58,7 +59,7 @@ feedRouter.get('/', ...auth, zValidator('query', feedQuerySchema), async (c) => 
   })
 })
 
-postsRouter.post('/', ...auth, zValidator('json', createPostSchema), async (c) => {
+postsRouter.post('/', ...auth, createPostRateLimiter, zValidator('json', createPostSchema), async (c) => {
   const profile = c.get('profile')
   const data = c.req.valid('json')
 

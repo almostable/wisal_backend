@@ -33,7 +33,6 @@ describe('Authors and Monotonic Read Feature Tests', () => {
     description: null,
     contacts: null,
     identity: 'readeruser',
-    regularReadersCount: 0,
     isVerified: false,
   }
 
@@ -243,6 +242,31 @@ describe('Authors and Monotonic Read Feature Tests', () => {
       expect(body.lastReadPostId).toBe('105')
     })
 
+    it('rejects invalid last_post_id exceeding MAX_PG_BIGINT with 400', async () => {
+      mock.module('../../../lib/session', () => ({
+        validateSessionToken: async () => ({
+          account: mockAccount,
+          session: mockSession,
+        }),
+      }))
+
+      mock.module('../../../lib/profile', () => ({
+        getProfileByAccountId: async () => mockProfile,
+        isOnboardingCompleted: () => true,
+      }))
+
+      const res = await app.request('/profile/favauthor/read', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer valid_token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ last_post_id: '99999999999999999999999999999' }),
+      })
+
+      expect(res.status).toBe(400)
+    })
+
     it('subscribes to author when no body is passed', async () => {
       mock.module('../../../lib/session', () => ({
         validateSessionToken: async () => ({
@@ -297,19 +321,6 @@ describe('Authors and Monotonic Read Feature Tests', () => {
       const newUnreadCount = updatedPosts.filter((p) => p.id > latestPostId).length
       expect(newUnreadCount).toBe(1)
     })
-
-    it('considers reader regular if lastReadAt is within 180 days', () => {
-      const now = Date.now()
-      const windowMs = 180 * 24 * 60 * 60 * 1000
-
-      const recentRead = new Date(now - 10 * 24 * 60 * 60 * 1000) // 10 days ago
-      const oldRead = new Date(now - 181 * 24 * 60 * 60 * 1000) // 181 days ago
-
-      const isRecentRegular = now - recentRead.getTime() <= windowMs
-      const isOldRegular = now - oldRead.getTime() <= windowMs
-
-      expect(isRecentRegular).toBe(true)
-      expect(isOldRegular).toBe(false)
-    })
   })
 })
+

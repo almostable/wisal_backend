@@ -137,7 +137,6 @@ describe('recordPostViews Service Unit Tests', () => {
       payload: {},
       content: 'Hello views',
       genderScope: 'all',
-      accessLevel: 'public',
       isPinned: false,
       savesCount: 5,
       likesCount: 10,

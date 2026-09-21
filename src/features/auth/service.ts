@@ -1,4 +1,4 @@
-import { eq, and, or, sql, isNull, inArray } from 'drizzle-orm'
+import { eq, and, or, sql, isNull, inArray, gt } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../../db'
 import { accounts, safeAccountSchema, type Account } from '../../db/schema/accounts'
@@ -217,8 +217,6 @@ export async function logoutAllUserSessions(accountId: bigint): Promise<void> {
   await invalidateAllAccountSessions(accountId)
 }
 
-export const logoutAllSessions = logoutAllUserSessions
-
 export async function getMe(accountId: bigint): Promise<AuthMeResult> {
   const account = await db.query.accounts.findFirst({
     where: and(eq(accounts.id, accountId), isNull(accounts.deletedAt)),
@@ -236,8 +234,6 @@ export async function getMe(accountId: bigint): Promise<AuthMeResult> {
     isOnboardingCompleted: completed,
   }
 }
-
-export const getAuthMe = getMe
 
 export async function deleteAccount(
   accountId: bigint,
@@ -267,6 +263,18 @@ export async function deleteAccount(
       })
       .where(eq(accounts.id, accountId))
 
+    // Expire all unused active invites created by this account
+    await tx
+      .update(invites)
+      .set({ expiresAt: new Date() })
+      .where(
+        and(
+          eq(invites.inviterId, accountId),
+          isNull(invites.usedAt),
+          gt(invites.expiresAt, sql`now()`)
+        )
+      )
+
     const existingProfile = await tx.query.profiles.findFirst({
       where: eq(profiles.accountId, accountId),
     })
@@ -283,7 +291,6 @@ export async function deleteAccount(
           description: null,
           contacts: null,
           verifiedAt: null,
-          regularReadersCount: 0,
           readersCount: 0,
         })
         .where(eq(profiles.id, existingProfile.id))

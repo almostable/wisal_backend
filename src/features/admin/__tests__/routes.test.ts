@@ -1,4 +1,4 @@
-import { describe, it, expect, mock } from 'bun:test'
+import { describe, it, expect, mock, beforeEach } from 'bun:test'
 import '../../../lib/snowflake'
 import { app } from '../../../index'
 import { HTTPException } from 'hono/http-exception'
@@ -995,7 +995,6 @@ describe('Admin Feature Route Tests', () => {
           description: 'Hello world',
           contacts: null,
           identity: 'johndoe',
-          regularFollowersCount: 0,
           isVerified: true,
         },
       }),
@@ -1071,7 +1070,6 @@ describe('Admin Feature Route Tests', () => {
             description: input.description ?? null,
             contacts: null,
             identity: input.identity ?? 'johndoe',
-            regularFollowersCount: 0,
             isVerified: Boolean(input.isVerified),
           },
         }
@@ -1174,7 +1172,6 @@ describe('Admin Feature Route Tests', () => {
             description: null,
             contacts: null,
             identity: 'johndoe',
-            regularFollowersCount: 0,
             isVerified: false,
           },
         }
@@ -1197,5 +1194,72 @@ describe('Admin Feature Route Tests', () => {
     expect(body.success).toBe(true)
     expect(body.user.profile.isVerified).toBe(false)
     expect(capturedData.isVerified).toBe(false)
+  })
+
+  describe('Moderator Role RBAC Restrictions', () => {
+    const mockModerator = {
+      id: 999999999999999n,
+      email: 'mod@wisal.dev',
+      role: 'moderator' as const,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    beforeEach(() => {
+      mock.module('../../../lib/admin-session', () => ({
+        validateAdminSessionToken: async () => ({
+          admin: mockModerator,
+          session: mockSession,
+        }),
+        ADMIN_COOKIE_NAME: 'admin_session',
+      }))
+    })
+
+    it('rejects moderator from GET /admin/users with 403', async () => {
+      const res = await app.request('/admin/users', {
+        headers: { Authorization: 'Bearer mod_token' },
+      })
+      expect(res.status).toBe(403)
+      const body = (await res.json()) as { error: string }
+      expect(body.error).toBe('Insufficient permissions')
+    })
+
+    it('rejects moderator from GET /admin/posts with 403', async () => {
+      const res = await app.request('/admin/posts', {
+        headers: { Authorization: 'Bearer mod_token' },
+      })
+      expect(res.status).toBe(403)
+      const body = (await res.json()) as { error: string }
+      expect(body.error).toBe('Insufficient permissions')
+    })
+
+    it('rejects moderator from GET /admin/comments with 403', async () => {
+      const res = await app.request('/admin/comments', {
+        headers: { Authorization: 'Bearer mod_token' },
+      })
+      expect(res.status).toBe(403)
+      const body = (await res.json()) as { error: string }
+      expect(body.error).toBe('Insufficient permissions')
+    })
+
+    it('rejects moderator from POST /admin/users/:id/ban with 403', async () => {
+      const res = await app.request('/admin/users/12345/ban', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer mod_token',
+        },
+        body: JSON.stringify({ reason: 'Spamming' }),
+      })
+      expect(res.status).toBe(403)
+    })
+
+    it('rejects moderator from DELETE /admin/posts/:id with 403', async () => {
+      const res = await app.request('/admin/posts/12345', {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer mod_token' },
+      })
+      expect(res.status).toBe(403)
+    })
   })
 })

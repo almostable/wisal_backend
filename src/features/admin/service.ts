@@ -17,13 +17,24 @@ import {
 } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../../db'
+import { MAX_PG_BIGINT } from '../../db/schema/common'
 import { admins, safeAdminSchema, type SafeAdmin, type AdminRole } from '../../db/schema/admins'
+
+function parseSafeBigInt(val: string): bigint | null {
+  if (!/^\d{1,19}$/.test(val)) return null
+  try {
+    const b = BigInt(val)
+    return b > 0n && b <= MAX_PG_BIGINT ? b : null
+  } catch {
+    return null
+  }
+}
 import { adminSessions } from '../../db/schema/admin-sessions'
 import { invites } from '../../db/schema/invites'
 import { accounts, safeAccountSchema } from '../../db/schema/accounts'
 import { profiles, type Profile, type ProfileWithIdentity } from '../../db/schema/profiles'
 import { identities, type Identity } from '../../db/schema/identities'
-import { posts, type PostType, type GenderScope, type AccessLevel } from '../../db/schema/posts'
+import { posts, type PostType, type GenderScope } from '../../db/schema/posts'
 import { comments, type CommentType } from '../../db/schema/comments'
 import { readers } from '../../db/schema/readers'
 import { profileBlocks } from '../../db/schema/profile-blocks'
@@ -34,6 +45,7 @@ import { mediaUploads } from '../../db/schema/media-uploads'
 import { userRestrictions } from '../../db/schema/user-restrictions'
 import { reconcileEntityMedia, markEntityMediaDeleted } from '../uploads/service'
 import { createNotification } from '../notifications/service'
+import { NOTIFICATION_CODES } from '../../config/error-codes'
 import type {
   AdminUpdateUserProfileInput,
   BanUserInput,
@@ -128,10 +140,10 @@ export async function listAdmins(options: ListAdminsOptions = {}): Promise<ListA
   const conditions: (SQL | undefined)[] = []
 
   if (searchQuery) {
-    const isNumericId = /^\d{1,20}$/.test(searchQuery)
+    const safeId = parseSafeBigInt(searchQuery)
     const searchPattern = `%${searchQuery}%`
-    const searchCondition = isNumericId
-      ? or(eq(admins.id, BigInt(searchQuery)), ilike(admins.email, searchPattern))
+    const searchCondition = safeId !== null
+      ? or(eq(admins.id, safeId), ilike(admins.email, searchPattern))
       : ilike(admins.email, searchPattern)
     if (searchCondition) {
       conditions.push(searchCondition)
@@ -201,14 +213,6 @@ export async function createAdmin(input: CreateAdminInput): Promise<SafeAdmin> {
 export async function deleteAdmin(targetAdminId: bigint, currentAdminId?: bigint): Promise<void> {
   if (currentAdminId !== undefined && targetAdminId === currentAdminId) {
     throw new HTTPException(400, { message: 'Cannot delete your own admin account' })
-  }
-
-  const existingInvite = await db.query.invites.findFirst({
-    where: eq(invites.createdById, targetAdminId),
-  })
-
-  if (existingInvite) {
-    throw new HTTPException(400, { message: 'Cannot delete admin who has created invites' })
   }
 
   const [deletedAdmin] = await db
@@ -308,14 +312,14 @@ export async function listInvites(options: ListInvitesOptions = {}): Promise<Lis
   }
 
   if (searchQuery) {
-    const isNumericId = /^\d{1,20}$/.test(searchQuery)
+    const safeId = parseSafeBigInt(searchQuery)
     const searchPattern = `%${searchQuery}%`
-    const searchCondition = isNumericId
+    const searchCondition = safeId !== null
       ? or(
-          eq(invites.id, BigInt(searchQuery)),
-          eq(invites.createdById, BigInt(searchQuery)),
-          eq(invites.usedById, BigInt(searchQuery)),
-          eq(invites.inviterId, BigInt(searchQuery)),
+          eq(invites.id, safeId),
+          eq(invites.createdById, safeId),
+          eq(invites.usedById, safeId),
+          eq(invites.inviterId, safeId),
           ilike(invites.code, searchPattern),
           ilike(admins.email, searchPattern),
           ilike(accounts.email, searchPattern),
@@ -430,11 +434,11 @@ export async function listUsers(options: ListUsersOptions = {}): Promise<ListUse
   const conditions: (SQL | undefined)[] = []
 
   if (searchQuery) {
-    const isNumericId = /^\d{1,20}$/.test(searchQuery)
+    const safeId = parseSafeBigInt(searchQuery)
     const searchPattern = `%${searchQuery}%`
-    const searchCondition = isNumericId
+    const searchCondition = safeId !== null
       ? or(
-          eq(accounts.id, BigInt(searchQuery)),
+          eq(accounts.id, safeId),
           ilike(accounts.email, searchPattern),
           ilike(profiles.name, searchPattern),
           ilike(identities.identity, searchPattern)
@@ -896,7 +900,7 @@ export async function banUserAccount(
       adminId: admin.id,
       type: 'ban',
       reason: input.reason.trim(),
-      expiresAt: input.expiresAt ?? null,
+      expiresAt: null,
       isActive: true,
     })
 
@@ -944,7 +948,6 @@ export async function banUserAccount(
           .update(profiles)
           .set({
             readersCount: sql`GREATEST(0, ${profiles.readersCount} - 1)`,
-            regularReadersCount: sql`GREATEST(0, ${profiles.regularReadersCount} - 1)`,
           })
           .where(inArray(profiles.id, readAuthorIds))
       }
@@ -967,7 +970,6 @@ export async function banUserAccount(
             identityId: null,
             identity: null,
             readersCount: 0,
-            regularReadersCount: 0,
           })
           .where(eq(profiles.id, profileId))
 
@@ -1004,6 +1006,8 @@ export async function banUserAccount(
               type: 'system_restriction',
               targetType: 'system',
               payload: {
+                code: NOTIFICATION_CODES.INVITED_USER_BANNED,
+                meta: { handle: bannedHandle },
                 reason: `Приглашенный вами пользователь (${bannedHandle}) был заблокирован за нарушение правил. Ваши неиспользованные инвайт-коды аннулированы.`,
               },
             },
@@ -1110,10 +1114,6 @@ export async function listPostsByAdmin(
     conditions.push(eq(posts.genderScope, options.genderScope))
   }
 
-  if (options.accessLevel && options.accessLevel !== 'all') {
-    conditions.push(eq(posts.accessLevel, options.accessLevel))
-  }
-
   if (options.isFeed === 'true') {
     conditions.push(eq(posts.isFeed, true))
   } else if (options.isFeed === 'false') {
@@ -1127,12 +1127,12 @@ export async function listPostsByAdmin(
   }
 
   if (searchQuery) {
-    const isNumericId = /^\d{1,20}$/.test(searchQuery)
+    const safeId = parseSafeBigInt(searchQuery)
     const searchPattern = `%${searchQuery}%`
-    const searchCondition = isNumericId
+    const searchCondition = safeId !== null
       ? or(
-          eq(posts.id, BigInt(searchQuery)),
-          eq(posts.authorId, BigInt(searchQuery)),
+          eq(posts.id, safeId),
+          eq(posts.authorId, safeId),
           ilike(posts.content, searchPattern),
           ilike(accounts.email, searchPattern),
           ilike(profiles.name, searchPattern),
@@ -1207,7 +1207,6 @@ export async function listPostsByAdmin(
       payload: item.post.payload as Record<string, unknown>,
       content: item.post.content,
       genderScope: item.post.genderScope as GenderScope,
-      accessLevel: item.post.accessLevel as AccessLevel,
       isFeed: item.post.isFeed,
       isPinned: item.post.isPinned,
       savesCount: item.post.savesCount,
@@ -1279,7 +1278,6 @@ export async function getPostByIdByAdmin(postId: bigint): Promise<AdminPostItem>
     payload: item.post.payload as Record<string, unknown>,
     content: item.post.content,
     genderScope: item.post.genderScope as GenderScope,
-    accessLevel: item.post.accessLevel as AccessLevel,
     isFeed: item.post.isFeed,
     isPinned: item.post.isPinned,
     savesCount: item.post.savesCount,
@@ -1437,13 +1435,13 @@ export async function listCommentsByAdmin(
   }
 
   if (searchQuery) {
-    const isNumericId = /^\d{1,20}$/.test(searchQuery)
+    const safeId = parseSafeBigInt(searchQuery)
     const searchPattern = `%${searchQuery}%`
-    const searchCondition = isNumericId
+    const searchCondition = safeId !== null
       ? or(
-          eq(comments.id, BigInt(searchQuery)),
-          eq(comments.postId, BigInt(searchQuery)),
-          eq(comments.authorId, BigInt(searchQuery)),
+          eq(comments.id, safeId),
+          eq(comments.postId, safeId),
+          eq(comments.authorId, safeId),
           ilike(comments.content, searchPattern),
           ilike(accounts.email, searchPattern),
           ilike(profiles.name, searchPattern),
@@ -1787,6 +1785,137 @@ async function fetchReportTarget(
   return null
 }
 
+async function fetchReportTargetsBatch(
+  reportsList: Array<{ targetType: ReportTargetType | string; targetId: bigint }>
+): Promise<Map<string, AdminReportTarget>> {
+  const targetMap = new Map<string, AdminReportTarget>()
+  if (reportsList.length === 0) return targetMap
+
+  const postIds: bigint[] = []
+  const commentIds: bigint[] = []
+  const profileIds: bigint[] = []
+
+  for (const r of reportsList) {
+    if (r.targetType === 'post') postIds.push(r.targetId)
+    else if (r.targetType === 'comment') commentIds.push(r.targetId)
+    else if (r.targetType === 'profile') profileIds.push(r.targetId)
+  }
+
+  const uniquePostIds = Array.from(new Set(postIds))
+  const uniqueCommentIds = Array.from(new Set(commentIds))
+  const uniqueProfileIds = Array.from(new Set(profileIds))
+
+  const [postRows, commentRows, profileRows] = await Promise.all([
+    uniquePostIds.length > 0
+      ? db
+          .select({
+            post: posts,
+            author: {
+              id: profiles.id,
+              name: profiles.name,
+              avatarKey: profiles.avatarKey,
+            },
+            identity: {
+              identity: identities.identity,
+            },
+          })
+          .from(posts)
+          .leftJoin(profiles, eq(posts.authorId, profiles.id))
+          .leftJoin(identities, eq(profiles.identityId, identities.id))
+          .where(inArray(posts.id, uniquePostIds))
+      : Promise.resolve([]),
+    uniqueCommentIds.length > 0
+      ? db
+          .select({
+            comment: comments,
+            author: {
+              id: profiles.id,
+              name: profiles.name,
+              avatarKey: profiles.avatarKey,
+            },
+            identity: {
+              identity: identities.identity,
+            },
+          })
+          .from(comments)
+          .leftJoin(profiles, eq(comments.authorId, profiles.id))
+          .leftJoin(identities, eq(profiles.identityId, identities.id))
+          .where(inArray(comments.id, uniqueCommentIds))
+      : Promise.resolve([]),
+    uniqueProfileIds.length > 0
+      ? db
+          .select({
+            profile: profiles,
+            identity: identities,
+          })
+          .from(profiles)
+          .leftJoin(identities, eq(profiles.identityId, identities.id))
+          .where(inArray(profiles.id, uniqueProfileIds))
+      : Promise.resolve([]),
+  ])
+
+  for (const item of postRows) {
+    targetMap.set(`post:${item.post.id}`, {
+      type: 'post',
+      post: {
+        id: item.post.id,
+        authorId: item.post.authorId,
+        content: item.post.content,
+        type: item.post.type as PostType,
+        payload: item.post.payload as Record<string, unknown>,
+        deletedAt: item.post.deletedAt,
+        author: item.author?.id
+          ? {
+              id: item.author.id,
+              name: item.author.name,
+              identity: item.identity?.identity ?? null,
+              avatarKey: item.author.avatarKey,
+            }
+          : null,
+      },
+    })
+  }
+
+  for (const item of commentRows) {
+    targetMap.set(`comment:${item.comment.id}`, {
+      type: 'comment',
+      comment: {
+        id: item.comment.id,
+        postId: item.comment.postId,
+        authorId: item.comment.authorId,
+        content: item.comment.content,
+        type: item.comment.type as CommentType,
+        payload: item.comment.payload as Record<string, unknown>,
+        deletedAt: item.comment.deletedAt,
+        author: item.author?.id
+          ? {
+              id: item.author.id,
+              name: item.author.name,
+              identity: item.identity?.identity ?? null,
+              avatarKey: item.author.avatarKey,
+            }
+          : null,
+      },
+    })
+  }
+
+  for (const item of profileRows) {
+    targetMap.set(`profile:${item.profile.id}`, {
+      type: 'profile',
+      profile: {
+        id: item.profile.id,
+        name: item.profile.name,
+        identity: item.identity?.identity ?? null,
+        avatarKey: item.profile.avatarKey,
+        description: item.profile.description,
+        isMale: item.profile.isMale,
+      },
+    })
+  }
+
+  return targetMap
+}
+
 export async function listReports(options: ListReportsOptions = {}): Promise<ListReportsResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
@@ -1820,13 +1949,13 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
   }
 
   if (searchQuery) {
-    const isNumericId = /^\d{1,20}$/.test(searchQuery)
+    const safeId = parseSafeBigInt(searchQuery)
     const searchPattern = `%${searchQuery}%`
-    const searchCondition = isNumericId
+    const searchCondition = safeId !== null
       ? or(
-          eq(reports.id, BigInt(searchQuery)),
-          eq(reports.targetId, BigInt(searchQuery)),
-          eq(reports.reporterProfileId, BigInt(searchQuery)),
+          eq(reports.id, safeId),
+          eq(reports.targetId, safeId),
+          eq(reports.reporterProfileId, safeId),
           ilike(reports.details, searchPattern),
           ilike(reports.modNote, searchPattern),
           ilike(reporterAccounts.email, searchPattern),
@@ -1924,17 +2053,15 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
       .from(reports),
   ])
 
-  // Fetch targets in parallel
-  const targets = await Promise.all(
-    items.map((item) =>
-      fetchReportTarget(
-        item.report.targetType as ReportTargetType,
-        item.report.targetId
-      )
-    )
+  // Batch fetch targets using up to 3 queries instead of N+1 individual queries
+  const targetMap = await fetchReportTargetsBatch(
+    items.map((item) => ({
+      targetType: item.report.targetType,
+      targetId: item.report.targetId,
+    }))
   )
 
-  const mappedReports: AdminReportItem[] = items.map((item, index) => {
+  const mappedReports: AdminReportItem[] = items.map((item) => {
     const reporterInfo =
       item.reporter && item.reporter.id
         ? {
@@ -1966,6 +2093,15 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
           }
         : null
 
+    let target: AdminReportTarget | null = null
+    if (item.report.targetType === 'post') {
+      target = targetMap.get(`post:${item.report.targetId}`) ?? { type: 'post', post: null }
+    } else if (item.report.targetType === 'comment') {
+      target = targetMap.get(`comment:${item.report.targetId}`) ?? { type: 'comment', comment: null }
+    } else if (item.report.targetType === 'profile') {
+      target = targetMap.get(`profile:${item.report.targetId}`) ?? { type: 'profile', profile: null }
+    }
+
     return {
       id: item.report.id,
       targetType: item.report.targetType as ReportTargetType,
@@ -1978,7 +2114,7 @@ export async function listReports(options: ListReportsOptions = {}): Promise<Lis
       reportedUser: reportedUserInfo,
       resolvedBy: resolverInfo,
       resolvedAt: item.report.resolvedAt,
-      target: targets[index],
+      target,
       createdAt: item.report.createdAt,
       updatedAt: item.report.updatedAt,
     }
@@ -2160,7 +2296,7 @@ export async function resolveReportWithAction(
       throw new HTTPException(404, { message: 'Report not found' })
     }
 
-    const { status, modNote, action, banReason, banExpiresAt } = options
+    const { status, modNote, action, banReason } = options
 
     // Apply action
     if (action === 'delete_target') {
@@ -2187,7 +2323,6 @@ export async function resolveReportWithAction(
           reportedProfile.accountId,
           {
             reason: banReason ?? report.reason,
-            expiresAt: banExpiresAt,
           }
         )
       }

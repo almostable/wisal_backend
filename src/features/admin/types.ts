@@ -7,7 +7,7 @@ import type {
   ReportStatus,
 } from '../../db/schema/reports'
 import type { SafeProfile } from '../../lib/profile'
-import type { PostType, GenderScope, AccessLevel } from '../../db/schema/posts'
+import type { PostType, GenderScope } from '../../db/schema/posts'
 import type { CommentType } from '../../db/schema/comments'
 import type {
   InviteStatus,
@@ -263,7 +263,6 @@ export interface ResolveReportActionOptions {
   modNote?: string | null
   action: 'none' | 'delete_target' | 'ban_user' | 'remove_avatar'
   banReason?: string
-  banExpiresAt?: Date
 }
 
 export interface AdminPostAuthor {
@@ -284,7 +283,6 @@ export interface AdminPostItem {
   payload: Record<string, unknown>
   content: string
   genderScope: GenderScope
-  accessLevel: AccessLevel
   isFeed: boolean
   isPinned: boolean
   savesCount: number
@@ -307,7 +305,6 @@ export interface ListPostsAdminOptions {
   authorId?: bigint
   type?: 'all' | 'text' | 'media'
   genderScope?: 'all' | 'same_gender'
-  accessLevel?: 'all' | 'public' | 'registered'
   isFeed?: 'all' | 'true' | 'false'
   isPinned?: 'all' | 'true' | 'false'
 }

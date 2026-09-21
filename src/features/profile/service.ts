@@ -16,6 +16,7 @@ import {
 } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../../db'
+import { MAX_PG_BIGINT } from '../../db/schema/common'
 import { invites } from '../../db/schema/invites'
 import { accounts } from '../../db/schema/accounts'
 import { profiles } from '../../db/schema/profiles'
@@ -23,7 +24,6 @@ import { identities } from '../../db/schema/identities'
 import { readers } from '../../db/schema/readers'
 import { posts } from '../../db/schema/posts'
 import { profileBlocks } from '../../db/schema/profile-blocks'
-import { REGULAR_READERS_WINDOW_DAYS } from '../../config/constants'
 import {
   getProfileByAccountId,
   getProfileByIdentity,
@@ -114,15 +114,10 @@ export async function getPublicProfile(
   const viewerProfile = viewerAccountId ? await getProfileByAccountId(viewerAccountId) : null
 
   if (!viewerProfile) {
-    if (targetProfile.isMale !== true) {
-      throw new HTTPException(404, { message: 'Profile not found' })
-    }
-
     return {
-      id: targetProfile.id,
       name: targetProfile.name,
       identity: targetProfile.identity.identity,
-      avatarKey: targetProfile.avatarKey,
+      avatarKey: targetProfile.isMale === true ? targetProfile.avatarKey : null,
       description: targetProfile.description,
       isVerified: Boolean(targetProfile.verifiedAt),
     }
@@ -318,10 +313,7 @@ export async function getReaders(
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
 
-  const whereClause = and(
-    eq(readers.authorProfileId, targetProfileId),
-    gte(readers.lastReadAt, sql`NOW() - INTERVAL '180 days'`)
-  )
+  const whereClause = eq(readers.authorProfileId, targetProfileId)
 
   const [items, totalResult] = await Promise.all([
     db
@@ -527,7 +519,7 @@ export async function getSubscribedAuthors(
       .leftJoin(accounts, eq(profiles.accountId, accounts.id))
       .where(whereClause)
       .orderBy(
-        sql`CASE WHEN (${unreadSubquery}) > 0 THEN 1 ELSE 0 END DESC`,
+        sql`CASE WHEN unread_count > 0 THEN 1 ELSE 0 END DESC`,
         desc(readers.createdAt)
       )
       .limit(limit)
@@ -557,14 +549,21 @@ export async function getSubscribedAuthors(
 
 export async function resolveProfileId(identifier: string): Promise<bigint | null> {
   const trimmed = identifier.trim()
-  if (/^\d{1,20}$/.test(trimmed)) {
-    const [byProfileId] = await db
-      .select({ id: profiles.id })
-      .from(profiles)
-      .where(eq(profiles.id, BigInt(trimmed)))
-      .limit(1)
-    if (byProfileId) {
-      return byProfileId.id
+  if (/^\d{1,19}$/.test(trimmed)) {
+    try {
+      const b = BigInt(trimmed)
+      if (b > 0n && b <= MAX_PG_BIGINT) {
+        const [byProfileId] = await db
+          .select({ id: profiles.id })
+          .from(profiles)
+          .where(eq(profiles.id, b))
+          .limit(1)
+        if (byProfileId) {
+          return byProfileId.id
+        }
+      }
+    } catch {
+      // Fall through to identity lookup on parse error
     }
   }
   return await getProfileIdByIdentity(trimmed)
@@ -665,7 +664,6 @@ export async function readProfile(
         .update(profiles)
         .set({
           readersCount: sql`${profiles.readersCount} + 1`,
-          regularReadersCount: sql`${profiles.regularReadersCount} + 1`,
         })
         .where(eq(profiles.id, targetProfileId))
     }
@@ -702,20 +700,10 @@ export async function unreadProfile(
       })
 
     if (deleted.length > 0) {
-      const isRegular =
-        deleted[0].lastReadAt &&
-        Date.now() - deleted[0].lastReadAt.getTime() <=
-          REGULAR_READERS_WINDOW_DAYS * 24 * 60 * 60 * 1000
-
       await tx
         .update(profiles)
         .set({
           readersCount: sql`GREATEST(0, ${profiles.readersCount} - 1)`,
-          ...(isRegular
-            ? {
-                regularReadersCount: sql`GREATEST(0, ${profiles.regularReadersCount} - 1)`,
-              }
-            : {}),
         })
         .where(eq(profiles.id, targetProfileId))
     }
@@ -767,20 +755,10 @@ export async function blockProfile(
       })
 
     for (const rel of deletedReaders) {
-      const isRegular =
-        rel.lastReadAt &&
-        Date.now() - rel.lastReadAt.getTime() <=
-          REGULAR_READERS_WINDOW_DAYS * 24 * 60 * 60 * 1000
-
       await tx
         .update(profiles)
         .set({
           readersCount: sql`GREATEST(0, ${profiles.readersCount} - 1)`,
-          ...(isRegular
-            ? {
-                regularReadersCount: sql`GREATEST(0, ${profiles.regularReadersCount} - 1)`,
-              }
-            : {}),
         })
         .where(eq(profiles.id, rel.authorProfileId))
     }
@@ -898,35 +876,122 @@ export async function getProfileFeed(
 
   const whereCondition = and(...baseConditions)!
 
-  const orderByClause =
-    type === 'recommended'
-      ? [desc(profiles.regularReadersCount), desc(profiles.id)]
-      : [sql`hashtext(concat(${profiles.id}::text, ${activeSeed}::text))`, asc(profiles.id)]
+  let items: Array<{
+    name: string | null
+    isMale: boolean | null
+    avatarKey: string | null
+    identity: string | null
+    description: string | null
+    readersCount: number
+    verifiedAt: Date | null
+  }> = []
 
-  const items = await db
-    .select({
-      name: profiles.name,
-      isMale: profiles.isMale,
-      avatarKey: profiles.avatarKey,
-      identity: identities.identity,
-      description: profiles.description,
-      regularReadersCount: profiles.regularReadersCount,
-      verifiedAt: profiles.verifiedAt,
-    })
-    .from(profiles)
-    .innerJoin(identities, eq(profiles.identityId, identities.id))
-    .where(whereCondition)
-    .orderBy(...orderByClause)
-    .limit(limit)
-    .offset(offset)
+  if (type === 'recommended') {
+    const orderByClause = [desc(profiles.readersCount), desc(profiles.id)]
+    items = await db
+      .select({
+        name: profiles.name,
+        isMale: profiles.isMale,
+        avatarKey: profiles.avatarKey,
+        identity: identities.identity,
+        description: profiles.description,
+        readersCount: profiles.readersCount,
+        verifiedAt: profiles.verifiedAt,
+      })
+      .from(profiles)
+      .innerJoin(identities, eq(profiles.identityId, identities.id))
+      .where(whereCondition)
+      .orderBy(...orderByClause)
+      .limit(limit)
+      .offset(offset)
+  } else {
+    // Variant A: Deterministic cursor shift on Snowflake ID index with wrap-around
+    const [totalRow] = await db
+      .select({ count: count() })
+      .from(profiles)
+      .innerJoin(identities, eq(profiles.identityId, identities.id))
+      .where(whereCondition)
+
+    const totalCount = Number(totalRow?.count ?? 0)
+
+    if (totalCount > 0 && offset < totalCount) {
+      let seedNum = 0
+      for (let i = 0; i < (activeSeed ?? '').length; i++) {
+        seedNum = ((seedNum << 5) - seedNum + (activeSeed ?? '').charCodeAt(i)) | 0
+      }
+      const remaining = totalCount - offset
+      const actualLimit = Math.min(limit, remaining)
+      const baseShift = Math.abs(seedNum) % totalCount
+      const effectiveOffset = (baseShift + offset) % totalCount
+
+      if (effectiveOffset + actualLimit <= totalCount) {
+        items = await db
+          .select({
+            name: profiles.name,
+            isMale: profiles.isMale,
+            avatarKey: profiles.avatarKey,
+            identity: identities.identity,
+            description: profiles.description,
+            readersCount: profiles.readersCount,
+            verifiedAt: profiles.verifiedAt,
+          })
+          .from(profiles)
+          .innerJoin(identities, eq(profiles.identityId, identities.id))
+          .where(whereCondition)
+          .orderBy(asc(profiles.id))
+          .limit(actualLimit)
+          .offset(effectiveOffset)
+      } else {
+        const firstLimit = totalCount - effectiveOffset
+        const secondLimit = actualLimit - firstLimit
+
+        const [firstBatch, secondBatch] = await Promise.all([
+          db
+            .select({
+              name: profiles.name,
+              isMale: profiles.isMale,
+              avatarKey: profiles.avatarKey,
+              identity: identities.identity,
+              description: profiles.description,
+              readersCount: profiles.readersCount,
+              verifiedAt: profiles.verifiedAt,
+            })
+            .from(profiles)
+            .innerJoin(identities, eq(profiles.identityId, identities.id))
+            .where(whereCondition)
+            .orderBy(asc(profiles.id))
+            .limit(firstLimit)
+            .offset(effectiveOffset),
+          db
+            .select({
+              name: profiles.name,
+              isMale: profiles.isMale,
+              avatarKey: profiles.avatarKey,
+              identity: identities.identity,
+              description: profiles.description,
+              readersCount: profiles.readersCount,
+              verifiedAt: profiles.verifiedAt,
+            })
+            .from(profiles)
+            .innerJoin(identities, eq(profiles.identityId, identities.id))
+            .where(whereCondition)
+            .orderBy(asc(profiles.id))
+            .limit(secondLimit)
+            .offset(0),
+        ])
+
+        items = [...firstBatch, ...secondBatch]
+      }
+    }
+  }
 
   const formattedProfiles: ProfileFeedItem[] = items.map((item) => ({
     name: item.name!,
     isMale: item.isMale!,
     avatarKey: item.avatarKey,
-    identity: item.identity,
+    identity: item.identity!,
     description: item.description!,
-    regularReadersCount: item.regularReadersCount,
+    readersCount: item.readersCount,
     isVerified: Boolean(item.verifiedAt),
   }))
 
@@ -994,7 +1059,7 @@ export async function searchProfiles(
   const orderByClause = [
     asc(relevanceRank),
     sql`CASE WHEN ${profiles.verifiedAt} IS NOT NULL THEN 1 ELSE 0 END DESC`,
-    desc(profiles.regularReadersCount),
+    desc(profiles.readersCount),
     desc(profiles.id),
   ]
 
@@ -1006,7 +1071,7 @@ export async function searchProfiles(
         avatarKey: profiles.avatarKey,
         identity: identities.identity,
         description: profiles.description,
-        regularReadersCount: profiles.regularReadersCount,
+        readersCount: profiles.readersCount,
         verifiedAt: profiles.verifiedAt,
       })
       .from(profiles)
@@ -1026,9 +1091,9 @@ export async function searchProfiles(
     name: item.name!,
     isMale: item.isMale!,
     avatarKey: item.avatarKey,
-    identity: item.identity,
+    identity: item.identity!,
     description: item.description,
-    regularReadersCount: item.regularReadersCount,
+    readersCount: item.readersCount,
     isVerified: Boolean(item.verifiedAt),
   }))
 

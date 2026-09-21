@@ -37,10 +37,18 @@ export function getSnowflakeTimestamp(id: bigint | string): Date {
   return new Date(Number(snowflake.timestampFrom(bigId)))
 }
 
+export const MAX_PG_BIGINT = 9223372036854775807n
+
 export function isValidSnowflake(id: unknown): boolean {
-  if (typeof id === 'bigint') return id > 0n
+  if (typeof id === 'bigint') return id > 0n && id <= MAX_PG_BIGINT
   if (typeof id === 'string') {
-    return /^\d{1,20}$/.test(id)
+    if (!/^\d{1,19}$/.test(id)) return false
+    try {
+      const val = BigInt(id)
+      return val > 0n && val <= MAX_PG_BIGINT
+    } catch {
+      return false
+    }
   }
   return false
 }

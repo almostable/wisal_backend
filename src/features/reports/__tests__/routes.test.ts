@@ -35,7 +35,6 @@ describe('Reports Feature Route Tests', () => {
     description: 'Reporter bio',
     contacts: null,
     identityId: 444444444444444n,
-    regularReadersCount: 0,
     readersCount: 0,
     verifiedAt: null,
     notificationsReadAt: null,

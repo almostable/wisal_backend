@@ -53,7 +53,6 @@ describe('Posts Likes Feature Unit & Integration Tests', () => {
           payload: {},
           content: 'Author post',
           genderScope: 'all',
-          accessLevel: 'public',
           isPinned: false,
           ...(isAuthor ? { likesCount: 42, savesCount: 10, viewsCount: 100 } : {}),
           commentsCount: 0,

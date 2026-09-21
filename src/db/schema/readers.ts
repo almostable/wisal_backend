@@ -27,7 +27,7 @@ export const readers = pgTable(
     check('readers_prevent_self_read_check', sql`${table.readerProfileId} != ${table.authorProfileId}`),
     index('readers_author_profile_id_idx').on(table.authorProfileId),
     index('readers_created_at_idx').on(table.createdAt),
-    index('idx_readers_regular_readers').on(table.authorProfileId, table.lastReadAt),
+    index('readers_author_profile_id_last_read_at_idx').on(table.authorProfileId, table.lastReadAt),
   ]
 )
 

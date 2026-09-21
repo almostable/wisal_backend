@@ -36,7 +36,6 @@ describe('Onboarding Middleware Unit Tests', () => {
     description: 'Hello',
     contacts: null,
     identityId: 444444444444444n,
-    regularReadersCount: 0,
     readersCount: 0,
     verifiedAt: null,
     notificationsReadAt: null,

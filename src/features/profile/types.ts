@@ -136,7 +136,7 @@ export interface ProfileFeedItem {
   avatarKey: string | null
   identity: string
   description: string
-  regularReadersCount: number
+  readersCount: number
   isVerified: boolean
 }
 
@@ -154,7 +154,7 @@ export interface ProfileSearchItem {
   avatarKey: string | null
   identity: string
   description: string | null
-  regularReadersCount: number
+  readersCount: number
   isVerified: boolean
 }
 

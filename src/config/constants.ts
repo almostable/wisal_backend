@@ -20,12 +20,15 @@ export const CONTENT_EDIT_WINDOW_MS = CONTENT_EDIT_WINDOW_MINUTES * 60 * 1000
 export const MAX_FEED_POSTS_PER_24_HOURS = 3
 
 /**
- * Media uploads
+ * Media uploads & GC
  */
 export const MAX_UPLOAD_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
 export const DEFAULT_PRESIGN_TTL_SECONDS = 900 // 15 minutes
+export const MEDIA_GC_PENDING_TTL_HOURS = 24
+export const MEDIA_GC_PURGED_RECORD_TTL_DAYS = 90
 
 /**
- * Regular readers window
+ * Feed post visibility TTL
  */
-export const REGULAR_READERS_WINDOW_DAYS = 180
+export const FEED_POST_TTL_HOURS = 168 // 7 days
+

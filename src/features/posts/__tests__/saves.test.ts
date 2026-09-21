@@ -45,7 +45,6 @@ describe('Posts Saves Feature Unit & Integration Tests', () => {
           payload: {},
           content: 'Author post',
           genderScope: 'all',
-          accessLevel: 'public',
           isPinned: false,
           ...(isAuthor ? { savesCount: 42 } : {}),
           commentsCount: 0,

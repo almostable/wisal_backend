@@ -1,10 +1,10 @@
-import type { PostType, GenderScope, AccessLevel, MediaItem, MediaPayload } from '../../db/schema/posts'
+import type { PostType, GenderScope, MediaItem, MediaPayload } from '../../db/schema/posts'
 import type { CommentType } from '../../db/schema/comments'
 
 export type { MediaItem, MediaPayload }
 
 export interface PostAuthorInfo {
-  id: bigint
+  id?: bigint
   name: string | null
   identity: string | null
   avatarKey: string | null
@@ -21,7 +21,6 @@ export interface PostResponse {
   payload: Record<string, unknown>
   content: string
   genderScope: GenderScope
-  accessLevel: AccessLevel
   isFeed?: boolean
   isPinned: boolean
   savesCount?: number
@@ -90,7 +89,6 @@ export interface CreatePostDTO {
   type?: PostType
   payload?: Record<string, unknown>
   genderScope?: GenderScope
-  accessLevel?: AccessLevel
   isFeed?: boolean
   showInFeed?: boolean
   isPinned?: boolean
@@ -100,7 +98,6 @@ export interface UpdatePostDTO {
   content?: string | null
   type?: PostType
   genderScope?: GenderScope
-  accessLevel?: AccessLevel
   isFeed?: boolean
   showInFeed?: boolean
   isPinned?: boolean

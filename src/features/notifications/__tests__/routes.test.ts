@@ -34,7 +34,6 @@ describe('Notifications Feature Route Tests', () => {
     description: 'Bio',
     contacts: null,
     identityId: 444444444444444n,
-    regularReadersCount: 0,
     readersCount: 0,
     verifiedAt: null,
     notificationsReadAt: new Date(Date.now() - 10000),

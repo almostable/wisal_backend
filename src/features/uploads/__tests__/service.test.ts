@@ -24,7 +24,7 @@ describe('Uploads Service Unit Tests', () => {
     }
 
     const result = await generateUploadPresignedUrl(
-      { ext: 'jpg', contentType: 'image/jpeg' },
+      { ext: 'jpg', contentType: 'image/jpeg', size: 1024 },
       userId,
       mockExecutor
     )

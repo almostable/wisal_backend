@@ -6,7 +6,6 @@ import {
   selectPostSchema,
   POST_TYPES,
   GENDER_SCOPES,
-  ACCESS_LEVELS,
 } from '../posts'
 
 describe('Posts Schema Tests', () => {
@@ -16,7 +15,6 @@ describe('Posts Schema Tests', () => {
       authorGender: true,
       content: 'Hello Wisal community!',
       genderScope: 'same_gender',
-      accessLevel: 'registered',
       isFeed: true,
       isPinned: true,
     }
@@ -26,7 +24,6 @@ describe('Posts Schema Tests', () => {
     expect(parsed.authorGender).toBe(true)
     expect(parsed.content).toBe('Hello Wisal community!')
     expect(parsed.genderScope).toBe('same_gender')
-    expect(parsed.accessLevel).toBe('registered')
     expect(parsed.isFeed).toBe(true)
     expect(parsed.isPinned).toBe(true)
     expect(parsed.savesCount).toBeUndefined()
@@ -55,22 +52,13 @@ describe('Posts Schema Tests', () => {
     expect(() => insertPostSchema.parse(invalidData)).toThrow('Content cannot be empty')
   })
 
-  it('rejects invalid genderScope or accessLevel', () => {
+  it('rejects invalid genderScope', () => {
     expect(() =>
       insertPostSchema.parse({
         authorId: 100000000000001n,
         authorGender: true,
         content: 'Valid content',
         genderScope: 'invalid_scope',
-      })
-    ).toThrow()
-
-    expect(() =>
-      insertPostSchema.parse({
-        authorId: 100000000000001n,
-        authorGender: true,
-        content: 'Valid content',
-        accessLevel: 'invalid_access',
       })
     ).toThrow()
   })
@@ -85,7 +73,6 @@ describe('Posts Schema Tests', () => {
       payload: {},
       content: 'Sample post',
       genderScope: 'all',
-      accessLevel: 'public',
       isFeed: true,
       isPinned: false,
       savesCount: 5,
@@ -117,7 +104,6 @@ describe('Posts Schema Tests', () => {
     expect(indexNames).toContain('posts_created_at_idx')
     expect(indexNames).toContain('posts_deleted_at_idx')
     expect(indexNames).toContain('posts_gender_scope_idx')
-    expect(indexNames).toContain('posts_access_level_idx')
     expect(indexNames).toContain('posts_is_pinned_idx')
     expect(indexNames).toContain('posts_saves_count_idx')
     expect(indexNames).toContain('posts_likes_count_idx')
@@ -129,7 +115,6 @@ describe('Posts Schema Tests', () => {
   it('has expected enum constants defined', () => {
     expect(POST_TYPES).toEqual(['text', 'media'])
     expect(GENDER_SCOPES).toEqual(['all', 'same_gender'])
-    expect(ACCESS_LEVELS).toEqual(['public', 'registered'])
   })
 })
 

@@ -13,7 +13,6 @@ describe('Profile Utility Tests', () => {
       description: null,
       contacts: null,
       identityId: 100n,
-      regularReadersCount: 0,
       readersCount: 15,
       verifiedAt: null,
       notificationsReadAt: null,
@@ -45,7 +44,6 @@ describe('Profile Utility Tests', () => {
       description: null,
       contacts: null,
       identityId: 100n,
-      regularReadersCount: 0,
       readersCount: 0,
       verifiedAt: null,
       notificationsReadAt: null,
@@ -72,7 +70,6 @@ describe('Profile Utility Tests', () => {
       description: null,
       contacts: null,
       identityId: 100n,
-      regularReadersCount: 0,
       readersCount: 0,
       verifiedAt: null,
       notificationsReadAt: null,
@@ -99,7 +96,6 @@ describe('Profile Utility Tests', () => {
       description: null,
       contacts: null,
       identityId: 100n,
-      regularReadersCount: 0,
       readersCount: 0,
       verifiedAt: null,
       notificationsReadAt: null,
@@ -135,7 +131,6 @@ describe('Profile Utility Tests', () => {
       description: 'bio',
       contacts: null,
       identityId: 100n,
-      regularReadersCount: 42,
       readersCount: 50,
       verifiedAt: null,
       notificationsReadAt: null,
@@ -156,7 +151,6 @@ describe('Profile Utility Tests', () => {
     expect((formatted as any).accountId).toBeUndefined()
     expect(formatted!.identity).toBe('alice')
     expect(formatted!.description).toBe('bio')
-    expect(formatted!.regularReadersCount).toBe(42)
     expect(formatted!.readersCount).toBeUndefined()
     expect(formatted!.isVerified).toBe(false)
 
@@ -171,7 +165,7 @@ describe('Profile Utility Tests', () => {
     expect(formattedVerified!.isVerified).toBe(true)
   })
 
-  it('formatRestrictedProfileResponse sets regularReadersCount to 0 and calculates isVerified', async () => {
+  it('formatRestrictedProfileResponse strips avatar and contacts and calculates isVerified', async () => {
     const { formatRestrictedProfileResponse } = await import('../profile')
     const fullProfile: ProfileWithIdentity = {
       id: 1n,
@@ -182,7 +176,6 @@ describe('Profile Utility Tests', () => {
       description: 'bio',
       contacts: null,
       identityId: 100n,
-      regularReadersCount: 42,
       readersCount: 50,
       verifiedAt: new Date(),
       notificationsReadAt: null,
@@ -198,7 +191,6 @@ describe('Profile Utility Tests', () => {
 
     const restricted = formatRestrictedProfileResponse(fullProfile, { isBlocked: true })
     expect(restricted).not.toBeNull()
-    expect(restricted!.regularReadersCount).toBe(0)
     expect(restricted!.description).toBeNull()
     expect(restricted!.isBlocked).toBe(true)
     expect(restricted!.isVerified).toBe(true)

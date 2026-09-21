@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, jsonb, timestamp, integer, index } from 'drizzle-orm/pg-core'
+import { pgTable, varchar, text, jsonb, timestamp, integer, index, type AnyPgColumn } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { z } from 'zod'
@@ -19,10 +19,10 @@ export const comments = pgTable(
     authorId: snowflakeId('author_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
-    parentId: snowflakeId('parent_id').references((): any => comments.id, {
+    parentId: snowflakeId('parent_id').references((): AnyPgColumn => comments.id, {
       onDelete: 'cascade',
     }),
-    replyToCommentId: snowflakeId('reply_to_comment_id').references((): any => comments.id, {
+    replyToCommentId: snowflakeId('reply_to_comment_id').references((): AnyPgColumn => comments.id, {
       onDelete: 'set null',
     }),
     replyToProfileId: snowflakeId('reply_to_profile_id').references(() => profiles.id, {

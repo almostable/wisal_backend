@@ -5,6 +5,7 @@ import { env } from '../../config/env'
 import { ADMIN_COOKIE_NAME, ADMIN_SESSION_TTL_DAYS } from '../../lib/admin-session'
 import { stringToSnowflake } from '../../lib/snowflake'
 import { adminAuthMiddleware, requireAdminRole } from '../../middleware/admin'
+import { adminLoginRateLimiter } from '../../middleware/rate-limiter'
 import {
   loginInputSchema,
   createAdminInputSchema,
@@ -55,7 +56,7 @@ import {
 
 export const adminRouter = new Hono()
 
-adminRouter.post('/login', zValidator('json', loginInputSchema), async (c) => {
+adminRouter.post('/login', adminLoginRateLimiter, zValidator('json', loginInputSchema), async (c) => {
   const data = c.req.valid('json')
   const result = await loginAdmin(data)
 
@@ -219,6 +220,7 @@ adminRouter.delete(
 adminRouter.get(
   '/users',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('query', listUsersQuerySchema),
   async (c) => {
     const query = c.req.valid('query')
@@ -234,6 +236,7 @@ adminRouter.get(
 adminRouter.get(
   '/users/:id',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -250,6 +253,7 @@ adminRouter.get(
 adminRouter.patch(
   '/users/:id',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   zValidator('json', adminUpdateUserProfileSchema),
   async (c) => {
@@ -268,6 +272,7 @@ adminRouter.patch(
 adminRouter.post(
   '/users/:id/ban',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   zValidator('json', banUserInputSchema),
   async (c) => {
@@ -284,6 +289,7 @@ adminRouter.post(
 adminRouter.post(
   '/users/:id/unban',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   zValidator('json', unbanUserInputSchema),
   async (c) => {
@@ -300,6 +306,7 @@ adminRouter.post(
 adminRouter.delete(
   '/users/:id/sessions',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -317,6 +324,7 @@ adminRouter.delete(
 adminRouter.get(
   '/posts',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('query', listPostsAdminQuerySchema),
   async (c) => {
     const query = c.req.valid('query')
@@ -335,6 +343,7 @@ adminRouter.get(
 adminRouter.get(
   '/posts/:id',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -351,6 +360,7 @@ adminRouter.get(
 adminRouter.delete(
   '/posts/:id',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -364,6 +374,7 @@ adminRouter.delete(
 adminRouter.post(
   '/posts/:id/restore',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -377,6 +388,7 @@ adminRouter.post(
 adminRouter.patch(
   '/posts/:id',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   zValidator('json', updatePostByAdminSchema),
   async (c) => {
@@ -399,6 +411,7 @@ adminRouter.patch(
 adminRouter.get(
   '/comments',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('query', listCommentsAdminQuerySchema),
   async (c) => {
     const query = c.req.valid('query')
@@ -418,6 +431,7 @@ adminRouter.get(
 adminRouter.get(
   '/posts/:id/comments',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -434,6 +448,7 @@ adminRouter.get(
 adminRouter.delete(
   '/comments/:id',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -447,6 +462,7 @@ adminRouter.delete(
 adminRouter.post(
   '/comments/:id/restore',
   adminAuthMiddleware,
+  requireAdminRole('admin'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')

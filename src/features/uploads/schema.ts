@@ -31,14 +31,13 @@ export const presignRequestSchema = z
     }),
     contentType: z.string().trim().min(1, 'contentType is required'),
     size: z.coerce
-      .number()
-      .int()
+      .number({ message: 'size is required' })
+      .int('Size must be an integer')
       .positive('Size must be a positive integer')
       .max(
         MAX_UPLOAD_FILE_SIZE,
         `File size must not exceed ${MAX_UPLOAD_FILE_SIZE / (1024 * 1024)}MB`
-      )
-      .optional(),
+      ),
   })
   .superRefine((data, ctx) => {
     const extLower = data.ext.toLowerCase()
@@ -51,10 +50,10 @@ export const presignRequestSchema = z
       })
     }
   })
-  .transform((data): { ext: typeof data.ext; contentType: string; size?: number } => ({
+  .transform((data): { ext: typeof data.ext; contentType: string; size: number } => ({
     ext: data.ext,
     contentType: data.contentType.toLowerCase(),
-    ...(data.size !== undefined ? { size: data.size } : {}),
+    size: data.size,
   }))
 
 export type PresignRequestInput = z.infer<typeof presignRequestSchema>

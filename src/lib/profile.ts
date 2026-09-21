@@ -6,14 +6,13 @@ import { identities, identityFormatSchema, createIdentityFormatSchema, type Iden
 import { attachMediaFiles, reconcileEntityMedia } from '../features/uploads/service'
 
 export interface SafeProfile {
-  id: bigint
+  id?: bigint
   name: string | null
   isMale?: boolean | null
   avatarKey: string | null
   description: string | null
   contacts?: Contacts | null
   identity: string | null
-  regularReadersCount?: number
   readersCount?: number
   isVerified: boolean
   isReading?: boolean
@@ -45,7 +44,6 @@ export function formatProfileResponse(
     description: profile.description,
     contacts: profile.contacts ?? null,
     identity: identityStr,
-    regularReadersCount: profile.regularReadersCount ?? 0,
     isVerified: Boolean(profile.verifiedAt),
   }
 
@@ -79,7 +77,6 @@ export function formatRestrictedProfileResponse(
     description: null,
     contacts: null,
     identity: identityStr,
-    regularReadersCount: 0,
     isVerified: Boolean(profile.verifiedAt),
   }
 

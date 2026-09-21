@@ -39,7 +39,6 @@ describe('Profile Feature Route Tests', () => {
       email: null,
     },
     identity: 'wisaluser',
-    regularReadersCount: 0,
     isVerified: false,
   }
 
@@ -548,15 +547,14 @@ describe('Profile Feature Route Tests', () => {
     expect(bodyNotFollowed.profile.isReading).toBe(false)
   })
 
-  it('GET /profile/:identity allows guest access for male profiles without isMale', async () => {
+  it('GET /profile/:identity allows guest access for male profiles without isMale or id', async () => {
     mock.module('../service', () => ({
       getPublicProfile: async (identity: string, viewerAccountId?: bigint) => {
         expect(viewerAccountId).toBeUndefined()
         return {
-          id: mockProfile.id,
           name: mockProfile.name,
           identity,
-          avatarKey: null,
+          avatarKey: 'avatars/male.png',
           description: 'User bio',
           isVerified: false,
         } as any
@@ -568,21 +566,38 @@ describe('Profile Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; profile: any }
     expect(body.success).toBe(true)
     expect(body.profile.name).toBe('Wisal User')
+    expect(body.profile.identity).toBe('wisaluser')
+    expect(body.profile.avatarKey).toBe('avatars/male.png')
+    expect(body.profile.description).toBe('User bio')
+    expect(body.profile.id).toBeUndefined()
     expect(body.profile.isMale).toBeUndefined()
   })
 
-  it('GET /profile/:identity returns 404 for guest accessing female profile', async () => {
+  it('GET /profile/:identity allows guest access for female profiles with null avatarKey and without isMale or id', async () => {
     mock.module('../service', () => ({
-      getPublicProfile: async (_identity: string, viewerAccountId?: bigint) => {
+      getPublicProfile: async (identity: string, viewerAccountId?: bigint) => {
         expect(viewerAccountId).toBeUndefined()
-        throw new HTTPException(404, { message: 'Profile not found' })
+        return {
+          name: 'Female User',
+          identity,
+          avatarKey: null,
+          description: 'Female bio',
+          isVerified: true,
+        } as any
       },
     }))
 
     const res = await app.request('/profile/femaleprofile', { method: 'GET' })
-    expect(res.status).toBe(404)
-    const body = (await res.json()) as { error: string }
-    expect(body.error).toBe('Profile not found')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; profile: any }
+    expect(body.success).toBe(true)
+    expect(body.profile.name).toBe('Female User')
+    expect(body.profile.identity).toBe('femaleprofile')
+    expect(body.profile.avatarKey).toBeNull()
+    expect(body.profile.description).toBe('Female bio')
+    expect(body.profile.isVerified).toBe(true)
+    expect(body.profile.id).toBeUndefined()
+    expect(body.profile.isMale).toBeUndefined()
   })
 
   it('GET /profile/:identity returns 404 when profile does not exist', async () => {
@@ -1478,7 +1493,7 @@ describe('Profile Feature Route Tests', () => {
     expect(body.error).toBe('Profile onboarding required')
   })
 
-  it('GET /profile/feed returns recommended profiles (verified only, sorted by regularFollowersCount)', async () => {
+  it('GET /profile/feed returns recommended profiles (verified only, sorted by readersCount)', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -1501,7 +1516,7 @@ describe('Profile Feature Route Tests', () => {
       avatarKey: 'avatar_star.jpg',
       identity: 'verified_star',
       description: 'I am verified',
-      regularFollowersCount: 100,
+      readersCount: 100,
       isVerified: true,
     }
 
@@ -1539,8 +1554,7 @@ describe('Profile Feature Route Tests', () => {
     expect(body.profiles.length).toBe(1)
     expect(body.profiles[0].name).toBe('Verified Star')
     expect(body.profiles[0].isVerified).toBe(true)
-    expect(body.profiles[0].regularFollowersCount).toBe(100)
-    expect(body.profiles[0].followersCount).toBeUndefined()
+    expect(body.profiles[0].readersCount).toBe(100)
   })
 
   it('GET /profile/feed returns random profiles without seed on initial request (offset=0)', async () => {
@@ -1566,7 +1580,7 @@ describe('Profile Feature Route Tests', () => {
       avatarKey: null,
       identity: 'random_user',
       description: 'Hello world',
-      regularFollowersCount: 5,
+      readersCount: 5,
       isVerified: false,
     }
 

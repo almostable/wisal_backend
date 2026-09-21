@@ -7,16 +7,13 @@ import {
   type ReportReason,
   type ReportStatus,
 } from '../../db/schema/reports'
-import { paginationQuerySchema, snowflakeParamSchema } from '../../db/schema/common'
+import { paginationQuerySchema, snowflakeParamSchema, snowflakeIdSchema } from '../../db/schema/common'
 
 export const createReportSchema = z.object({
   targetType: z.enum(REPORT_TARGET_TYPES, {
     message: 'targetType must be one of: post, comment, profile',
   }),
-  targetId: z
-    .string()
-    .regex(/^\d{1,20}$/, 'Invalid target ID format')
-    .transform((val) => BigInt(val)),
+  targetId: snowflakeIdSchema,
   reason: z.enum(REPORT_REASONS, {
     message: `reason must be one of: ${REPORT_REASONS.join(', ')}`,
   }),

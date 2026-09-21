@@ -33,7 +33,6 @@ describe('Uploads Feature Route Tests', () => {
     description: 'Bio',
     contacts: null,
     identityId: 444444444444444n,
-    regularReadersCount: 0,
     readersCount: 0,
     verifiedAt: null,
     notificationsReadAt: null,
@@ -94,6 +93,7 @@ describe('Uploads Feature Route Tests', () => {
       body: JSON.stringify({
         ext: 'jpg',
         contentType: 'image/jpeg',
+        size: 1024,
       }),
     })
 
@@ -110,6 +110,7 @@ describe('Uploads Feature Route Tests', () => {
       body: JSON.stringify({
         ext: 'jpg',
         contentType: 'image/jpeg',
+        size: 1024,
       }),
     })
 
@@ -143,6 +144,7 @@ describe('Uploads Feature Route Tests', () => {
       body: JSON.stringify({
         ext: 'png',
         contentType: 'image/png',
+        size: 2048,
       }),
     })
     expect(resPng.status).toBe(200)
@@ -158,6 +160,7 @@ describe('Uploads Feature Route Tests', () => {
       body: JSON.stringify({
         ext: 'webp',
         contentType: 'image/webp',
+        size: 4096,
       }),
     })
     expect(resWebp.status).toBe(200)
@@ -165,7 +168,7 @@ describe('Uploads Feature Route Tests', () => {
     expect(bodyWebp.fileKey.endsWith('.webp')).toBe(true)
   })
 
-  it('POST /uploads/presign accepts valid optional size parameter', async () => {
+  it('POST /uploads/presign accepts valid size parameter', async () => {
     const res = await app.request('/uploads/presign', {
       method: 'POST',
       headers: {

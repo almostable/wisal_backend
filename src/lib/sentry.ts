@@ -3,7 +3,7 @@ import type { Context } from 'hono'
 import { env } from '../config/env'
 
 const SENSITIVE_KEY_REGEX =
-  /(password|passwd|secret|authorization|cookie|bearer|token|invite_?code|credential)/i
+  /(password|passwd|secret|authorization|cookie|bearer|token|invite_?code|credential|email|mail)/i
 
 export function sanitizeData(data: unknown): unknown {
   if (data === null || data === undefined) {

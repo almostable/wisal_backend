@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { HTTPException } from 'hono/http-exception'
 import { authMiddleware } from '../../middleware/auth'
+import { uploadPresignRateLimiter } from '../../middleware/rate-limiter'
 import { getProfileByAccountId } from '../../lib/profile'
 import { presignRequestSchema } from './schema'
 import { generateUploadPresignedUrl } from './service'
@@ -10,7 +11,7 @@ export const uploadsRouter = new Hono()
 
 uploadsRouter.use('*', authMiddleware)
 
-uploadsRouter.post('/presign', zValidator('json', presignRequestSchema), async (c) => {
+uploadsRouter.post('/presign', uploadPresignRateLimiter, zValidator('json', presignRequestSchema), async (c) => {
   const account = c.get('account')
   const profile = await getProfileByAccountId(account.id)
   if (!profile) {

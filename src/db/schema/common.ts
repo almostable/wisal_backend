@@ -26,6 +26,8 @@ export const emailSchema = z
   .transform((val) => val.trim().toLowerCase())
   .pipe(z.string().email('Invalid email address'))
 
+export const MAX_PG_BIGINT = 9223372036854775807n
+
 export const createPaginationSchema = (defaultLimit = 50, maxLimit = 100) =>
   z.object({
     limit: z.coerce.number().int().min(1).max(maxLimit).default(defaultLimit),
@@ -34,13 +36,25 @@ export const createPaginationSchema = (defaultLimit = 50, maxLimit = 100) =>
 
 export const paginationQuerySchema = createPaginationSchema(50, 100)
 
+export const snowflakeIdSchema = z
+  .string()
+  .regex(/^\d{1,19}$/, 'Invalid ID format')
+  .refine((val) => {
+    try {
+      const b = BigInt(val)
+      return b > 0n && b <= MAX_PG_BIGINT
+    } catch {
+      return false
+    }
+  }, 'Invalid ID range')
+  .transform((val) => BigInt(val))
+
 export const snowflakeParamSchema = z.object({
-  id: z
-    .string()
-    .regex(/^\d{1,20}$/, 'Invalid ID format')
-    .transform((val) => BigInt(val)),
+  id: snowflakeIdSchema,
 })
 
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>
 export type SnowflakeParam = z.infer<typeof snowflakeParamSchema>
+export type SnowflakeId = z.infer<typeof snowflakeIdSchema>
+
 

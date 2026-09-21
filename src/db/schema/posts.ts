@@ -24,9 +24,6 @@ export interface MediaPayload {
 export const GENDER_SCOPES = ['all', 'same_gender'] as const
 export type GenderScope = (typeof GENDER_SCOPES)[number]
 
-export const ACCESS_LEVELS = ['public', 'registered'] as const
-export type AccessLevel = (typeof ACCESS_LEVELS)[number]
-
 export const posts = pgTable(
   'posts',
   {
@@ -39,7 +36,6 @@ export const posts = pgTable(
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
     content: text('content').notNull().default(''),
     genderScope: varchar('gender_scope', { length: 32 }).notNull().default('all'),
-    accessLevel: varchar('access_level', { length: 32 }).notNull().default('public'),
     isFeed: boolean('is_feed').notNull().default(false),
     isPinned: boolean('is_pinned').notNull().default(false),
     savesCount: integer('saves_count').notNull().default(0),
@@ -55,7 +51,6 @@ export const posts = pgTable(
     index('posts_created_at_idx').on(table.createdAt),
     index('posts_deleted_at_idx').on(table.deletedAt),
     index('posts_gender_scope_idx').on(table.genderScope),
-    index('posts_access_level_idx').on(table.accessLevel),
     index('posts_is_pinned_idx').on(table.isPinned),
     index('posts_saves_count_idx').on(table.savesCount),
     index('posts_likes_count_idx').on(table.likesCount),
@@ -92,7 +87,6 @@ export const postContentSchema = z
 export const insertPostSchema = createInsertSchema(posts, {
   type: () => z.enum(POST_TYPES).default('text'),
   genderScope: () => z.enum(GENDER_SCOPES).default('all'),
-  accessLevel: () => z.enum(ACCESS_LEVELS).default('public'),
   isFeed: () => z.boolean().default(false).optional(),
   payload: () => z.record(z.string(), z.unknown()).default({}),
   content: () => postContentSchema,

@@ -1,9 +1,8 @@
 import { z } from 'zod'
-import { createPaginationSchema, snowflakeParamSchema } from '../../db/schema/common'
+import { createPaginationSchema, snowflakeParamSchema, snowflakeIdSchema, MAX_PG_BIGINT } from '../../db/schema/common'
 import {
   POST_TYPES,
   GENDER_SCOPES,
-  ACCESS_LEVELS,
 } from '../../db/schema/posts'
 import {
   COMMENT_TYPES,
@@ -81,22 +80,12 @@ export const createPostSchema = z
     content: z.string().trim().max(5000, 'Content must be at most 5000 characters').nullable().optional(),
     payload: z.record(z.string(), z.unknown()).default({}).optional(),
     genderScope: z.enum(GENDER_SCOPES).default('all').optional(),
-    accessLevel: z.enum(ACCESS_LEVELS).default('public').optional(),
     isFeed: z.boolean().optional(),
     showInFeed: z.boolean().optional(),
     isPinned: z.boolean().default(false).optional(),
   })
   .superRefine((data, ctx) => {
     validateMediaOrText(data, ctx)
-    const effectiveAccessLevel = data.accessLevel ?? 'public'
-    const effectiveGenderScope = data.genderScope ?? 'all'
-    if (effectiveAccessLevel === 'public' && effectiveGenderScope === 'same_gender') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "genderScope must be 'all' when accessLevel is 'public'",
-        path: ['genderScope'],
-      })
-    }
   })
   .transform(transformMediaOrText)
 
@@ -105,20 +94,12 @@ export const updatePostSchema = z
     type: z.enum(POST_TYPES).optional(),
     content: z.string().trim().max(5000, 'Content must be at most 5000 characters').nullable().optional(),
     genderScope: z.enum(GENDER_SCOPES).optional(),
-    accessLevel: z.enum(ACCESS_LEVELS).optional(),
     isFeed: z.boolean().optional(),
     showInFeed: z.boolean().optional(),
     isPinned: z.boolean().optional(),
     payload: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.accessLevel === 'public' && data.genderScope === 'same_gender') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "genderScope must be 'all' when accessLevel is 'public'",
-        path: ['genderScope'],
-      })
-    }
     if (data.type === 'media' && data.payload !== undefined) {
       const parsedPayload = mediaPayloadSchema.safeParse(data.payload)
       if (!parsedPayload.success) {
@@ -171,7 +152,7 @@ export const createCommentSchema = z
     type: z.enum(COMMENT_TYPES).default('text').optional(),
     content: z.string().trim().max(5000, 'Content must be at most 5000 characters').nullable().optional(),
     payload: z.record(z.string(), z.unknown()).default({}).optional(),
-    parentId: z.string().regex(/^\d{1,20}$/, 'Invalid parent ID format').nullable().optional(),
+    parentId: snowflakeIdSchema.nullable().optional(),
   })
   .superRefine(validateMediaOrText)
   .transform(transformMediaOrText)
@@ -186,18 +167,24 @@ export const listCommentsQuerySchema = createPaginationSchema(50, 100)
 
 export const recordViewsSchema = z.object({
   postIds: z
-    .array(
-      z
-        .string()
-        .regex(/^\d{1,20}$/, 'Invalid post ID format')
-        .transform((val) => BigInt(val))
-    )
+    .array(snowflakeIdSchema)
     .min(1, 'At least 1 post ID is required')
     .max(100, 'Maximum 100 post IDs allowed'),
 })
 
 export const feedQuerySchema = createPaginationSchema(20, 100).extend({
-  cursor: z.string().regex(/^\d{1,20}$/, 'Invalid cursor format').optional(),
+  cursor: z
+    .string()
+    .regex(/^\d{1,19}$/, 'Invalid cursor format')
+    .refine((val) => {
+      try {
+        const b = BigInt(val)
+        return b > 0n && b <= MAX_PG_BIGINT
+      } catch {
+        return false
+      }
+    }, 'Invalid cursor range')
+    .optional(),
 })
 
 export type PostIdParam = z.infer<typeof postIdParamSchema>

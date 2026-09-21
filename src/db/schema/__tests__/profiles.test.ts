@@ -154,7 +154,6 @@ describe('Profiles Schema Tests', () => {
       contacts: null,
       identity: null,
       identityId: null,
-      regularReadersCount: 0,
       readersCount: 0,
       verifiedAt: null,
       notificationsReadAt: null,
@@ -166,7 +165,6 @@ describe('Profiles Schema Tests', () => {
     const parsedSelect = selectProfileSchema.parse(selectData)
     expect(parsedSelect.description).toBe('Coffee & Code')
     expect(parsedSelect.contacts).toBeNull()
-    expect(parsedSelect.regularReadersCount).toBe(0)
     expect(parsedSelect.readersCount).toBe(0)
     expect(parsedSelect.verifiedAt).toBeNull()
     expect(parsedSelect.notificationsReadAt).toBeNull()
