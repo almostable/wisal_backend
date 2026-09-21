@@ -106,7 +106,7 @@ describe('Media Uploads Schema Tests', () => {
   })
 
   it('has expected enum constants defined', () => {
-    expect(MEDIA_UPLOAD_STATUSES).toEqual(['pending', 'attached', 'deleted', 'purged'])
+    expect(MEDIA_UPLOAD_STATUSES).toEqual(['pending', 'attached', 'deleted', 'purged', 'gc_failed'])
     expect(MEDIA_ENTITY_TYPES).toEqual(['post', 'comment', 'avatar'])
   })
 })

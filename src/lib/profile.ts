@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception'
 import { db } from '../db'
 import { profiles, type Profile, type ProfileWithIdentity, type OnboardingInput, type UpdateProfileInput, type Contacts } from '../db/schema/profiles'
 import { identities, identityFormatSchema, createIdentityFormatSchema, type Identity } from '../db/schema/identities'
+import { generateRandomUserIdentity } from './identity'
 import { attachMediaFiles, reconcileEntityMedia } from '../features/uploads/service'
 
 export interface SafeProfile {
@@ -137,17 +138,9 @@ export async function completeOnboarding(
   accountId: bigint,
   input: OnboardingInput
 ): Promise<ProfileWithIdentity> {
-  const normalizedIdentity = input.identity.trim().toLowerCase()
+  const customIdentity = input.identity?.trim().toLowerCase()
 
   return await db.transaction(async (tx) => {
-    const existingIdentity = await tx.query.identities.findFirst({
-      where: eq(sql`lower(${identities.identity})`, normalizedIdentity),
-    })
-
-    if (existingIdentity) {
-      throw new HTTPException(409, { message: `Identity '${input.identity}' is already taken` })
-    }
-
     const existingProfile = await tx.query.profiles.findFirst({
       where: eq(profiles.accountId, accountId),
     })
@@ -156,22 +149,56 @@ export async function completeOnboarding(
       throw new HTTPException(400, { message: 'Onboarding has already been completed for this account' })
     }
 
-    const isVerified = Boolean(existingProfile?.verifiedAt)
-    const minLength = isVerified ? 3 : 5
-    if (normalizedIdentity.length < minLength) {
-      throw new HTTPException(400, {
-        message: `Identity must be at least ${minLength} characters long`,
+    let normalizedIdentity: string | undefined
+    let createdIdentity: Identity | undefined
+
+    if (customIdentity) {
+      normalizedIdentity = customIdentity
+      const existingIdentity = await tx.query.identities.findFirst({
+        where: eq(sql`lower(${identities.identity})`, normalizedIdentity),
       })
+
+      if (existingIdentity) {
+        throw new HTTPException(409, { message: `Identity '${input.identity}' is already taken` })
+      }
+
+      const isVerified = Boolean(existingProfile?.verifiedAt)
+      const minLength = isVerified ? 3 : 5
+      if (normalizedIdentity.length < minLength) {
+        throw new HTTPException(400, {
+          message: `Identity must be at least ${minLength} characters long`,
+        })
+      }
+
+      const [created] = await tx
+        .insert(identities)
+        .values({
+          identity: normalizedIdentity,
+        })
+        .returning()
+
+      createdIdentity = created
+    } else {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const candidate = generateRandomUserIdentity()
+        const existingIdentity = await tx.query.identities.findFirst({
+          where: eq(sql`lower(${identities.identity})`, candidate),
+        })
+        if (!existingIdentity) {
+          normalizedIdentity = candidate
+          const [created] = await tx
+            .insert(identities)
+            .values({
+              identity: candidate,
+            })
+            .returning()
+          createdIdentity = created
+          break
+        }
+      }
     }
 
-    const [createdIdentity] = await tx
-      .insert(identities)
-      .values({
-        identity: normalizedIdentity,
-      })
-      .returning()
-
-    if (!createdIdentity) {
+    if (!createdIdentity || !normalizedIdentity) {
       throw new HTTPException(500, { message: 'Failed to create identity' })
     }
 

@@ -115,7 +115,7 @@ describe('Authors and Monotonic Read Feature Tests', () => {
               avatarKey: 'author-pic.png',
               identity: 'favauthor',
               isVerified: true,
-              unreadCount: 3,
+              hasUnread: true,
             },
             {
               id: 888888888888888n,
@@ -123,7 +123,7 @@ describe('Authors and Monotonic Read Feature Tests', () => {
               avatarKey: null,
               identity: 'allreadauthor',
               isVerified: false,
-              unreadCount: 0,
+              hasUnread: false,
             },
           ],
           total: 2,
@@ -144,13 +144,13 @@ describe('Authors and Monotonic Read Feature Tests', () => {
       expect(body.success).toBe(true)
       expect(body.total).toBe(2)
       expect(body.authors[0].identity).toBe('favauthor')
-      expect(body.authors[0].unreadCount).toBe(3)
+      expect(body.authors[0].hasUnread).toBe(true)
       expect(body.authors[0].description).toBeUndefined()
       expect(body.authors[0].isMale).toBeUndefined()
       expect(body.authors[0].readAt).toBeUndefined()
       expect(body.authors[0].lastReadAt).toBeUndefined()
       expect(body.authors[0].lastReadPostId).toBeUndefined()
-      expect(body.authors[1].unreadCount).toBe(0)
+      expect(body.authors[1].hasUnread).toBe(false)
     })
   })
 
@@ -202,10 +202,11 @@ describe('Authors and Monotonic Read Feature Tests', () => {
       expect(body.authors[0].description).toBe('Author bio')
       expect(body.authors[0].isVerified).toBe(true)
       expect(body.authors[0].unreadCount).toBeUndefined()
+      expect(body.authors[0].hasUnread).toBeUndefined()
     })
   })
 
-  describe('POST /profile/:author_id/read Route', () => {
+  describe('POST /profile/:author_id/read-marker Route', () => {
     it('updates read position when payload is passed', async () => {
       mock.module('../../../lib/session', () => ({
         validateSessionToken: async () => ({
@@ -227,7 +228,7 @@ describe('Authors and Monotonic Read Feature Tests', () => {
         }),
       }))
 
-      const res = await app.request('/profile/favauthor/read', {
+      const res = await app.request('/profile/favauthor/read-marker', {
         method: 'POST',
         headers: {
           Authorization: 'Bearer valid_token',
@@ -255,7 +256,7 @@ describe('Authors and Monotonic Read Feature Tests', () => {
         isOnboardingCompleted: () => true,
       }))
 
-      const res = await app.request('/profile/favauthor/read', {
+      const res = await app.request('/profile/favauthor/read-marker', {
         method: 'POST',
         headers: {
           Authorization: 'Bearer valid_token',

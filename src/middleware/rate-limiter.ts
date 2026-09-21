@@ -5,6 +5,7 @@ import { env } from '../config/env'
 export interface RateLimiterOptions {
   windowMs?: number
   max?: number
+  maxStoreSize?: number
   message?: string
   keyGenerator?: (c: Context) => string
 }
@@ -33,9 +34,28 @@ export function getClientIp(c: Context): string {
   )
 }
 
+export const MAX_STORE_SIZE = 100_000
+
+// Background periodic sweep every 30 seconds to clean up expired entries without blocking request handlers
+const sweepInterval = setInterval(() => {
+  const now = Date.now()
+  for (const store of stores) {
+    for (const [k, v] of store.entries()) {
+      if (now >= v.resetAt) {
+        store.delete(k)
+      }
+    }
+  }
+}, 30_000)
+
+if (typeof sweepInterval.unref === 'function') {
+  sweepInterval.unref()
+}
+
 export function rateLimiter(options: RateLimiterOptions = {}): MiddlewareHandler {
   const windowMs = options.windowMs ?? 60 * 1000
   const max = options.max ?? (env.NODE_ENV === 'test' ? 1000 : 60)
+  const maxStoreSize = options.maxStoreSize ?? MAX_STORE_SIZE
   const message = options.message ?? 'Too many requests, please try again later'
   const keyGenerator =
     options.keyGenerator ??
@@ -53,6 +73,14 @@ export function rateLimiter(options: RateLimiterOptions = {}): MiddlewareHandler
     let record = store.get(key)
 
     if (!record || now >= record.resetAt) {
+      // O(1) emergency FIFO eviction if store reaches capacity before background sweep
+      if (store.size >= maxStoreSize) {
+        const oldestKey = store.keys().next().value
+        if (oldestKey !== undefined) {
+          store.delete(oldestKey)
+        }
+      }
+
       record = {
         count: 1,
         resetAt: now + windowMs,
@@ -60,15 +88,6 @@ export function rateLimiter(options: RateLimiterOptions = {}): MiddlewareHandler
       store.set(key, record)
     } else {
       record.count += 1
-    }
-
-    // Periodically evict expired entries if store gets large
-    if (store.size > 1000) {
-      for (const [k, v] of store.entries()) {
-        if (now >= v.resetAt) {
-          store.delete(k)
-        }
-      }
     }
 
     if (record.count > max) {
@@ -110,3 +129,6 @@ export const createPostRateLimiter = rateLimiter({
   max: env.NODE_ENV === 'test' ? 1000 : 30,
   message: 'Too many posts created, please try again later',
 })
+
+export const createRateLimiter = rateLimiter
+

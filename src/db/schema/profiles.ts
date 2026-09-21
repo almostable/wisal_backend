@@ -107,7 +107,7 @@ export const onboardingInputSchema = z.object({
   isMale: z.boolean({
     message: 'is_male (gender) is required and must be a boolean',
   }),
-  identity: standardIdentityFormatSchema,
+  identity: standardIdentityFormatSchema.optional(),
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
   contacts: contactsSchema.nullable().optional(),

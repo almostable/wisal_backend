@@ -2,7 +2,6 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { authMiddleware } from '../../middleware/auth'
 import { onboardingMiddleware } from '../../middleware/onboarding'
-import { stringToSnowflake } from '../../lib/snowflake'
 import {
   createReportSchema,
   listUserReportsQuerySchema,
@@ -48,9 +47,8 @@ reportsRouter.get('/', zValidator('query', listUserReportsQuerySchema), async (c
 reportsRouter.get('/:id', zValidator('param', reportIdParamSchema), async (c) => {
   const profile = c.get('profile')
   const { id } = c.req.valid('param')
-  const reportId = stringToSnowflake(id)
 
-  const report = await getUserReportById(profile.id, reportId)
+  const report = await getUserReportById(profile.id, id)
 
   return c.json({
     success: true,

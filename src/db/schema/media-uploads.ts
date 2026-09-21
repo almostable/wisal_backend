@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { snowflakeId } from './common'
 import { profiles } from './profiles'
 
-export const MEDIA_UPLOAD_STATUSES = ['pending', 'attached', 'deleted', 'purged'] as const
+export const MEDIA_UPLOAD_STATUSES = ['pending', 'attached', 'deleted', 'purged', 'gc_failed'] as const
 export type MediaUploadStatus = (typeof MEDIA_UPLOAD_STATUSES)[number]
 
 export const MEDIA_ENTITY_TYPES = ['post', 'comment', 'avatar'] as const

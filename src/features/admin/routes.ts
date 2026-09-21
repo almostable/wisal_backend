@@ -3,7 +3,6 @@ import { setCookie, deleteCookie } from 'hono/cookie'
 import { zValidator } from '@hono/zod-validator'
 import { env } from '../../config/env'
 import { ADMIN_COOKIE_NAME, ADMIN_SESSION_TTL_DAYS } from '../../lib/admin-session'
-import { stringToSnowflake } from '../../lib/snowflake'
 import { adminAuthMiddleware, requireAdminRole } from '../../middleware/admin'
 import { adminLoginRateLimiter } from '../../middleware/rate-limiter'
 import {
@@ -147,9 +146,8 @@ adminRouter.delete(
   async (c) => {
     const currentAdmin = c.get('admin')
     const { id } = c.req.valid('param')
-    const targetAdminId = stringToSnowflake(id)
 
-    await deleteAdmin(targetAdminId, currentAdmin.id)
+    await deleteAdmin(id, currentAdmin.id)
 
     return c.json({
       success: true,
@@ -202,9 +200,8 @@ adminRouter.delete(
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
-    const inviteId = stringToSnowflake(id)
 
-    await deleteInvite(inviteId)
+    await deleteInvite(id)
 
     return c.json({
       success: true,
@@ -240,8 +237,7 @@ adminRouter.get(
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
-    const accountId = stringToSnowflake(id)
-    const user = await getUserById(accountId)
+    const user = await getUserById(id)
 
     return c.json({
       success: true,
@@ -259,8 +255,7 @@ adminRouter.patch(
   async (c) => {
     const { id } = c.req.valid('param')
     const data = c.req.valid('json')
-    const accountId = stringToSnowflake(id)
-    const user = await updateUserProfileByAdmin(accountId, data)
+    const user = await updateUserProfileByAdmin(id, data)
 
     return c.json({
       success: true,
@@ -279,8 +274,7 @@ adminRouter.post(
     const admin = c.get('admin')
     const { id } = c.req.valid('param')
     const data = c.req.valid('json')
-    const accountId = stringToSnowflake(id)
-    const result = await banUserAccount(admin, accountId, data)
+    const result = await banUserAccount(admin, id, data)
 
     return c.json(result)
   }
@@ -296,8 +290,7 @@ adminRouter.post(
     const admin = c.get('admin')
     const { id } = c.req.valid('param')
     const data = c.req.valid('json')
-    const accountId = stringToSnowflake(id)
-    const result = await unbanUserAccount(admin, accountId, data)
+    const result = await unbanUserAccount(admin, id, data)
 
     return c.json(result)
   }
@@ -310,8 +303,7 @@ adminRouter.delete(
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
-    const accountId = stringToSnowflake(id)
-    const result = await revokeUserSessions(accountId)
+    const result = await revokeUserSessions(id)
 
     return c.json(result)
   }
@@ -330,7 +322,7 @@ adminRouter.get(
     const query = c.req.valid('query')
     const result = await listPostsByAdmin({
       ...query,
-      authorId: query.authorId ? stringToSnowflake(query.authorId) : undefined,
+      authorId: query.authorId ? BigInt(query.authorId) : undefined,
     })
 
     return c.json({
@@ -347,8 +339,7 @@ adminRouter.get(
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
-    const postId = stringToSnowflake(id)
-    const post = await getPostByIdByAdmin(postId)
+    const post = await getPostByIdByAdmin(id)
 
     return c.json({
       success: true,
@@ -364,8 +355,7 @@ adminRouter.delete(
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
-    const postId = stringToSnowflake(id)
-    const result = await deletePostByAdmin(postId)
+    const result = await deletePostByAdmin(id)
 
     return c.json(result)
   }
@@ -378,8 +368,7 @@ adminRouter.post(
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
-    const postId = stringToSnowflake(id)
-    const result = await restorePostByAdmin(postId)
+    const result = await restorePostByAdmin(id)
 
     return c.json(result)
   }
@@ -393,9 +382,8 @@ adminRouter.patch(
   zValidator('json', updatePostByAdminSchema),
   async (c) => {
     const { id } = c.req.valid('param')
-    const postId = stringToSnowflake(id)
     const data = c.req.valid('json')
-    const post = await updatePostByAdmin(postId, data)
+    const post = await updatePostByAdmin(id, data)
 
     return c.json({
       success: true,
@@ -417,8 +405,8 @@ adminRouter.get(
     const query = c.req.valid('query')
     const result = await listCommentsByAdmin({
       ...query,
-      postId: query.postId ? stringToSnowflake(query.postId) : undefined,
-      authorId: query.authorId ? stringToSnowflake(query.authorId) : undefined,
+      postId: query.postId ? BigInt(query.postId) : undefined,
+      authorId: query.authorId ? BigInt(query.authorId) : undefined,
     })
 
     return c.json({
@@ -435,8 +423,7 @@ adminRouter.get(
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
-    const postId = stringToSnowflake(id)
-    const commentsList = await getPostCommentsByAdmin(postId)
+    const commentsList = await getPostCommentsByAdmin(id)
 
     return c.json({
       success: true,
@@ -452,8 +439,7 @@ adminRouter.delete(
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
-    const commentId = stringToSnowflake(id)
-    const result = await deleteCommentByAdmin(commentId)
+    const result = await deleteCommentByAdmin(id)
 
     return c.json(result)
   }
@@ -466,8 +452,7 @@ adminRouter.post(
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
-    const commentId = stringToSnowflake(id)
-    const result = await restoreCommentByAdmin(commentId)
+    const result = await restoreCommentByAdmin(id)
 
     return c.json(result)
   }
@@ -498,9 +483,8 @@ adminRouter.get(
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
-    const reportId = stringToSnowflake(id)
 
-    const report = await getReportById(reportId)
+    const report = await getReportById(id)
 
     return c.json({
       success: true,
@@ -518,9 +502,8 @@ adminRouter.patch(
     const admin = c.get('admin')
     const { id } = c.req.valid('param')
     const data = c.req.valid('json')
-    const reportId = stringToSnowflake(id)
 
-    const report = await updateReportResolution(admin, reportId, data)
+    const report = await updateReportResolution(admin, id, data)
 
     return c.json({
       success: true,
@@ -538,9 +521,8 @@ adminRouter.post(
     const admin = c.get('admin')
     const { id } = c.req.valid('param')
     const data = c.req.valid('json')
-    const reportId = stringToSnowflake(id)
 
-    const report = await resolveReportWithAction(admin, reportId, data)
+    const report = await resolveReportWithAction(admin, id, data)
 
     return c.json({
       success: true,

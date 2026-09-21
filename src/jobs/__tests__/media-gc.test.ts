@@ -35,8 +35,7 @@ describe('Media GC Worker Tests', () => {
     ]
 
     let selectedCalls = 0
-    let updatedSet: any = null
-    let updatedWhereKeys: any = null
+    const updates: any[] = []
     let s3CalledKeys: string[] = []
 
     const mockS3Deleter = async (keys: string[]) => {
@@ -60,12 +59,9 @@ describe('Media GC Worker Tests', () => {
       }),
       update: () => ({
         set: (data: any) => {
-          updatedSet = data
+          updates.push(data)
           return {
-            where: async (clause: any) => {
-              updatedWhereKeys = clause
-              return []
-            },
+            where: async () => [],
           }
         },
       }),
@@ -93,8 +89,8 @@ describe('Media GC Worker Tests', () => {
       'media/2026-09-04/222.jpg',
       'media/2026-09-04/333.jpg',
     ])
-    expect(updatedSet.status).toBe('purged')
-    expect(updatedSet.purgedAt).toBeInstanceOf(Date)
+    expect(updates.some((u) => u.status === 'purged' && u.purgedAt instanceof Date)).toBe(true)
+    expect(updates.some((u) => u.status === 'gc_failed')).toBe(true)
   })
 
   it('initMediaGcCron returns an active Cron instance', () => {

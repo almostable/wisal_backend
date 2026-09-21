@@ -45,6 +45,8 @@ async function shutdown(signal: string) {
     mediaGcCron.stop()
   }
 
+  await new Promise((resolve) => setTimeout(resolve, 1500))
+
   try {
     await client.end({ timeout: 5 })
     console.log('[SHUTDOWN] Database connection pool drained.')

@@ -183,32 +183,29 @@ profileRouter.post(
       throw new HTTPException(404, { message: 'Profile not found' })
     }
     const { author_id } = c.req.valid('param')
-    const contentType = c.req.header('content-type')
-
-    if (contentType?.includes('application/json')) {
-      let body: any
-      try {
-        body = await c.req.json()
-      } catch {
-        throw new HTTPException(400, { message: 'Malformed JSON payload' })
-      }
-
-      if (body && typeof body === 'object' && (body.last_post_id !== undefined || body.lastPostId !== undefined)) {
-        const parsed = markAuthorReadSchema.safeParse(body)
-        if (!parsed.success) {
-          throw new HTTPException(400, {
-            message: parsed.error.issues[0]?.message ?? 'Invalid last_post_id',
-          })
-        }
-        const result = await markAuthorPostsRead(profile.id, author_id, parsed.data.lastPostId)
-        return c.json({
-          success: true,
-          ...result,
-        })
-      }
-    }
-
     const result = await readProfile(profile.id, author_id)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+profileRouter.post(
+  '/:author_id/read-marker',
+  authMiddleware,
+  zValidator('param', authorParamSchema),
+  zValidator('json', markAuthorReadSchema),
+  async (c) => {
+    const account = c.get('account')
+    const profile = await getProfileByAccountId(account.id)
+    if (!profile) {
+      throw new HTTPException(404, { message: 'Profile not found' })
+    }
+    const { author_id } = c.req.valid('param')
+    const { lastPostId } = c.req.valid('json')
+    const result = await markAuthorPostsRead(profile.id, author_id, lastPostId)
 
     return c.json({
       success: true,

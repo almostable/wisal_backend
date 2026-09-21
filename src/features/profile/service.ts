@@ -489,13 +489,14 @@ export async function getSubscribedAuthors(
       ? sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`
       : sql`${posts.genderScope} = 'all'`
 
-  const unreadSubquery = sql<number>`(
-    SELECT count(*)::int
+  const unreadSubquery = sql<boolean>`EXISTS (
+    SELECT 1
     FROM ${posts}
     WHERE ${posts.authorId} = ${readers.authorProfileId}
       AND ${posts.deletedAt} IS NULL
       AND ${posts.id} > COALESCE(${readers.lastReadPostId}, 0)
       AND ${genderCondition}
+    LIMIT 1
   )`
 
   const whereClause = and(
@@ -511,7 +512,7 @@ export async function getSubscribedAuthors(
         avatarKey: profiles.avatarKey,
         identity: identities.identity,
         isVerified: sql<boolean>`${profiles.verifiedAt} is not null`,
-        unreadCount: unreadSubquery.as('unread_count'),
+        hasUnread: unreadSubquery.as('has_unread'),
       })
       .from(readers)
       .innerJoin(profiles, eq(readers.authorProfileId, profiles.id))
@@ -519,7 +520,7 @@ export async function getSubscribedAuthors(
       .leftJoin(accounts, eq(profiles.accountId, accounts.id))
       .where(whereClause)
       .orderBy(
-        sql`CASE WHEN unread_count > 0 THEN 1 ELSE 0 END DESC`,
+        sql`CASE WHEN ${unreadSubquery} THEN 1 ELSE 0 END DESC`,
         desc(readers.createdAt)
       )
       .limit(limit)
@@ -539,7 +540,7 @@ export async function getSubscribedAuthors(
       avatarKey: item.avatarKey,
       identity: item.identity,
       isVerified: Boolean(item.isVerified),
-      unreadCount: Number(item.unreadCount ?? 0),
+      hasUnread: Boolean(item.hasUnread),
     })),
     total: totalResult[0]?.count ?? 0,
     limit,
@@ -1033,7 +1034,7 @@ export async function searchProfiles(
   )`
 
   // Primary filtering: GIN-indexed searchText (contains identity, name, and description)
-  const primarySearchFilter = sql`${profiles.searchText} LIKE ${subPattern}`
+  const primarySearchFilter = sql`${profiles.searchText} LIKE ${subPattern} ESCAPE '\\'`
 
   const whereCondition = and(
     ne(profiles.id, viewerProfileId),
@@ -1049,9 +1050,9 @@ export async function searchProfiles(
   const relevanceRank = sql<number>`
     CASE
       WHEN lower(${identities.identity}) = ${cleanQuery} THEN 1
-      WHEN lower(${identities.identity}) LIKE ${prefixPattern} THEN 2
-      WHEN lower(${profiles.name}) LIKE ${prefixPattern} OR lower(${profiles.name}) LIKE ${wordPrefixPattern} THEN 3
-      WHEN lower(${identities.identity}) LIKE ${subPattern} OR lower(${profiles.name}) LIKE ${subPattern} THEN 4
+      WHEN lower(${identities.identity}) LIKE ${prefixPattern} ESCAPE '\\' THEN 2
+      WHEN lower(${profiles.name}) LIKE ${prefixPattern} ESCAPE '\\' OR lower(${profiles.name}) LIKE ${wordPrefixPattern} ESCAPE '\\' THEN 3
+      WHEN lower(${identities.identity}) LIKE ${subPattern} ESCAPE '\\' OR lower(${profiles.name}) LIKE ${subPattern} ESCAPE '\\' THEN 4
       ELSE 5
     END
   `

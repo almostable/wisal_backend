@@ -1,4 +1,4 @@
-import { sql, and, or, eq, inArray, notInArray } from 'drizzle-orm'
+import { sql, and, or, eq, inArray } from 'drizzle-orm'
 import { Cron } from 'croner'
 import { db } from '../db'
 import { mediaUploads } from '../db/schema/media-uploads'
@@ -28,22 +28,18 @@ export async function runMediaGc(
   const deleter = options?.s3Deleter ?? deleteObjectsFromR2
   let processedBatches = 0
   let purgedKeysCount = 0
-  const failedKeys = new Set<string>()
 
   while (true) {
     const candidates = await executor
       .select({ fileKey: mediaUploads.fileKey })
       .from(mediaUploads)
       .where(
-        and(
-          or(
-            and(
-              eq(mediaUploads.status, 'pending'),
-              sql`${mediaUploads.createdAt} < NOW() - INTERVAL '24 HOURS'`
-            ),
-            eq(mediaUploads.status, 'deleted')
+        or(
+          and(
+            eq(mediaUploads.status, 'pending'),
+            sql`${mediaUploads.createdAt} < NOW() - INTERVAL '24 HOURS'`
           ),
-          failedKeys.size > 0 ? notInArray(mediaUploads.fileKey, Array.from(failedKeys)) : undefined
+          eq(mediaUploads.status, 'deleted')
         )
       )
       .limit(batchSize)
@@ -56,13 +52,10 @@ export async function runMediaGc(
     const keys = candidates.map((c) => c.fileKey)
 
     const { deleted: confirmedDeletedKeys, errors } = await deleter(keys)
+    const confirmedSet = new Set(confirmedDeletedKeys)
+
     if (errors && errors.length > 0) {
       console.warn(`[GC Worker] S3 reported ${errors.length} errors while deleting keys`, errors)
-      for (const err of errors) {
-        if (err.key) {
-          failedKeys.add(err.key)
-        }
-      }
     }
 
     if (confirmedDeletedKeys.length > 0) {
@@ -77,7 +70,17 @@ export async function runMediaGc(
       purgedKeysCount += confirmedDeletedKeys.length
     }
 
-    if (candidates.length < batchSize || confirmedDeletedKeys.length === 0) {
+    const unhandledKeys = keys.filter((k) => !confirmedSet.has(k))
+    if (unhandledKeys.length > 0) {
+      await executor
+        .update(mediaUploads)
+        .set({
+          status: 'gc_failed',
+        })
+        .where(inArray(mediaUploads.fileKey, unhandledKeys))
+    }
+
+    if (candidates.length < batchSize) {
       break
     }
   }

@@ -903,7 +903,7 @@ describe('Profile Feature Route Tests', () => {
     expect(res404.status).toBe(404)
   })
 
-  it('POST /profile/:author_id/read marks author posts read when last_post_id is provided', async () => {
+  it('POST /profile/:author_id/read-marker marks author posts read when last_post_id is provided', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: mockAccount,
@@ -933,7 +933,7 @@ describe('Profile Feature Route Tests', () => {
     }))
 
     // snake_case last_post_id
-    const resSnake = await app.request('/profile/author123/read', {
+    const resSnake = await app.request('/profile/author123/read-marker', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -947,7 +947,7 @@ describe('Profile Feature Route Tests', () => {
     expect(bodySnake.lastReadPostId).toBe('105')
 
     // camelCase lastPostId
-    const resCamel = await app.request('/profile/author123/read', {
+    const resCamel = await app.request('/profile/author123/read-marker', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -961,7 +961,7 @@ describe('Profile Feature Route Tests', () => {
     expect(bodyCamel.lastReadPostId).toBe('105')
 
     // invalid post id
-    const resInvalid = await app.request('/profile/author123/read', {
+    const resInvalid = await app.request('/profile/author123/read-marker', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -972,7 +972,7 @@ describe('Profile Feature Route Tests', () => {
     expect(resInvalid.status).toBe(400)
 
     // not found
-    const resNotFound = await app.request('/profile/nonexistent/read', {
+    const resNotFound = await app.request('/profile/nonexistent/read-marker', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_user_token',

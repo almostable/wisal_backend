@@ -68,7 +68,7 @@ export interface AuthorSubscriptionItem {
   avatarKey: string | null
   identity: string | null
   isVerified: boolean
-  unreadCount: number
+  hasUnread: boolean
 }
 
 export interface ListAuthorsResult {

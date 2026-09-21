@@ -608,13 +608,20 @@ export async function deletePost(
       throw new HTTPException(403, { message: 'You can only delete your own posts' })
     }
 
+    const now = new Date()
+
     await tx
       .update(posts)
       .set({
-        deletedAt: new Date(),
+        deletedAt: now,
         isPinned: false,
       })
       .where(eq(posts.id, postId))
+
+    await tx
+      .update(comments)
+      .set({ deletedAt: now })
+      .where(and(eq(comments.postId, postId), isNull(comments.deletedAt)))
 
     await markEntityMediaDeleted(tx, {
       entityType: 'post',
@@ -1823,7 +1830,7 @@ export async function getFeedPosts(
       )
     )
     .where(and(whereCondition, isNull(accounts.deletedAt))!)
-    .orderBy(desc(posts.createdAt), desc(posts.id))
+    .orderBy(desc(posts.id))
     .limit(limit + 1)
     .offset(query.cursor ? 0 : offset)
 

@@ -15,4 +15,5 @@ export const db = drizzle(client, {
 })
 
 export type Database = typeof db
+export type DbExecutor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]
 export * from './schema'
