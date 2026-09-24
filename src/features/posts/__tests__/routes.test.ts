@@ -33,7 +33,7 @@ describe('Posts Feature Route Tests', () => {
     isMale: true,
     avatarKey: null,
     description: 'Male bio',
-    contacts: null,
+    links: null,
     identityId: 444444444444444n,
     readersCount: 0,
     verifiedAt: null,
@@ -73,7 +73,7 @@ describe('Posts Feature Route Tests', () => {
     isMale: false,
     avatarKey: null,
     description: 'Female bio',
-    contacts: null,
+    links: null,
     identityId: 888888888888888n,
     readersCount: 0,
     verifiedAt: null,
@@ -287,9 +287,81 @@ describe('Posts Feature Route Tests', () => {
     })
 
     expect(res.status).toBe(400)
+
+    // Rejects content shorter than 8 characters
+    const resShort = await app.request('/posts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Short',
+      }),
+    })
+    expect(resShort.status).toBe(400)
   })
 
-  it('POST /posts creates a media post with single media item and no content successfully', async () => {
+  it('POST /posts rejects media post without content or with content < 8 chars with 400', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    // No content
+    const resNoContent = await app.request('/posts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'media',
+        payload: {
+          media: [
+            {
+              fileKey: 'media/2026-08-30/723491823749128301.jpg',
+              width: 1920,
+              height: 1080,
+            },
+          ],
+        },
+      }),
+    })
+    expect(resNoContent.status).toBe(400)
+
+    // Short content < 8 chars
+    const resShortContent = await app.request('/posts', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'media',
+        content: 'Short',
+        payload: {
+          media: [
+            {
+              fileKey: 'media/2026-08-30/723491823749128301.jpg',
+              width: 1920,
+              height: 1080,
+            },
+          ],
+        },
+      }),
+    })
+    expect(resShortContent.status).toBe(400)
+  })
+
+  it('POST /posts creates a media post with single media item and valid content successfully', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -310,7 +382,7 @@ describe('Posts Feature Route Tests', () => {
       ) => ({
         ...samplePost,
         authorId,
-        content: '',
+        content: input.content,
         type: 'media',
         payload: input.payload ?? {},
       }),
@@ -324,6 +396,7 @@ describe('Posts Feature Route Tests', () => {
       },
       body: JSON.stringify({
         type: 'media',
+        content: 'A photo from my trip!',
         payload: {
           media: [
             {
@@ -339,7 +412,7 @@ describe('Posts Feature Route Tests', () => {
     expect(res.status).toBe(201)
     const body = (await res.json()) as { success: boolean; post: PostResponse }
     expect(body.success).toBe(true)
-    expect(body.post.content).toBe('')
+    expect(body.post.content).toBe('A photo from my trip!')
     expect(body.post.type).toBe('media')
     expect((body.post.payload as any).media).toHaveLength(1)
     expect((body.post.payload as any).media[0].fileKey).toBe('media/2026-08-30/723491823749128301.jpg')
@@ -442,6 +515,7 @@ describe('Posts Feature Route Tests', () => {
       },
       body: JSON.stringify({
         type: 'media',
+        content: 'Valid post content text',
         payload: {
           media,
         },
@@ -472,6 +546,7 @@ describe('Posts Feature Route Tests', () => {
       },
       body: JSON.stringify({
         type: 'media',
+        content: 'Valid post content text',
         payload: {
           media: [
             {
@@ -508,6 +583,7 @@ describe('Posts Feature Route Tests', () => {
       },
       body: JSON.stringify({
         type: 'media',
+        content: 'Valid post content text',
         payload: {},
       }),
     })

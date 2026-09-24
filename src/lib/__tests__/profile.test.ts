@@ -11,7 +11,7 @@ describe('Profile Utility Tests', () => {
       isMale: false,
       avatarKey: null,
       description: null,
-      contacts: null,
+      links: null,
       identityId: 100n,
       readersCount: 15,
       verifiedAt: null,
@@ -42,7 +42,7 @@ describe('Profile Utility Tests', () => {
       isMale: true,
       avatarKey: null,
       description: null,
-      contacts: null,
+      links: null,
       identityId: 100n,
       readersCount: 0,
       verifiedAt: null,
@@ -68,7 +68,7 @@ describe('Profile Utility Tests', () => {
       isMale: null,
       avatarKey: null,
       description: null,
-      contacts: null,
+      links: null,
       identityId: 100n,
       readersCount: 0,
       verifiedAt: null,
@@ -94,7 +94,7 @@ describe('Profile Utility Tests', () => {
       isMale: true,
       avatarKey: null,
       description: null,
-      contacts: null,
+      links: null,
       identityId: 100n,
       readersCount: 0,
       verifiedAt: null,
@@ -129,7 +129,18 @@ describe('Profile Utility Tests', () => {
       isMale: true,
       avatarKey: 'avatar.png',
       description: 'bio',
-      contacts: null,
+      links: [
+        {
+          title: 'Public Portfolio',
+          url: 'https://portfolio.dev',
+          showToOppositeGender: true,
+        },
+        {
+          title: 'Bro Link',
+          url: 'https://secret.dev',
+          showToOppositeGender: false,
+        },
+      ],
       identityId: 100n,
       readersCount: 50,
       verifiedAt: null,
@@ -144,28 +155,35 @@ describe('Profile Utility Tests', () => {
       },
     }
 
-    const formatted = formatProfileResponse(fullProfile)
-    expect(formatted).not.toBeNull()
-    expect(formatted!.id).toBe(1n)
-    expect((formatted as any).identityId).toBeUndefined()
-    expect((formatted as any).accountId).toBeUndefined()
-    expect(formatted!.identity).toBe('alice')
-    expect(formatted!.description).toBe('bio')
-    expect(formatted!.readersCount).toBeUndefined()
-    expect(formatted!.isVerified).toBe(false)
+    // Viewed by self
+    const formattedSelf = formatProfileResponse(fullProfile, { isSelf: true })
+    expect(formattedSelf!.links).toHaveLength(2)
 
-    const formattedWithReaders = formatProfileResponse(fullProfile, { includeReadersCount: true })
+    // Viewed by same gender (isMale: true, same as author)
+    const formattedSameGender = formatProfileResponse(fullProfile, { viewerGender: true })
+    expect(formattedSameGender!.links).toHaveLength(2)
+
+    // Viewed by opposite gender (isMale: false)
+    const formattedOppositeGender = formatProfileResponse(fullProfile, { viewerGender: false })
+    expect(formattedOppositeGender!.links).toHaveLength(1)
+    expect(formattedOppositeGender!.links![0].title).toBe('Public Portfolio')
+
+    // Viewed by unauthenticated guest (no viewerGender)
+    const formattedGuest = formatProfileResponse(fullProfile)
+    expect(formattedGuest!.links).toBeNull()
+
+    const formattedWithReaders = formatProfileResponse(fullProfile, { includeReadersCount: true, isSelf: true })
     expect(formattedWithReaders!.readersCount).toBe(50)
 
     const verifiedProfile: ProfileWithIdentity = {
       ...fullProfile,
       verifiedAt: new Date(),
     }
-    const formattedVerified = formatProfileResponse(verifiedProfile)
+    const formattedVerified = formatProfileResponse(verifiedProfile, { isSelf: true })
     expect(formattedVerified!.isVerified).toBe(true)
   })
 
-  it('formatRestrictedProfileResponse strips avatar and contacts and calculates isVerified', async () => {
+  it('formatRestrictedProfileResponse strips avatar and links and calculates isVerified', async () => {
     const { formatRestrictedProfileResponse } = await import('../profile')
     const fullProfile: ProfileWithIdentity = {
       id: 1n,
@@ -174,7 +192,13 @@ describe('Profile Utility Tests', () => {
       isMale: true,
       avatarKey: 'avatar.png',
       description: 'bio',
-      contacts: null,
+      links: [
+        {
+          title: 'Portfolio',
+          url: 'https://portfolio.dev',
+          showToOppositeGender: true,
+        },
+      ],
       identityId: 100n,
       readersCount: 50,
       verifiedAt: new Date(),
@@ -192,6 +216,7 @@ describe('Profile Utility Tests', () => {
     const restricted = formatRestrictedProfileResponse(fullProfile, { isBlocked: true })
     expect(restricted).not.toBeNull()
     expect(restricted!.description).toBeNull()
+    expect(restricted!.links).toBeNull()
     expect(restricted!.isBlocked).toBe(true)
     expect(restricted!.isVerified).toBe(true)
   })

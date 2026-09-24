@@ -31,7 +31,7 @@ describe('Auto-Generated Identity Onboarding', () => {
           isMale: input.isMale,
           avatarKey: null,
           description: null,
-          contacts: null,
+          links: null,
           identity: identityHandle,
           isVerified: false,
         }

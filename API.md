@@ -55,12 +55,13 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
-      "contacts": {
-        "telegram": "johndoe",
-        "youtube": null,
-        "website": null,
-        "email": null
-      },
+      "links": [
+        {
+          "title": "Telegram",
+          "url": "https://t.me/johndoe",
+          "showToOppositeGender": true
+        }
+      ],
       "identity": "johndoe",
       "isVerified": false
     },
@@ -152,7 +153,7 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
-      "contacts": null,
+      "links": null,
       "identity": "johndoe",
       "readersCount": 15,
       "isVerified": false
@@ -170,7 +171,10 @@ Header `Authorization: Bearer <token>`.
   - `identity` *(string, обязательное, мин. 5 симв. для обычных, мин. 3 симв. при наличии verified_at, макс. 32 симв.)* — уникальный юзернейм/хэндл. Должен начинаться с буквы (`[a-z]`), содержать только буквы, цифры и знаки подчёркивания (`^[a-z][a-z0-9_]*$`). Не может начинаться с цифры или состоять только из цифр.
   - `avatarKey` *(string, опционально)* — ключ аватара в хранилище
   - `description` *(string, опционально, мин. 1, макс. 200 симв.)* — описание/биография
-  - `contacts` *(object, опционально)* — контакты (`telegram` username 4-32 симв., `youtube`, `website`, `email`)
+  - `links` *(array of objects, опционально, до 5 ссылок)* — пользовательские ссылки. Каждая ссылка содержит:
+    - `title` *(string, обязательное, 1-32 симв.)* — название ссылки
+    - `url` *(string, обязательное, только `https://`)* — адрес ссылки (если протокол не передан, сервер автоматически подставляет `https://`)
+    - `showToOppositeGender` *(boolean, опционально, по умолчанию `false`)* — показывать ли ссылку противоположному полу
 - **Ответ `200 OK`:**
   ```json
   {
@@ -181,7 +185,7 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
-      "contacts": null,
+      "links": null,
       "identity": "johndoe",
       "isVerified": false
     }
@@ -195,7 +199,7 @@ Header `Authorization: Bearer <token>`.
   - `identity` *(string, опционально, мин. 5 симв. для обычных, мин. 3 симв. при наличии verified_at, макс. 32 симв.)* — новый уникальный юзернейм/хэндл (начинается с буквы, не только цифры)
   - `avatarKey` *(string | null, опционально)*
   - `description` *(string | null, опционально, мин. 1, макс. 200 симв.)*
-  - `contacts` *(object | null, опционально)*
+  - `links` *(array of objects | null, опционально, до 5 ссылок)*
   - `isMale` *(boolean, опционально, допустимо только если пол ранее не был задан)*
 > **Безопасность:** Поле `verified_at` защищено от изменения пользователем. Внешне отдаётся вычисляемое свойство `isVerified: boolean`.
 - **Ответ `200 OK`:**
@@ -208,12 +212,13 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": "avatars/user.png",
       "description": "Solo Dev",
-      "contacts": {
-        "telegram": "updated",
-        "youtube": null,
-        "website": null,
-        "email": null
-      },
+      "links": [
+        {
+          "title": "Telegram",
+          "url": "https://t.me/updated",
+          "showToOppositeGender": false
+        }
+      ],
       "identity": "johndoe",
       "isVerified": false
     }
@@ -589,11 +594,12 @@ Header `Authorization: Bearer <token>`.
   - `identity` *(string, обязательное)* — юзернейм/хэндл пользователя
 - **Поведение для неавторизованных пользователей (гостей):**
   - Возвращаются только публичные поля: `name`, `identity`, `isVerified`, `description`, а также `avatarKey` (только если автор профиля мужчина — `isMale === true`; для женских профилей `avatarKey` всегда возвращается как `null`).
-  - Поля `id`, `isMale`, `contacts`, счетчики читателей (`readersCount`), подписки (`isReading`), блокировки (`isBlocked`, `isHidden`) для гостей **строго не возвращаются**.
+  - Поля `id`, `isMale`, `links`, счетчики читателей (`readersCount`), подписки (`isReading`), блокировки (`isBlocked`, `isHidden`) для гостей **строго не возвращаются**.
   - Профиль возвращается со статусом `200 OK` независимо от пола автора.
 - **Поведение для авторизованных пользователей:**
-  - Если авторизованный пользователь заблокировал автора (`isBlocked: true`) или заблокирован автором (`isHidden: true`): возвращаются только `id`, `name`, `identity`, `isMale` (аватарка, описание, контакты отсутствуют).
-  - В обычном режиме возвращаются все поля профиля, включая `isMale`, `contacts`, `isVerified`, `isReading`.
+  - Если авторизованный пользователь заблокировал автора (`isBlocked: true`) или заблокирован автором (`isHidden: true`): возвращаются только `id`, `name`, `identity`, `isMale` (аватарка, описание, ссылки отсутствуют: `links: null`).
+  - В обычном режиме возвращаются все поля профиля, включая `isMale`, `links`, `isVerified`, `isReading`.
+  - **Приватность ссылок по полу:** Пользователи одного пола с автором видят все добавленные им ссылки. Пользователи противоположного пола видят только ссылки с флагом `showToOppositeGender: true`.
 - **Ответ `200 OK` (для неавторизованного гостя):**
   ```json
   {
@@ -617,12 +623,13 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": "Bio text",
-      "contacts": {
-        "telegram": "johndoe",
-        "youtube": null,
-        "website": null,
-        "email": null
-      },
+      "links": [
+        {
+          "title": "Telegram",
+          "url": "https://t.me/johndoe",
+          "showToOppositeGender": true
+        }
+      ],
       "identity": "johndoe",
       "isVerified": false,
       "isReading": true
@@ -639,7 +646,7 @@ Header `Authorization: Bearer <token>`.
       "isMale": true,
       "avatarKey": null,
       "description": null,
-      "contacts": null,
+      "links": null,
       "identity": "johndoe",
       "isVerified": false,
       "isReading": false,
@@ -702,14 +709,14 @@ Header `Authorization: Bearer <token>`.
 - **Доступ:** Авторизованный пользователь с онбордингом
 - **Тело запроса (JSON):**
   - `type` *(string, опционально, `"text" | "media"`, по умолчанию: `"text"`)* — тип поста
-  - `content` *(string, обязательное для `type: "text"`, опционально для `type: "media"`, макс. 5000 симв.)* — текст поста
+  - `content` *(string, обязательное, мин. 8 симв., макс. 5000 симв.)* — текст поста. Публикация изображения без текста запрещена (для любых постов с медиа или без медиа текст обязателен и составляет минимум 8 символов). Для постов, публикуемых в общую ленту (`isFeed: true` или `showInFeed: true`), длина текста обязана составлять **не менее 100 символов**.
   - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*:
     - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (от 1 до 10 файлов)
     - Для `type: "text"`: `{}`
   - `showInFeed` / `isFeed` *(boolean, опционально, по умолчанию: `false`)* — публикация поста в общую ленту (`/feed`):
-    - При значении `true` пост попадает в ленту `/feed` на **168 часов (7 дней)** с момента создания.
+    - При значении `true` пост попадает в ленту `/feed` на **168 часов (7 дней)** с момента создания. Требует текст длиной **не менее 100 символов**.
     - **Суточный лимит:** Публикация в ленту разрешена не более **3 раз за 24 часа** (при попытке опубликовать 4-й пост в ленту раньше вернется `429 Too Many Requests`).
-    - При значении `false` (или если поле опущено) пост публикуется только в личный профиль автора **без каких-либо суточных ограничений**.
+    - При значении `false` (или если поле опущено) пост публикуется только в личный профиль автора **без каких-либо суточных ограничений** (достаточно текста от 8 символов).
   - `genderScope` *(string, опционально, `"all" | "same_gender"`, по умолчанию: `"all"`)* — охват видимости по полу:
     - `"all"` — публикация видна всем зарегистрированным пользователям, а также неавторизованным гостям по прямой ссылке `GET /posts/:id`.
     - `"same_gender"` — публикация видна только авторизованным пользователям того же пола, что и автор. Недоступна для гостей и пользователей другого пола.
@@ -1493,6 +1500,26 @@ Header `Authorization: Bearer <token>`.
   }
   ```
 
+### `POST /notifications/:id/read`
+- **Доступ:** Авторизованный пользователь с онбордингом
+- **Описание:** Точечно отмечает одно конкретное уведомление как прочитанное, устанавливая `read_at = NOW()` для этого уведомления.
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID уведомления
+- **Тело запроса:** Нет
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "notificationId": "112233445566778",
+    "readAt": "2026-08-21T12:05:00.000Z",
+    "isRead": true
+  }
+  ```
+- **Ошибки:**
+  - `400 Bad Request` — некорректный Snowflake ID уведомления
+  - `401 Unauthorized` — отсутствие токена авторизации
+  - `404 Not Found` — уведомление не найдено или принадлежит другому пользователю
+
 ---
 
 # Admin API
@@ -1725,7 +1752,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
           "isMale": true,
           "avatarKey": null,
           "description": null,
-          "contacts": null,
+          "links": null,
           "identity": null,
           "isVerified": false
         }
@@ -1757,7 +1784,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         "isMale": true,
         "avatarKey": null,
         "description": "User bio",
-        "contacts": null,
+        "links": null,
         "identity": "username",
         "isVerified": true
       },
@@ -1799,7 +1826,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
   - `isMale` *(boolean, опционально)* — модератор/админ может корректировать пол пользователя
   - `avatarKey` *(string | null, опционально)*
   - `description` *(string | null, опционально, мин. 1, макс. 200 симв.)*
-  - `contacts` *(object | null, опционально)*
+  - `links` *(array of objects | null, опционально, до 5 ссылок)*
   - `isVerified` *(boolean, опционально)* — управление верификацией: при `true` сервер устанавливает текущую дату в `verified_at`, при `false` сбрасывает `verified_at` в `null`.
 - **Ответ `200 OK`:**
   ```json
@@ -1816,7 +1843,7 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
         "isMale": true,
         "avatarKey": null,
         "description": "Updated bio",
-        "contacts": null,
+        "links": null,
         "identity": "updated_user",
         "isVerified": true
       }

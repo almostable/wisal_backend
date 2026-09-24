@@ -4,8 +4,9 @@ import {
   onboardingInputSchema,
   updateProfileInputSchema,
   descriptionSchema,
-  telegramUsernameSchema,
-  contactsSchema,
+  profileLinkSchema,
+  profileLinksSchema,
+  type ProfileLink,
 } from '../../db/schema/profiles'
 
 export const identityParamSchema = z.object({
@@ -118,7 +119,8 @@ export {
   onboardingInputSchema,
   updateProfileInputSchema,
   descriptionSchema,
-  telegramUsernameSchema,
-  contactsSchema,
+  profileLinkSchema,
+  profileLinksSchema,
+  type ProfileLink,
 }
 

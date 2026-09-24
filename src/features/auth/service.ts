@@ -289,7 +289,7 @@ export async function deleteAccount(
           isMale: null,
           avatarKey: null,
           description: null,
-          contacts: null,
+          links: null,
           verifiedAt: null,
           readersCount: 0,
         })

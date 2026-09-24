@@ -2,11 +2,13 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { authMiddleware } from '../../middleware/auth'
 import { onboardingMiddleware } from '../../middleware/onboarding'
+import { snowflakeParamSchema } from '../../db/schema/common'
 import { listNotificationsQuerySchema } from './schema'
 import {
   getNotifications,
   getUnreadNotificationsCount,
   markNotificationsAsRead,
+  markSingleNotificationAsRead,
 } from './service'
 
 export const notificationsRouter = new Hono()
@@ -37,6 +39,14 @@ notificationsRouter.get('/unread-count', async (c) => {
 notificationsRouter.post('/read', async (c) => {
   const profile = c.get('profile')
   const result = await markNotificationsAsRead(profile.id)
+
+  return c.json(result)
+})
+
+notificationsRouter.post('/:id/read', zValidator('param', snowflakeParamSchema), async (c) => {
+  const profile = c.get('profile')
+  const { id } = c.req.valid('param')
+  const result = await markSingleNotificationAsRead(profile.id, id)
 
   return c.json(result)
 })

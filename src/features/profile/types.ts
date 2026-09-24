@@ -1,4 +1,4 @@
-import type { Contacts } from '../../db/schema/profiles'
+import type { ProfileLink } from '../../db/schema/profiles'
 import type { SafeProfile } from '../../lib/profile'
 
 export type { SafeProfile }

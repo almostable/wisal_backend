@@ -32,7 +32,7 @@ describe('Posts & Comments Media Lifecycle Route Integration Tests', () => {
     isMale: true,
     avatarKey: null,
     description: 'Bio',
-    contacts: null,
+    links: null,
     identityId: 444444444444444n,
     readersCount: 0,
     verifiedAt: null,
@@ -86,6 +86,7 @@ describe('Posts & Comments Media Lifecycle Route Integration Tests', () => {
       },
       body: JSON.stringify({
         type: 'media',
+        content: 'Post with valid media text',
         payload: {
           media: [
             {
@@ -120,7 +121,7 @@ describe('Posts & Comments Media Lifecycle Route Integration Tests', () => {
             },
           ],
         },
-        content: '',
+        content: 'Post with valid media text',
         genderScope: 'all',
         isPinned: false,
         savesCount: 0,
@@ -146,6 +147,7 @@ describe('Posts & Comments Media Lifecycle Route Integration Tests', () => {
       },
       body: JSON.stringify({
         type: 'media',
+        content: 'Post with valid media text',
         payload: {
           media: [
             {

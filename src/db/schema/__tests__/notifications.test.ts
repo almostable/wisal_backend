@@ -59,7 +59,7 @@ describe('Notifications Schema Tests', () => {
     ).toThrow()
   })
 
-  it('validates selectNotificationSchema', () => {
+  it('validates selectNotificationSchema with readAt', () => {
     const now = new Date()
     const selected = selectNotificationSchema.parse({
       id: 5001n,
@@ -69,10 +69,12 @@ describe('Notifications Schema Tests', () => {
       targetType: 'comment',
       targetId: 3001n,
       payload: { postId: '2001' },
+      readAt: null,
       createdAt: now,
     })
 
     expect(selected.id).toBe(5001n)
+    expect(selected.readAt).toBeNull()
     expect(selected.createdAt).toEqual(now)
   })
 
@@ -81,6 +83,7 @@ describe('Notifications Schema Tests', () => {
     const indexNames = config.indexes.map((idx) => idx.config.name)
     expect(indexNames).toContain('notifications_recipient_created_at_idx')
     expect(indexNames).toContain('notifications_recipient_id_idx')
+    expect(indexNames).toContain('notifications_recipient_read_at_idx')
     expect(indexNames).toContain('notifications_actor_profile_id_idx')
   })
 

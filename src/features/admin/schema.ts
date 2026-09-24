@@ -9,7 +9,7 @@ import { emailSchema, paginationQuerySchema, snowflakeParamSchema } from '../../
 import {
   nameSchema,
   descriptionSchema,
-  contactsSchema,
+  profileLinksSchema,
 } from '../../db/schema/profiles'
 import { identityFormatSchema } from '../../db/schema/identities'
 
@@ -100,7 +100,7 @@ export const adminUpdateUserProfileSchema = z.object({
   isMale: z.boolean().optional(),
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
-  contacts: contactsSchema.nullable().optional(),
+  links: profileLinksSchema.nullable().optional(),
   isVerified: z.boolean().optional(),
 })
 

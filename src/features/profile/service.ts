@@ -80,7 +80,7 @@ export async function getMyProfile(accountId: bigint): Promise<MyProfileResult> 
   }
 
   return {
-    profile: formatProfileResponse(profile, { includeReadersCount: true })!,
+    profile: formatProfileResponse(profile, { includeReadersCount: true, isSelf: true })!,
     isOnboardingCompleted: isOnboardingCompleted(profile),
   }
 }
@@ -90,7 +90,7 @@ export async function completeUserOnboarding(
   input: OnboardingInput
 ): Promise<SafeProfile> {
   const profile = await completeOnboarding(accountId, input)
-  return formatProfileResponse(profile)!
+  return formatProfileResponse(profile, { isSelf: true })!
 }
 
 export async function updateUserProfile(
@@ -98,7 +98,7 @@ export async function updateUserProfile(
   input: UpdateProfileInput
 ): Promise<SafeProfile> {
   const profile = await updateProfile(accountId, input)
-  return formatProfileResponse(profile)!
+  return formatProfileResponse(profile, { isSelf: true })!
 }
 
 export async function getPublicProfile(
@@ -172,6 +172,8 @@ export async function getPublicProfile(
   return formatProfileResponse(targetProfile, {
     isReading,
     includeReadersCount: viewerProfile.id === targetProfile.id,
+    isSelf: viewerProfile.id === targetProfile.id,
+    viewerGender: viewerProfile.isMale,
   })!
 }
 

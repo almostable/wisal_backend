@@ -26,7 +26,7 @@ describe('Profile Search Endpoint (GET /profile/search)', () => {
     isMale: true,
     avatarKey: null,
     description: 'Bio',
-    contacts: null,
+    links: null,
     identityId: 400000000000001n,
     readersCount: 0,
     verifiedAt: null,

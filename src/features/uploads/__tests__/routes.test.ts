@@ -31,7 +31,7 @@ describe('Uploads Feature Route Tests', () => {
     isMale: true,
     avatarKey: null,
     description: 'Bio',
-    contacts: null,
+    links: null,
     identityId: 444444444444444n,
     readersCount: 0,
     verifiedAt: null,

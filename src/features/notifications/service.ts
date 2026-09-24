@@ -1,4 +1,5 @@
 import { eq, and, or, desc, count, sql, isNull, gt } from 'drizzle-orm'
+import { HTTPException } from 'hono/http-exception'
 import { db } from '../../db'
 import { notifications, type Notification } from '../../db/schema/notifications'
 import { profiles } from '../../db/schema/profiles'
@@ -10,6 +11,7 @@ import type {
   ListNotificationsResult,
   NotificationItem,
   UnreadCountResult,
+  MarkSingleNotificationReadResult,
 } from './types'
 
 type DbExecutor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -58,9 +60,6 @@ export async function createNotification(
     })
     .returning()
 
-  // 4. APNs Push Dispatcher Extension Point (Stub for async background push)
-  // dispatchApnsPushNotification(newNotification).catch(err => captureAppException(err))
-
   return newNotification ?? null
 }
 
@@ -82,6 +81,12 @@ export async function getNotifications(
   const readAt = userProfile?.notificationsReadAt ?? null
 
   const whereCondition = eq(notifications.recipientProfileId, profileId)
+
+  const unreadCondition = and(
+    whereCondition,
+    isNull(notifications.readAt),
+    readAt ? gt(notifications.createdAt, readAt) : undefined
+  )
 
   const [rawItems, totalCountResult, unreadCountResult] = await Promise.all([
     db
@@ -111,15 +116,13 @@ export async function getNotifications(
     db
       .select({ count: count() })
       .from(notifications)
-      .where(
-        readAt
-          ? and(whereCondition, gt(notifications.createdAt, readAt))
-          : whereCondition
-      ),
+      .where(unreadCondition),
   ])
 
   const mappedNotifications: NotificationItem[] = rawItems.map((item) => {
-    const isRead = readAt ? item.notification.createdAt <= readAt : false
+    const isRead =
+      item.notification.readAt !== null ||
+      (readAt ? item.notification.createdAt <= readAt : false)
 
     const actor =
       item.actorProfile && item.actorProfile.id
@@ -166,17 +169,55 @@ export async function getUnreadNotificationsCount(
   const readAt = userProfile?.notificationsReadAt ?? null
   const whereCondition = eq(notifications.recipientProfileId, profileId)
 
+  const unreadCondition = and(
+    whereCondition,
+    isNull(notifications.readAt),
+    readAt ? gt(notifications.createdAt, readAt) : undefined
+  )
+
   const [result] = await db
     .select({ count: count() })
     .from(notifications)
-    .where(
-      readAt
-        ? and(whereCondition, gt(notifications.createdAt, readAt))
-        : whereCondition
-    )
+    .where(unreadCondition)
 
   return {
     unreadCount: result?.count ?? 0,
+  }
+}
+
+export async function markSingleNotificationAsRead(
+  profileId: bigint,
+  notificationId: bigint
+): Promise<MarkSingleNotificationReadResult> {
+  const existing = await db.query.notifications.findFirst({
+    where: and(
+      eq(notifications.id, notificationId),
+      eq(notifications.recipientProfileId, profileId)
+    ),
+  })
+
+  if (!existing) {
+    throw new HTTPException(404, { message: 'Notification not found' })
+  }
+
+  const now = new Date()
+  if (!existing.readAt) {
+    await db
+      .update(notifications)
+      .set({ readAt: now })
+      .where(
+        and(
+          eq(notifications.id, notificationId),
+          eq(notifications.recipientProfileId, profileId)
+        )
+      )
+  }
+
+  return {
+    success: true,
+    notificationId,
+    readAt: existing.readAt ?? now,
+    isRead: true,
   }
 }
 

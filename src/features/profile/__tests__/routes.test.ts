@@ -32,12 +32,13 @@ describe('Profile Feature Route Tests', () => {
     isMale: true,
     avatarKey: null,
     description: 'Hello world bio',
-    contacts: {
-      telegram: 'wisal_user',
-      youtube: null,
-      website: null,
-      email: null,
-    },
+    links: [
+      {
+        title: 'Telegram',
+        url: 'https://t.me/wisal_user',
+        showToOppositeGender: true,
+      },
+    ],
     identity: 'wisaluser',
     isVerified: false,
   }
@@ -305,8 +306,8 @@ describe('Profile Feature Route Tests', () => {
     })
     expect(res4.status).toBe(400)
 
-    // Invalid telegram username (starts with @)
-    const resTg1 = await app.request('/profile/onboarding', {
+    // Invalid link (title empty)
+    const resL1 = await app.request('/profile/onboarding', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -316,13 +317,13 @@ describe('Profile Feature Route Tests', () => {
         name: 'John Doe',
         isMale: true,
         identity: 'johndoe',
-        contacts: { telegram: '@durov' },
+        links: [{ title: '', url: 'https://site.com' }],
       }),
     })
-    expect(resTg1.status).toBe(400)
+    expect(resL1.status).toBe(400)
 
-    // Invalid telegram username (is a link)
-    const resTg2 = await app.request('/profile/onboarding', {
+    // Invalid link (title too long > 32)
+    const resL2 = await app.request('/profile/onboarding', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -332,13 +333,13 @@ describe('Profile Feature Route Tests', () => {
         name: 'John Doe',
         isMale: true,
         identity: 'johndoe',
-        contacts: { telegram: 'https://t.me/durov' },
+        links: [{ title: 'a'.repeat(33), url: 'https://site.com' }],
       }),
     })
-    expect(resTg2.status).toBe(400)
+    expect(resL2.status).toBe(400)
 
-    // Invalid telegram username (< 4 chars)
-    const resTg3 = await app.request('/profile/onboarding', {
+    // Invalid link (non-https protocol)
+    const resL3 = await app.request('/profile/onboarding', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer valid_user_token',
@@ -348,10 +349,10 @@ describe('Profile Feature Route Tests', () => {
         name: 'John Doe',
         isMale: true,
         identity: 'johndoe',
-        contacts: { telegram: 'abc' },
+        links: [{ title: 'FTP', url: 'ftp://insecure.com' }],
       }),
     })
-    expect(resTg3.status).toBe(400)
+    expect(resL3.status).toBe(400)
   })
 
   it('PATCH /profile/me updates and clears description', async () => {
@@ -1233,7 +1234,7 @@ describe('Profile Feature Route Tests', () => {
             isMale: true,
             avatarKey: null,
             description: null,
-            contacts: null,
+            links: null,
             identity: 'blocked_by_me',
             isBlocked: true,
           }
@@ -1244,7 +1245,7 @@ describe('Profile Feature Route Tests', () => {
           isMale: false,
           avatarKey: null,
           description: null,
-          contacts: null,
+          links: null,
           identity: 'hidden_user',
           isHidden: true,
         }

@@ -81,7 +81,7 @@ export const postsRelations = relations(posts, ({ one, many }) => ({
 export const postContentSchema = z
   .string()
   .trim()
-  .min(1, 'Content cannot be empty')
+  .min(8, 'Content must be at least 8 characters')
   .max(5000, 'Content must be at most 5000 characters')
 
 export const insertPostSchema = createInsertSchema(posts, {

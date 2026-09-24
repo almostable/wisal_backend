@@ -5,18 +5,26 @@ import { feedQuerySchema, createPostSchema, updatePostSchema } from '../schema'
 describe('Feed Schemas and Validation Logic', () => {
   it('validates createPostSchema with isFeed or showInFeed', () => {
     const valid1 = createPostSchema.parse({
-      content: 'My post for feed',
+      content: 'My post for feed that has more than one hundred characters in length to pass the validation rule properly! 1234567890',
       isFeed: true,
     })
-    expect(valid1.content).toBe('My post for feed')
+    expect(valid1.content).toBe('My post for feed that has more than one hundred characters in length to pass the validation rule properly! 1234567890')
     expect(valid1.isFeed).toBe(true)
 
     const valid2 = createPostSchema.parse({
-      content: 'My post with showInFeed alias',
+      content: 'My post with showInFeed alias that has more than one hundred characters in length to pass the validation rule! 1234567890',
       showInFeed: true,
     })
-    expect(valid2.content).toBe('My post with showInFeed alias')
+    expect(valid2.content).toBe('My post with showInFeed alias that has more than one hundred characters in length to pass the validation rule! 1234567890')
     expect(valid2.isFeed).toBe(true)
+
+    // Rejects feed post with < 100 chars
+    expect(() =>
+      createPostSchema.parse({
+        content: 'Short feed text',
+        isFeed: true,
+      })
+    ).toThrow('Posts published to the public feed must contain at least 100 characters')
   })
 
   it('validates createPostSchema with false or omitted isFeed', () => {
@@ -35,6 +43,7 @@ describe('Feed Schemas and Validation Logic', () => {
   it('validates updatePostSchema with isFeed', () => {
     const valid = updatePostSchema.parse({
       showInFeed: true,
+      content: 'Updated post for feed with more than one hundred characters in length to pass the validation properly! 1234567890',
     })
     expect(valid.isFeed).toBe(true)
   })

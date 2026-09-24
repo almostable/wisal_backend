@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../db'
-import { profiles, type Profile, type ProfileWithIdentity, type OnboardingInput, type UpdateProfileInput, type Contacts } from '../db/schema/profiles'
+import { profiles, type Profile, type ProfileWithIdentity, type OnboardingInput, type UpdateProfileInput, type ProfileLink } from '../db/schema/profiles'
 import { identities, identityFormatSchema, createIdentityFormatSchema, type Identity } from '../db/schema/identities'
 import { generateRandomUserIdentity } from './identity'
 import { attachMediaFiles, reconcileEntityMedia } from '../features/uploads/service'
@@ -12,7 +12,7 @@ export interface SafeProfile {
   isMale?: boolean | null
   avatarKey: string | null
   description: string | null
-  contacts?: Contacts | null
+  links?: ProfileLink[] | null
   identity: string | null
   readersCount?: number
   isVerified: boolean
@@ -28,7 +28,12 @@ export type ProfileRecord = Omit<Profile, 'identity' | 'searchText'> & {
 
 export function formatProfileResponse(
   profile: ProfileRecord | null,
-  flags?: { isReading?: boolean; includeReadersCount?: boolean }
+  flags?: {
+    isReading?: boolean
+    includeReadersCount?: boolean
+    viewerGender?: boolean | null
+    isSelf?: boolean
+  }
 ): SafeProfile | null {
   if (!profile) return null
 
@@ -37,13 +42,28 @@ export function formatProfileResponse(
       ? profile.identity
       : profile.identity?.identity ?? null
 
+  let filteredLinks: ProfileLink[] | null = null
+  if (profile.links && Array.isArray(profile.links)) {
+    if (flags?.isSelf) {
+      filteredLinks = profile.links
+    } else if (flags?.viewerGender !== undefined && flags.viewerGender !== null) {
+      if (flags.viewerGender === profile.isMale) {
+        filteredLinks = profile.links
+      } else {
+        filteredLinks = profile.links.filter((l) => l.showToOppositeGender === true)
+      }
+    } else {
+      filteredLinks = null
+    }
+  }
+
   const res: SafeProfile = {
     id: profile.id,
     name: profile.name,
     isMale: profile.isMale,
     avatarKey: profile.avatarKey,
     description: profile.description,
-    contacts: profile.contacts ?? null,
+    links: filteredLinks,
     identity: identityStr,
     isVerified: Boolean(profile.verifiedAt),
   }
@@ -76,7 +96,7 @@ export function formatRestrictedProfileResponse(
     isMale: profile.isMale,
     avatarKey: null,
     description: null,
-    contacts: null,
+    links: null,
     identity: identityStr,
     isVerified: Boolean(profile.verifiedAt),
   }
@@ -213,7 +233,7 @@ export async function completeOnboarding(
           isMale: input.isMale,
           avatarKey: input.avatarKey ?? null,
           description: input.description?.trim() ?? null,
-          contacts: input.contacts ?? null,
+          links: input.links ?? null,
           identityId: createdIdentity.id,
         })
         .where(eq(profiles.id, existingProfile.id))
@@ -230,7 +250,7 @@ export async function completeOnboarding(
           isMale: input.isMale,
           avatarKey: input.avatarKey ?? null,
           description: input.description?.trim() ?? null,
-          contacts: input.contacts ?? null,
+          links: input.links ?? null,
           identityId: createdIdentity.id,
         })
         .returning()
@@ -349,8 +369,8 @@ export async function updateProfile(
     if (input.description !== undefined) {
       updateData.description = input.description?.trim() ?? null
     }
-    if (input.contacts !== undefined) {
-      updateData.contacts = input.contacts ?? null
+    if (input.links !== undefined) {
+      updateData.links = input.links ?? null
     }
     if (existingProfile.isMale === null && input.isMale !== undefined) {
       updateData.isMale = input.isMale

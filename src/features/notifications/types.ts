@@ -44,3 +44,10 @@ export interface ListNotificationsResult {
 export interface UnreadCountResult {
   unreadCount: number
 }
+
+export interface MarkSingleNotificationReadResult {
+  success: boolean
+  notificationId: bigint
+  readAt: Date
+  isRead: boolean
+}

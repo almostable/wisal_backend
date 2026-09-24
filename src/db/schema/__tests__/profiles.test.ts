@@ -1,64 +1,64 @@
 import { describe, it, expect } from 'bun:test'
 import {
-  contactsSchema,
+  profileLinkSchema,
+  profileLinksSchema,
+  httpsUrlSchema,
   insertProfileSchema,
   selectProfileSchema,
   onboardingInputSchema,
   updateProfileInputSchema,
   descriptionSchema,
-  telegramUsernameSchema,
 } from '../profiles'
 
 describe('Profiles Schema Tests', () => {
-  it('validates valid contacts object with all fields', () => {
-    const contacts = {
-      telegram: 'john_doe',
-      youtube: 'https://youtube.com/@channel',
-      website: 'https://example.com',
-      email: 'user@example.com',
+  it('validates httpsUrlSchema: auto-prefixes https:// when protocol omitted and rejects non-https', () => {
+    expect(httpsUrlSchema.parse('t.me/username')).toBe('https://t.me/username')
+    expect(httpsUrlSchema.parse('example.com/path')).toBe('https://example.com/path')
+    expect(httpsUrlSchema.parse('https://wisal.dev')).toBe('https://wisal.dev')
+    expect(() => httpsUrlSchema.parse('http://insecure.com')).toThrow()
+    expect(() => httpsUrlSchema.parse('ftp://files.com')).toThrow()
+    expect(() => httpsUrlSchema.parse('invalid url with spaces')).toThrow()
+  })
+
+  it('validates profileLinkSchema with title (1-32 chars), url, and showToOppositeGender', () => {
+    const valid = {
+      title: 'My Portfolio',
+      url: 'portfolio.dev',
+      showToOppositeGender: true,
     }
 
-    const parsed = contactsSchema.parse(contacts)
-    expect(parsed.telegram).toBe('john_doe')
-    expect(parsed.youtube).toBe('https://youtube.com/@channel')
-    expect(parsed.website).toBe('https://example.com')
-    expect(parsed.email).toBe('user@example.com')
+    const parsed = profileLinkSchema.parse(valid)
+    expect(parsed.title).toBe('My Portfolio')
+    expect(parsed.url).toBe('https://portfolio.dev')
+    expect(parsed.showToOppositeGender).toBe(true)
+
+    // default showToOppositeGender is false
+    const defaultGender = profileLinkSchema.parse({
+      title: 'Telegram',
+      url: 'https://t.me/johndoe',
+    })
+    expect(defaultGender.showToOppositeGender).toBe(false)
+
+    // title validation
+    expect(() => profileLinkSchema.parse({ title: '', url: 'https://a.com' })).toThrow()
+    expect(() => profileLinkSchema.parse({ title: 'a'.repeat(33), url: 'https://a.com' })).toThrow()
+    expect(profileLinkSchema.parse({ title: 'a'.repeat(32), url: 'https://a.com' }).title).toBe('a'.repeat(32))
   })
 
-  it('allows partial and null fields in contacts', () => {
-    const partialContacts = {
-      telegram: 'john_doe',
-      youtube: null,
-      website: undefined,
-      email: null,
-    }
+  it('validates profileLinksSchema allows up to 5 links and rejects more than 5', () => {
+    const fiveLinks = Array.from({ length: 5 }, (_, i) => ({
+      title: `Link ${i + 1}`,
+      url: `https://site${i + 1}.com`,
+      showToOppositeGender: i % 2 === 0,
+    }))
 
-    const parsed = contactsSchema.parse(partialContacts)
-    expect(parsed.telegram).toBe('john_doe')
-    expect(parsed.youtube).toBeNull()
-    expect(parsed.website).toBeUndefined()
-    expect(parsed.email).toBeNull()
-  })
+    expect(profileLinksSchema.parse(fiveLinks)).toHaveLength(5)
 
-  it('rejects invalid URLs in youtube and website', () => {
-    expect(() => contactsSchema.parse({ youtube: 'not-a-url' })).toThrow()
-    expect(() => contactsSchema.parse({ website: 'ftp://not-http' })).not.toThrow()
-    expect(() => contactsSchema.parse({ website: 'invalid' })).toThrow()
-  })
-
-  it('validates telegramUsernameSchema (4 to 32 chars, no @, spaces, or links)', () => {
-    expect(telegramUsernameSchema.parse('durov')).toBe('durov')
-    expect(telegramUsernameSchema.parse('user_1234')).toBe('user_1234')
-    expect(telegramUsernameSchema.parse('a'.repeat(32))).toBe('a'.repeat(32))
-    expect(() => telegramUsernameSchema.parse('abc')).toThrow()
-    expect(() => telegramUsernameSchema.parse('a'.repeat(33))).toThrow()
-    expect(() => telegramUsernameSchema.parse('@durov')).toThrow()
-    expect(() => telegramUsernameSchema.parse('https://t.me/durov')).toThrow()
-    expect(() => telegramUsernameSchema.parse('user name')).toThrow()
-  })
-
-  it('rejects invalid email format in contacts', () => {
-    expect(() => contactsSchema.parse({ email: 'not-an-email' })).toThrow()
+    const sixLinks = [
+      ...fiveLinks,
+      { title: 'Link 6', url: 'https://site6.com', showToOppositeGender: false },
+    ]
+    expect(() => profileLinksSchema.parse(sixLinks)).toThrow()
   })
 
   it('validates descriptionSchema (1 to 200 chars, spaces allowed, no empty string)', () => {
@@ -70,22 +70,25 @@ describe('Profiles Schema Tests', () => {
     expect(() => descriptionSchema.parse('a'.repeat(201))).toThrow()
   })
 
-  it('validates onboardingInputSchema with new optional fields', () => {
+  it('validates onboardingInputSchema with links', () => {
     const input = {
       name: 'John Doe',
       isMale: true,
       identity: 'johndoe',
       description: 'Coffee & Code',
-      contacts: {
-        telegram: 'johndoe',
-        email: 'john@wisal.dev',
-      },
+      links: [
+        {
+          title: 'Telegram',
+          url: 't.me/johndoe',
+          showToOppositeGender: true,
+        },
+      ],
     }
 
     const parsed = onboardingInputSchema.parse(input)
     expect(parsed.description).toBe('Coffee & Code')
-    expect(parsed.contacts?.telegram).toBe('johndoe')
-    expect(parsed.contacts?.email).toBe('john@wisal.dev')
+    expect(parsed.links).toHaveLength(1)
+    expect(parsed.links![0].url).toBe('https://t.me/johndoe')
   })
 
   it('validates onboardingInputSchema with null or omitted optional fields', () => {
@@ -94,11 +97,11 @@ describe('Profiles Schema Tests', () => {
       isMale: true,
       identity: 'johndoe',
       description: null,
-      contacts: null,
+      links: null,
     }
     const parsedWithNull = onboardingInputSchema.parse(inputWithNull)
     expect(parsedWithNull.description).toBeNull()
-    expect(parsedWithNull.contacts).toBeNull()
+    expect(parsedWithNull.links).toBeNull()
 
     const inputWithoutFields = {
       name: 'John Doe',
@@ -107,42 +110,52 @@ describe('Profiles Schema Tests', () => {
     }
     const parsedWithout = onboardingInputSchema.parse(inputWithoutFields)
     expect(parsedWithout.description).toBeUndefined()
-    expect(parsedWithout.contacts).toBeUndefined()
+    expect(parsedWithout.links).toBeUndefined()
   })
 
-  it('validates updateProfileInputSchema with contacts, identity, and new profile fields', () => {
+  it('validates updateProfileInputSchema with links, identity, and new profile fields', () => {
     const updateInput = {
       identity: 'New_Handle',
       description: 'Solo Dev',
-      contacts: {
-        website: 'https://wisal.dev',
-      },
+      links: [
+        {
+          title: 'Website',
+          url: 'wisal.dev',
+          showToOppositeGender: false,
+        },
+      ],
     }
 
     const parsed = updateProfileInputSchema.parse(updateInput)
     expect(parsed.identity).toBe('new_handle')
     expect(parsed.description).toBe('Solo Dev')
-    expect(parsed.contacts?.website).toBe('https://wisal.dev')
+    expect(parsed.links![0].url).toBe('https://wisal.dev')
   })
 
-  it('validates insertProfileSchema and selectProfileSchema with contacts and new fields', () => {
+  it('validates insertProfileSchema and selectProfileSchema with links and new fields', () => {
     const insertData = {
       accountId: 100000000000000n,
       name: 'John Doe',
       isMale: true,
       description: 'Coffee & Code',
-      contacts: {
-        telegram: 'johndoe',
-        email: 'john@wisal.dev',
-      },
+      links: [
+        {
+          title: 'Telegram',
+          url: 'https://t.me/johndoe',
+          showToOppositeGender: true,
+        },
+      ],
     }
 
     const parsedInsert = insertProfileSchema.parse(insertData)
     expect(parsedInsert.description).toBe('Coffee & Code')
-    expect(parsedInsert.contacts).toEqual({
-      telegram: 'johndoe',
-      email: 'john@wisal.dev',
-    })
+    expect(parsedInsert.links).toEqual([
+      {
+        title: 'Telegram',
+        url: 'https://t.me/johndoe',
+        showToOppositeGender: true,
+      },
+    ])
 
     const selectData = {
       id: 200000000000000n,
@@ -151,7 +164,7 @@ describe('Profiles Schema Tests', () => {
       isMale: true,
       avatarKey: null,
       description: 'Coffee & Code',
-      contacts: null,
+      links: null,
       identity: null,
       identityId: null,
       readersCount: 0,
@@ -164,7 +177,7 @@ describe('Profiles Schema Tests', () => {
 
     const parsedSelect = selectProfileSchema.parse(selectData)
     expect(parsedSelect.description).toBe('Coffee & Code')
-    expect(parsedSelect.contacts).toBeNull()
+    expect(parsedSelect.links).toBeNull()
     expect(parsedSelect.readersCount).toBe(0)
     expect(parsedSelect.verifiedAt).toBeNull()
     expect(parsedSelect.notificationsReadAt).toBeNull()

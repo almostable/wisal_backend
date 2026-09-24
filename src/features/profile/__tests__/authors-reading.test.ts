@@ -31,7 +31,7 @@ describe('Authors and Monotonic Read Feature Tests', () => {
     isMale: true,
     avatarKey: null,
     description: null,
-    contacts: null,
+    links: null,
     identity: 'readeruser',
     isVerified: false,
   }

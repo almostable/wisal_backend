@@ -33,7 +33,7 @@ describe('Feed and Feed Posts Feature Tests', () => {
     isMale: true,
     avatarKey: null,
     description: 'Viewer bio',
-    contacts: null,
+    links: null,
     identityId: 444444444444444n,
     readersCount: 0,
     verifiedAt: null,
@@ -53,7 +53,7 @@ describe('Feed and Feed Posts Feature Tests', () => {
     authorId: 555555555555555n,
     type: 'text',
     payload: {},
-    content: 'Awesome post for the feed!',
+    content: 'Awesome post for the feed!'.repeat(5),
     genderScope: 'all',
     isFeed: true,
     isPinned: false,
@@ -139,7 +139,7 @@ describe('Feed and Feed Posts Feature Tests', () => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        content: 'Sharing a fresh post to feed',
+        content: 'Sharing a fresh post to feed with more than one hundred characters of high quality text content here! 1234567890',
         showInFeed: true,
       }),
     })
@@ -178,7 +178,7 @@ describe('Feed and Feed Posts Feature Tests', () => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        content: 'Fourth feed post too soon',
+        content: 'Fourth feed post too soon with more than one hundred characters of high quality text content here! 1234567890',
         isFeed: true,
       }),
     })

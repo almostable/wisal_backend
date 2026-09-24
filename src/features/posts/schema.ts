@@ -16,7 +16,7 @@ export const userPostsParamSchema = z.object({
   identity: z.string().min(1, 'Identity handle is required'),
 })
 
-export function validateMediaOrText(
+export function validateCommentMediaOrText(
   data: { type?: string; content?: string | null; payload?: Record<string, unknown> },
   ctx: z.RefinementCtx
 ) {
@@ -77,7 +77,11 @@ export function transformMediaOrText<
 export const createPostSchema = z
   .object({
     type: z.enum(POST_TYPES).default('text').optional(),
-    content: z.string().trim().max(5000, 'Content must be at most 5000 characters').nullable().optional(),
+    content: z
+      .string()
+      .trim()
+      .min(8, 'Content must be at least 8 characters')
+      .max(5000, 'Content must be at most 5000 characters'),
     payload: z.record(z.string(), z.unknown()).default({}).optional(),
     genderScope: z.enum(GENDER_SCOPES).default('all').optional(),
     isFeed: z.boolean().optional(),
@@ -85,22 +89,18 @@ export const createPostSchema = z
     isPinned: z.boolean().default(false).optional(),
   })
   .superRefine((data, ctx) => {
-    validateMediaOrText(data, ctx)
-  })
-  .transform(transformMediaOrText)
+    const effectiveIsFeed =
+      data.isFeed !== undefined ? data.isFeed : data.showInFeed !== undefined ? data.showInFeed : false
 
-export const updatePostSchema = z
-  .object({
-    type: z.enum(POST_TYPES).optional(),
-    content: z.string().trim().max(5000, 'Content must be at most 5000 characters').nullable().optional(),
-    genderScope: z.enum(GENDER_SCOPES).optional(),
-    isFeed: z.boolean().optional(),
-    showInFeed: z.boolean().optional(),
-    isPinned: z.boolean().optional(),
-    payload: z.record(z.string(), z.unknown()).optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.type === 'media' && data.payload !== undefined) {
+    if (effectiveIsFeed && data.content.trim().length < 100) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Posts published to the public feed must contain at least 100 characters',
+        path: ['content'],
+      })
+    }
+
+    if (data.type === 'media') {
       const parsedPayload = mediaPayloadSchema.safeParse(data.payload)
       if (!parsedPayload.success) {
         for (const issue of parsedPayload.error.issues) {
@@ -110,13 +110,47 @@ export const updatePostSchema = z
           })
         }
       }
-    } else if (data.type === 'text' && data.content !== undefined) {
-      if (!data.content || data.content.trim().length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Content cannot be empty',
-          path: ['content'],
-        })
+    }
+  })
+  .transform(transformMediaOrText)
+
+export const updatePostSchema = z
+  .object({
+    type: z.enum(POST_TYPES).optional(),
+    content: z
+      .string()
+      .trim()
+      .min(8, 'Content must be at least 8 characters')
+      .max(5000, 'Content must be at most 5000 characters')
+      .nullable()
+      .optional(),
+    genderScope: z.enum(GENDER_SCOPES).optional(),
+    isFeed: z.boolean().optional(),
+    showInFeed: z.boolean().optional(),
+    isPinned: z.boolean().optional(),
+    payload: z.record(z.string(), z.unknown()).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const effectiveIsFeed =
+      data.isFeed !== undefined ? data.isFeed : data.showInFeed !== undefined ? data.showInFeed : undefined
+
+    if (effectiveIsFeed === true && data.content !== undefined && data.content !== null && data.content.trim().length < 100) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Posts published to the public feed must contain at least 100 characters',
+        path: ['content'],
+      })
+    }
+
+    if (data.type === 'media' && data.payload !== undefined) {
+      const parsedPayload = mediaPayloadSchema.safeParse(data.payload)
+      if (!parsedPayload.success) {
+        for (const issue of parsedPayload.error.issues) {
+          ctx.addIssue({
+            ...issue,
+            path: ['payload', ...issue.path],
+          })
+        }
       }
     }
   })
@@ -154,7 +188,7 @@ export const createCommentSchema = z
     payload: z.record(z.string(), z.unknown()).default({}).optional(),
     parentId: snowflakeIdSchema.nullable().optional(),
   })
-  .superRefine(validateMediaOrText)
+  .superRefine(validateCommentMediaOrText)
   .transform(transformMediaOrText)
 
 export const updateCommentSchema = z

@@ -12,7 +12,7 @@ describe('Profile Feed and Followers Denormalization Unit Tests', () => {
     isMale: true,
     avatarKey: 'avatar.png',
     description: 'Short bio',
-    contacts: null,
+    links: null,
     identityId: 300000000000003n,
     readersCount: 150,
     verifiedAt: new Date('2026-01-01T00:00:00Z'),

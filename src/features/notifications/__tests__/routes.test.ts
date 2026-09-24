@@ -32,7 +32,7 @@ describe('Notifications Feature Route Tests', () => {
     isMale: true,
     avatarKey: null,
     description: 'Bio',
-    contacts: null,
+    links: null,
     identityId: 444444444444444n,
     readersCount: 0,
     verifiedAt: null,
@@ -87,6 +87,7 @@ describe('Notifications Feature Route Tests', () => {
       }),
       getUnreadNotificationsCount: async () => ({ unreadCount: 1 }),
       markNotificationsAsRead: async () => ({ success: true, readAt: new Date() }),
+      markSingleNotificationAsRead: async () => ({ success: true, notificationId: 999999999999991n, readAt: new Date() }),
     }))
 
     const res = await app.request('/notifications?limit=20&offset=0', {
@@ -164,6 +165,42 @@ describe('Notifications Feature Route Tests', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as any
     expect(body.success).toBe(true)
+    expect(body.readAt).toBeDefined()
+  })
+
+  it('POST /notifications/:id/read marks single notification as read', async () => {
+    const now = new Date()
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: userAccount,
+        session: userSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => userProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    mock.module('../service', () => ({
+      markSingleNotificationAsRead: async () => ({
+        success: true,
+        notificationId: 999999999999991n,
+        readAt: now,
+      }),
+    }))
+
+    const res = await app.request('/notifications/999999999999991/read', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_token',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as any
+    expect(body.success).toBe(true)
+    expect(body.notificationId).toBe('999999999999991')
     expect(body.readAt).toBeDefined()
   })
 

@@ -14,29 +14,38 @@ import { mediaUploads } from './media-uploads'
 import { reports } from './reports'
 import { profileBlocks } from './profile-blocks'
 
-export const urlSchema = z
+export const httpsUrlSchema = z
   .string()
+  .trim()
   .max(2048, 'URL is too long')
-  .transform((val) => val.trim())
-  .pipe(z.string().url('Invalid URL format'))
-
-export const telegramUsernameSchema = z
-  .string()
-  .min(4, 'Telegram username must be at least 4 characters')
-  .max(32, 'Telegram username must be at most 32 characters')
-  .regex(
-    /^[a-zA-Z0-9_]{4,32}$/,
-    'Telegram username must be 4-32 characters and contain only letters, numbers, and underscores (without @, spaces, or links)'
+  .transform((val) => {
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//i.test(val)) {
+      return `https://${val}`
+    }
+    return val
+  })
+  .pipe(
+    z
+      .string()
+      .url('Invalid URL format')
+      .refine((val) => val.startsWith('https://'), 'Only https:// URLs are allowed')
   )
 
-export const contactsSchema = z.object({
-  telegram: telegramUsernameSchema.nullable().optional(),
-  youtube: urlSchema.nullable().optional(),
-  website: urlSchema.nullable().optional(),
-  email: emailSchema.nullable().optional(),
+export const profileLinkSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1, 'Title cannot be empty')
+    .max(32, 'Title must be at most 32 characters'),
+  url: httpsUrlSchema,
+  showToOppositeGender: z.boolean().default(false),
 })
 
-export type Contacts = z.infer<typeof contactsSchema>
+export type ProfileLink = z.infer<typeof profileLinkSchema>
+
+export const profileLinksSchema = z
+  .array(profileLinkSchema)
+  .max(5, 'Maximum 5 links allowed')
 
 export const profiles = pgTable(
   'profiles',
@@ -51,7 +60,7 @@ export const profiles = pgTable(
     isMale: boolean('is_male'),
     avatarKey: text('avatar_key'),
     description: text('description'),
-    contacts: jsonb('contacts').$type<Contacts>(),
+    links: jsonb('links').$type<ProfileLink[]>(),
     identityId: snowflakeId('identity_id')
       .unique()
       .references(() => identities.id, { onDelete: 'restrict' }),
@@ -110,7 +119,7 @@ export const onboardingInputSchema = z.object({
   identity: standardIdentityFormatSchema.optional(),
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
-  contacts: contactsSchema.nullable().optional(),
+  links: profileLinksSchema.nullable().optional(),
 })
 
 export const updateProfileInputSchema = z.object({
@@ -119,7 +128,7 @@ export const updateProfileInputSchema = z.object({
   avatarKey: z.string().nullable().optional(),
   description: descriptionSchema.nullable().optional(),
   isMale: z.boolean().optional(),
-  contacts: contactsSchema.nullable().optional(),
+  links: profileLinksSchema.nullable().optional(),
 })
 
 export const insertProfileSchema = createInsertSchema(profiles)

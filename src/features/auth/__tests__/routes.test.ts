@@ -181,7 +181,7 @@ describe('Auth Feature Route Tests', () => {
     isMale: true,
     avatarKey: null,
     description: 'Test description',
-    contacts: null,
+    links: null,
     identity: 'wisaluser',
     isVerified: false,
   }

@@ -373,6 +373,14 @@ export async function createPost(
     }
 
     const content = input.content ? input.content.trim() : ''
+    if (content.length < 8) {
+      throw new HTTPException(400, { message: 'Content must be at least 8 characters' })
+    }
+    if (isFeed && content.length < 100) {
+      throw new HTTPException(400, {
+        message: 'Posts published to the public feed must contain at least 100 characters',
+      })
+    }
     const postType = input.type ?? 'text'
     const payload = input.payload ?? {}
     const genderScope = input.genderScope ?? 'all'
@@ -496,13 +504,30 @@ export async function updatePost(
         )
     }
 
+    const resultingContent =
+      input.content !== undefined
+        ? input.content
+          ? input.content.trim()
+          : ''
+        : existing.content
+
+    if (input.content !== undefined && resultingContent.length < 8) {
+      throw new HTTPException(400, { message: 'Content must be at least 8 characters' })
+    }
+
+    if (targetIsFeed && resultingContent.length < 100) {
+      throw new HTTPException(400, {
+        message: 'Posts published to the public feed must contain at least 100 characters',
+      })
+    }
+
     const updateData: Partial<typeof posts.$inferInsert> = {
       updatedAt: new Date(),
       editedAt: new Date(),
     }
 
     if (input.content !== undefined) {
-      updateData.content = input.content ? input.content.trim() : ''
+      updateData.content = resultingContent
     }
     if (input.type !== undefined) {
       updateData.type = input.type

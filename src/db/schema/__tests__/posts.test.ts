@@ -49,7 +49,7 @@ describe('Posts Schema Tests', () => {
       content: '   ',
     }
 
-    expect(() => insertPostSchema.parse(invalidData)).toThrow('Content cannot be empty')
+    expect(() => insertPostSchema.parse(invalidData)).toThrow('Content must be at least 8 characters')
   })
 
   it('rejects invalid genderScope', () => {
