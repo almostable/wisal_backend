@@ -40,7 +40,11 @@ import {
   markEntityMediaDeleted,
   reconcileEntityMedia,
 } from '../uploads/service'
-import { createNotification } from '../notifications/service'
+import {
+  createNotification,
+  deleteNotificationsForPosts,
+  deleteNotificationsForComments,
+} from '../notifications/service'
 import { CONTENT_EDIT_WINDOW_MS, MAX_FEED_POSTS_PER_24_HOURS } from '../../config/constants'
 import type {
   CreatePostDTO,
@@ -662,6 +666,8 @@ export async function deletePost(
           SELECT id FROM comments WHERE post_id = ${postId}
         )
     `)
+
+    await deleteNotificationsForPosts(postId, tx)
 
     return {
       success: true,
@@ -1611,6 +1617,8 @@ export async function deleteComment(
         entityId: id,
       })
     }
+
+    await deleteNotificationsForComments(toDeleteIds, tx)
 
     return {
       success: true,

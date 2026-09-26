@@ -27,7 +27,12 @@ import { reports } from '../../../db/schema/reports'
 import { mediaUploads } from '../../../db/schema/media-uploads'
 import { userRestrictions } from '../../../db/schema/user-restrictions'
 import { reconcileEntityMedia } from '../../uploads/service'
-import { createNotification } from '../../notifications/service'
+import {
+  createNotification,
+  deleteNotificationsForPosts,
+  deleteNotificationsForComments,
+  deleteNotificationsForProfiles,
+} from '../../notifications/service'
 import { NOTIFICATION_CODES } from '../../../config/error-codes'
 import { formatProfileResponse } from '../../../lib/profile'
 import { generateRandomUserIdentity } from '../../../lib/identity'
@@ -526,13 +531,23 @@ export async function banUserAccount(
       const profileId = record.profile.id
 
       // 4. Soft-delete all posts of this user & mark media deleted
-      await tx
-        .update(posts)
-        .set({
-          deletedAt: now,
-          isPinned: false,
-        })
+      const userPosts = await tx
+        .select({ id: posts.id })
+        .from(posts)
         .where(and(eq(posts.authorId, profileId), isNull(posts.deletedAt)))
+
+      if (userPosts.length > 0) {
+        const postIds = userPosts.map((p) => p.id)
+        await tx
+          .update(posts)
+          .set({
+            deletedAt: now,
+            isPinned: false,
+          })
+          .where(and(eq(posts.authorId, profileId), isNull(posts.deletedAt)))
+
+        await deleteNotificationsForPosts(postIds, tx)
+      }
 
       await tx
         .update(mediaUploads)
@@ -545,10 +560,22 @@ export async function banUserAccount(
         )
 
       // 5. Soft-delete all comments of this user
-      await tx
-        .update(comments)
-        .set({ deletedAt: now })
+      const userComments = await tx
+        .select({ id: comments.id })
+        .from(comments)
         .where(and(eq(comments.authorId, profileId), isNull(comments.deletedAt)))
+
+      if (userComments.length > 0) {
+        const commentIds = userComments.map((c) => c.id)
+        await tx
+          .update(comments)
+          .set({ deletedAt: now })
+          .where(and(eq(comments.authorId, profileId), isNull(comments.deletedAt)))
+
+        await deleteNotificationsForComments(commentIds, tx)
+      }
+
+      await deleteNotificationsForProfiles(profileId, tx)
 
       // 6. Delete all reader connections & decrement counters
       const userReading = await tx

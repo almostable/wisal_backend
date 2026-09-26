@@ -8,6 +8,7 @@ import {
   isNull,
   isNotNull,
   ilike,
+  inArray,
   type SQL,
 } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
@@ -18,6 +19,7 @@ import { accounts } from '../../../db/schema/accounts'
 import { identities } from '../../../db/schema/identities'
 import { mediaUploads } from '../../../db/schema/media-uploads'
 import { markEntityMediaDeleted } from '../../uploads/service'
+import { deleteNotificationsForComments } from '../../notifications/service'
 import { parseSafeBigInt } from './utils'
 import type {
   AdminCommentItem,
@@ -224,15 +226,35 @@ export async function deleteCommentByAdmin(commentId: bigint): Promise<{ success
       throw new HTTPException(400, { message: 'Comment is already deleted' })
     }
 
-    await tx
-      .update(comments)
-      .set({ deletedAt: new Date() })
-      .where(eq(comments.id, commentId))
+    let toDeleteIds: bigint[] = [existing.id]
 
-    await markEntityMediaDeleted(tx, {
-      entityType: 'comment',
-      entityId: commentId,
-    })
+    if (existing.parentId === null) {
+      const descendants = await tx
+        .select({ id: comments.id })
+        .from(comments)
+        .where(and(eq(comments.parentId, existing.id), isNull(comments.deletedAt)))
+
+      toDeleteIds = [existing.id, ...descendants.map((d) => d.id)]
+
+      await tx
+        .update(comments)
+        .set({ deletedAt: new Date() })
+        .where(inArray(comments.id, toDeleteIds))
+    } else {
+      await tx
+        .update(comments)
+        .set({ deletedAt: new Date() })
+        .where(eq(comments.id, commentId))
+    }
+
+    for (const id of toDeleteIds) {
+      await markEntityMediaDeleted(tx, {
+        entityType: 'comment',
+        entityId: id,
+      })
+    }
+
+    await deleteNotificationsForComments(toDeleteIds, tx)
 
     return {
       success: true,

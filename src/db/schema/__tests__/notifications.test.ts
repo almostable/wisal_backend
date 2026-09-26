@@ -85,6 +85,7 @@ describe('Notifications Schema Tests', () => {
     expect(indexNames).toContain('notifications_recipient_id_idx')
     expect(indexNames).toContain('notifications_recipient_read_at_idx')
     expect(indexNames).toContain('notifications_actor_profile_id_idx')
+    expect(indexNames).toContain('notifications_target_idx')
   })
 
   it('has expected enum constants defined', () => {

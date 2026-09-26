@@ -19,6 +19,7 @@ import { admins, type AdminRole } from '../../../db/schema/admins'
 import { invites } from '../../../db/schema/invites'
 import { accounts } from '../../../db/schema/accounts'
 import { generateRandomInviteCode } from '../../../lib/invite'
+import { deleteNotificationsForInvites } from '../../notifications/service'
 import { parseSafeBigInt } from './utils'
 import type {
   CreateInviteInput,
@@ -85,14 +86,18 @@ export async function createInvite(
 }
 
 export async function deleteInvite(inviteId: bigint): Promise<void> {
-  const [deleted] = await db
-    .delete(invites)
-    .where(eq(invites.id, inviteId))
-    .returning()
+  await db.transaction(async (tx) => {
+    const [deleted] = await tx
+      .delete(invites)
+      .where(eq(invites.id, inviteId))
+      .returning()
 
-  if (!deleted) {
-    throw new HTTPException(404, { message: 'Invite not found' })
-  }
+    if (!deleted) {
+      throw new HTTPException(404, { message: 'Invite not found' })
+    }
+
+    await deleteNotificationsForInvites(inviteId, tx)
+  })
 }
 
 export async function listInvites(options: ListInvitesOptions = {}): Promise<ListInvitesResult> {

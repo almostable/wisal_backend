@@ -25,6 +25,7 @@ import {
   type ReportStatus,
 } from '../../../db/schema/reports'
 import { markEntityMediaDeleted, reconcileEntityMedia } from '../../uploads/service'
+import { deleteNotificationsForPosts, deleteNotificationsForComments } from '../../notifications/service'
 import { banUserAccount } from './admin-users.service'
 import { parseSafeBigInt } from './utils'
 import type {
@@ -658,12 +659,14 @@ export async function resolveReportWithAction(
           .set({ deletedAt: new Date(), isPinned: false })
           .where(eq(posts.id, report.targetId))
         await markEntityMediaDeleted(tx, { entityType: 'post', entityId: report.targetId })
+        await deleteNotificationsForPosts(report.targetId, tx)
       } else if (report.targetType === 'comment') {
         await tx
           .update(comments)
           .set({ deletedAt: new Date() })
           .where(eq(comments.id, report.targetId))
         await markEntityMediaDeleted(tx, { entityType: 'comment', entityId: report.targetId })
+        await deleteNotificationsForComments(report.targetId, tx)
       }
     } else if (action === 'ban_user') {
       const reportedProfile = await tx.query.profiles.findFirst({

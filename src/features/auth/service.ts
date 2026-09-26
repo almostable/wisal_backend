@@ -7,13 +7,19 @@ import { profiles } from '../../db/schema/profiles'
 import { identities } from '../../db/schema/identities'
 import { sessions } from '../../db/schema/sessions'
 import { posts } from '../../db/schema/posts'
+import { comments } from '../../db/schema/comments'
 import { postSaves } from '../../db/schema/post-saves'
 import { postLikes } from '../../db/schema/post-likes'
 import { readers } from '../../db/schema/readers'
 import { profileBlocks } from '../../db/schema/profile-blocks'
 import { mediaUploads } from '../../db/schema/media-uploads'
 import { markEntityMediaDeleted } from '../uploads/service'
-import { createNotification } from '../notifications/service'
+import {
+  createNotification,
+  deleteNotificationsForPosts,
+  deleteNotificationsForComments,
+  deleteNotificationsForProfiles,
+} from '../notifications/service'
 import { hashPassword, verifyPassword } from '../../lib/password'
 import {
   INITIAL_USER_INVITES_COUNT,
@@ -344,7 +350,26 @@ export async function deleteAccount(
               SELECT id FROM comments WHERE post_id IN (${sql.join(postIds, sql`, `)})
             )
         `)
+
+        await deleteNotificationsForPosts(postIds, tx)
       }
+
+      const userComments = await tx
+        .select({ id: comments.id })
+        .from(comments)
+        .where(and(eq(comments.authorId, existingProfile.id), isNull(comments.deletedAt)))
+
+      if (userComments.length > 0) {
+        const commentIds = userComments.map((c) => c.id)
+        await tx
+          .update(comments)
+          .set({ deletedAt: new Date() })
+          .where(and(eq(comments.authorId, existingProfile.id), isNull(comments.deletedAt)))
+
+        await deleteNotificationsForComments(commentIds, tx)
+      }
+
+      await deleteNotificationsForProfiles(existingProfile.id, tx)
 
       const userSaves = await tx
         .delete(postSaves)

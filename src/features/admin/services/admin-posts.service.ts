@@ -19,6 +19,7 @@ import { accounts } from '../../../db/schema/accounts'
 import { identities } from '../../../db/schema/identities'
 import { mediaUploads } from '../../../db/schema/media-uploads'
 import { markEntityMediaDeleted } from '../../uploads/service'
+import { deleteNotificationsForPosts } from '../../notifications/service'
 import { parseSafeBigInt } from './utils'
 import type { UpdatePostByAdminInput } from '../schema'
 import type {
@@ -276,6 +277,8 @@ export async function deletePostByAdmin(postId: bigint): Promise<{ success: bool
           SELECT id FROM comments WHERE post_id = ${postId}
         )
     `)
+
+    await deleteNotificationsForPosts(postId, tx)
 
     return {
       success: true,

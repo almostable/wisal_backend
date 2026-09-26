@@ -1,8 +1,9 @@
-import { eq, and, or, desc, count, sql, isNull, gt } from 'drizzle-orm'
+import { eq, and, or, desc, count, sql, isNull, gt, inArray } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../../db'
 import { notifications, type Notification } from '../../db/schema/notifications'
 import { profiles } from '../../db/schema/profiles'
+import { comments } from '../../db/schema/comments'
 import { identities } from '../../db/schema/identities'
 import { profileBlocks } from '../../db/schema/profile-blocks'
 import type {
@@ -236,3 +237,113 @@ export async function markNotificationsAsRead(
     readAt: now,
   }
 }
+
+export async function deleteNotificationsForComments(
+  commentIds: bigint | bigint[],
+  executor: DbExecutor = db
+): Promise<void> {
+  const ids = Array.isArray(commentIds) ? commentIds : [commentIds]
+  if (ids.length === 0) return
+
+  const stringIds = ids.map((id) => id.toString())
+
+  await executor.delete(notifications).where(
+    or(
+      and(
+        eq(notifications.targetType, 'comment'),
+        inArray(notifications.targetId, ids)
+      ),
+      and(
+        eq(notifications.type, 'new_comment'),
+        inArray(sql`${notifications.payload}->>'commentId'`, stringIds)
+      )
+    )
+  )
+}
+
+export async function deleteNotificationsForPosts(
+  postIds: bigint | bigint[],
+  executor: DbExecutor = db
+): Promise<void> {
+  const ids = Array.isArray(postIds) ? postIds : [postIds]
+  if (ids.length === 0) return
+
+  const stringIds = ids.map((id) => id.toString())
+
+  await executor.delete(notifications).where(
+    or(
+      and(
+        eq(notifications.targetType, 'post'),
+        inArray(notifications.targetId, ids)
+      ),
+      inArray(sql`${notifications.payload}->>'postId'`, stringIds),
+      and(
+        eq(notifications.targetType, 'comment'),
+        inArray(
+          notifications.targetId,
+          executor.select({ id: comments.id }).from(comments).where(inArray(comments.postId, ids))
+        )
+      ),
+      and(
+        eq(notifications.type, 'new_comment'),
+        inArray(
+          sql`${notifications.payload}->>'commentId'`,
+          executor
+            .select({ id: sql<string>`${comments.id}::text` })
+            .from(comments)
+            .where(inArray(comments.postId, ids))
+        )
+      )
+    )
+  )
+}
+
+export async function deleteNotificationsForInvites(
+  inviteIds: bigint | bigint[],
+  executor: DbExecutor = db
+): Promise<void> {
+  const ids = Array.isArray(inviteIds) ? inviteIds : [inviteIds]
+  if (ids.length === 0) return
+
+  await executor.delete(notifications).where(
+    and(
+      eq(notifications.targetType, 'invite'),
+      inArray(notifications.targetId, ids)
+    )
+  )
+}
+
+export async function deleteNotificationsBetweenProfiles(
+  profileAId: bigint,
+  profileBId: bigint,
+  executor: DbExecutor = db
+): Promise<void> {
+  await executor.delete(notifications).where(
+    or(
+      and(
+        eq(notifications.recipientProfileId, profileAId),
+        eq(notifications.actorProfileId, profileBId)
+      ),
+      and(
+        eq(notifications.recipientProfileId, profileBId),
+        eq(notifications.actorProfileId, profileAId)
+      )
+    )
+  )
+}
+
+export async function deleteNotificationsForProfiles(
+  profileIds: bigint | bigint[],
+  executor: DbExecutor = db
+): Promise<void> {
+  const ids = Array.isArray(profileIds) ? profileIds : [profileIds]
+  if (ids.length === 0) return
+
+  await executor.delete(notifications).where(
+    or(
+      inArray(notifications.recipientProfileId, ids),
+      inArray(notifications.actorProfileId, ids)
+    )
+  )
+}
+

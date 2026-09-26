@@ -96,7 +96,7 @@ describe('deleteAccount Service Tests', () => {
                 accountUpdatedSet = setData
               } else if (setData.name === null) {
                 profileUpdatedSet = setData
-              } else if (setData.deletedAt !== undefined) {
+              } else if (setData.isPinned !== undefined) {
                 postsUpdatedSet = setData
               } else if (setData.status === 'deleted') {
                 postMediaMarked = true
@@ -112,7 +112,7 @@ describe('deleteAccount Service Tests', () => {
           }),
           select: (_fields: any) => ({
             from: (_table: any) => ({
-              where: () => [{ authorProfileId: 555555555555555n }],
+              where: () => [{ id: 999999999999991n, authorProfileId: 555555555555555n }],
             }),
           }),
           delete: (_table: any) => ({

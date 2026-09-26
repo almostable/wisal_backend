@@ -24,6 +24,7 @@ import { identities } from '../../db/schema/identities'
 import { readers } from '../../db/schema/readers'
 import { posts } from '../../db/schema/posts'
 import { profileBlocks } from '../../db/schema/profile-blocks'
+import { deleteNotificationsBetweenProfiles } from '../notifications/service'
 import {
   getProfileByAccountId,
   getProfileByIdentity,
@@ -765,6 +766,8 @@ export async function blockProfile(
         })
         .where(eq(profiles.id, rel.authorProfileId))
     }
+
+    await deleteNotificationsBetweenProfiles(blockerProfileId, targetProfileId, tx)
 
     return {
       blocked: true,
