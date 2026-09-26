@@ -711,7 +711,7 @@ Header `Authorization: Bearer <token>`.
   - `type` *(string, опционально, `"text" | "media"`, по умолчанию: `"text"`)* — тип поста
   - `content` *(string, обязательное, мин. 8 симв., макс. 5000 симв.)* — текст поста. Публикация изображения без текста запрещена (для любых постов с медиа или без медиа текст обязателен и составляет минимум 8 символов). Для постов, публикуемых в общую ленту (`isFeed: true` или `showInFeed: true`), длина текста обязана составлять **не менее 100 символов**.
   - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*:
-    - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (от 1 до 10 файлов)
+    - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (от 1 до 5 файлов)
     - Для `type: "text"`: `{}`
   - `showInFeed` / `isFeed` *(boolean, опционально, по умолчанию: `false`)* — публикация поста в общую ленту (`/feed`):
     - При значении `true` пост попадает в ленту `/feed` на **168 часов (7 дней)** с момента создания. Требует текст длиной **не менее 100 символов**.
@@ -1231,7 +1231,7 @@ Header `Authorization: Bearer <token>`.
   - `type` *(string, опционально, `"text" | "media"`, по умолчанию: `"text"`)*
   - `content` *(string, обязательное для `type: "text"`, опционально для `type: "media"`, макс. 5000 симв.)* — текст комментария
   - `payload` *(object, обязательное для `type: "media"`, по умолчанию: `{}`)*:
-    - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (от 1 до 10 файлов)
+    - Для `type: "media"`: `{ "media": [{ "fileKey": string, "width": number, "height": number }] }` (максимум 1 файл)
     - Для `type: "text"`: `{}`
   - `parentId` *(string | null, опционально)* — Snowflake ID родительского комментария (если создается реплай)
 - **Ответ `201 Created`:**

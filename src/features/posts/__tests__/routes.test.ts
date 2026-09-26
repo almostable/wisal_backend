@@ -420,7 +420,7 @@ describe('Posts Feature Route Tests', () => {
     expect((body.post.payload as any).media[0].height).toBe(1080)
   })
 
-  it('POST /posts creates a media post with multiple images (up to 10) in payload successfully', async () => {
+  it('POST /posts creates a media post with multiple images (up to 5) in payload successfully', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -473,6 +473,16 @@ describe('Posts Feature Route Tests', () => {
               width: 800,
               height: 600,
             },
+            {
+              fileKey: 'media/2026-08-30/723491823749128304.jpg',
+              width: 800,
+              height: 600,
+            },
+            {
+              fileKey: 'media/2026-08-30/723491823749128305.jpg',
+              width: 800,
+              height: 600,
+            },
           ],
         },
       }),
@@ -482,13 +492,12 @@ describe('Posts Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; post: PostResponse }
     expect(body.success).toBe(true)
     expect(body.post.content).toBe('Check out my gallery!')
-    expect((body.post.payload as any).media).toHaveLength(3)
+    expect((body.post.payload as any).media).toHaveLength(5)
     expect((body.post.payload as any).media[0].fileKey).toBe('media/2026-08-30/723491823749128301.jpg')
-    expect((body.post.payload as any).media[1].fileKey).toBe('media/2026-08-30/723491823749128302.png')
-    expect((body.post.payload as any).media[2].fileKey).toBe('media/2026-08-30/723491823749128303.webp')
+    expect((body.post.payload as any).media[4].fileKey).toBe('media/2026-08-30/723491823749128305.jpg')
   })
 
-  it('POST /posts rejects media post with more than 10 images with 400', async () => {
+  it('POST /posts rejects media post with more than 5 images with 400', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -501,7 +510,7 @@ describe('Posts Feature Route Tests', () => {
       isOnboardingCompleted: () => true,
     }))
 
-    const media = Array.from({ length: 11 }, (_, i) => ({
+    const media = Array.from({ length: 6 }, (_, i) => ({
       fileKey: `media/2026-08-30/72349182374912830${i}.jpg`,
       width: 100,
       height: 100,
@@ -629,6 +638,42 @@ describe('Posts Feature Route Tests', () => {
     expect(body.success).toBe(true)
     expect(body.post.content).toBe('Updated post content')
     expect(body.post.genderScope).toBe('same_gender')
+  })
+
+  it('PATCH /posts/:id rejects updating media post with more than 5 images with 400', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const media = Array.from({ length: 6 }, (_, i) => ({
+      fileKey: `media/2026-08-30/72349182374912830${i}.jpg`,
+      width: 100,
+      height: 100,
+    }))
+
+    const res = await app.request('/posts/999999999999991', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'media',
+        payload: {
+          media,
+        },
+      }),
+    })
+
+    expect(res.status).toBe(400)
   })
 
   it('PATCH /posts/:id returns editedAt timestamp when post is edited', async () => {
@@ -1845,6 +1890,47 @@ describe('Posts Feature Route Tests', () => {
     expect((body.comment.payload as any).media[0].fileKey).toBe('media/2026-08-30/723491823749128301.png')
   })
 
+  it('POST /posts/:id/comments rejects media comment with more than 1 image with 400', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const res = await app.request('/posts/999999999999991/comments', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'media',
+        payload: {
+          media: [
+            {
+              fileKey: 'media/2026-08-30/723491823749128301.png',
+              width: 500,
+              height: 500,
+            },
+            {
+              fileKey: 'media/2026-08-30/723491823749128302.png',
+              width: 500,
+              height: 500,
+            },
+          ],
+        },
+      }),
+    })
+
+    expect(res.status).toBe(400)
+  })
+
   it('DELETE /posts/comments/:id deletes a comment successfully', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
@@ -2273,6 +2359,46 @@ describe('Posts Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; comment: CommentResponse }
     expect(body.success).toBe(true)
     expect(body.comment.content).toBe('Updated comment text')
+  })
+
+  it('PATCH /posts/comments/:id rejects comment update with more than 1 image in payload with 400', async () => {
+    mock.module('../../../lib/session', () => ({
+      validateSessionToken: async () => ({
+        account: maleAccount,
+        session: maleSession,
+      }),
+    }))
+
+    mock.module('../../../lib/profile', () => ({
+      getProfileByAccountId: async () => maleProfile,
+      isOnboardingCompleted: () => true,
+    }))
+
+    const res = await app.request('/posts/comments/888888888888881', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer valid_male_token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        payload: {
+          media: [
+            {
+              fileKey: 'media/2026-08-30/723491823749128301.png',
+              width: 500,
+              height: 500,
+            },
+            {
+              fileKey: 'media/2026-08-30/723491823749128302.png',
+              width: 500,
+              height: 500,
+            },
+          ],
+        },
+      }),
+    })
+
+    expect(res.status).toBe(400)
   })
 
   it('PATCH /posts/comments/:id returns 403 when user is not comment author', async () => {

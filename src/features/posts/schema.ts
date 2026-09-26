@@ -7,7 +7,7 @@ import {
 import {
   COMMENT_TYPES,
 } from '../../db/schema/comments'
-import { mediaPayloadSchema } from '../uploads/schema'
+import { postMediaPayloadSchema, commentMediaPayloadSchema } from '../uploads/schema'
 
 export const postIdParamSchema = snowflakeParamSchema
 export const commentIdParamSchema = snowflakeParamSchema
@@ -30,7 +30,7 @@ export function validateCommentMediaOrText(
       })
     }
   } else if (itemType === 'media') {
-    const parsedPayload = mediaPayloadSchema.safeParse(data.payload)
+    const parsedPayload = commentMediaPayloadSchema.safeParse(data.payload)
     if (!parsedPayload.success) {
       for (const issue of parsedPayload.error.issues) {
         ctx.addIssue({
@@ -42,7 +42,7 @@ export function validateCommentMediaOrText(
   }
 }
 
-export function transformMediaOrText<
+export function transformPostMediaOrText<
   T extends {
     type?: string
     content?: string | null
@@ -56,7 +56,7 @@ export function transformMediaOrText<
     data.isFeed !== undefined ? data.isFeed : data.showInFeed !== undefined ? data.showInFeed : undefined
 
   if (itemType === 'media') {
-    const parsedPayload = mediaPayloadSchema.parse(data.payload)
+    const parsedPayload = postMediaPayloadSchema.parse(data.payload)
     return {
       ...data,
       type: 'media' as const,
@@ -73,6 +73,33 @@ export function transformMediaOrText<
     ...(effectiveIsFeed !== undefined ? { isFeed: effectiveIsFeed } : {}),
   }
 }
+
+export function transformCommentMediaOrText<
+  T extends {
+    type?: string
+    content?: string | null
+    payload?: Record<string, unknown>
+  },
+>(data: T) {
+  const itemType = data.type ?? 'text'
+  if (itemType === 'media') {
+    const parsedPayload = commentMediaPayloadSchema.parse(data.payload)
+    return {
+      ...data,
+      type: 'media' as const,
+      content: data.content ? data.content.trim() : '',
+      payload: parsedPayload,
+    }
+  }
+  return {
+    ...data,
+    type: 'text' as const,
+    content: data.content ? data.content.trim() : '',
+    payload: data.payload ?? {},
+  }
+}
+
+export const transformMediaOrText = transformPostMediaOrText
 
 export const createPostSchema = z
   .object({
@@ -101,7 +128,7 @@ export const createPostSchema = z
     }
 
     if (data.type === 'media') {
-      const parsedPayload = mediaPayloadSchema.safeParse(data.payload)
+      const parsedPayload = postMediaPayloadSchema.safeParse(data.payload)
       if (!parsedPayload.success) {
         for (const issue of parsedPayload.error.issues) {
           ctx.addIssue({
@@ -112,7 +139,7 @@ export const createPostSchema = z
       }
     }
   })
-  .transform(transformMediaOrText)
+  .transform(transformPostMediaOrText)
 
 export const updatePostSchema = z
   .object({
@@ -143,7 +170,7 @@ export const updatePostSchema = z
     }
 
     if (data.type === 'media' && data.payload !== undefined) {
-      const parsedPayload = mediaPayloadSchema.safeParse(data.payload)
+      const parsedPayload = postMediaPayloadSchema.safeParse(data.payload)
       if (!parsedPayload.success) {
         for (const issue of parsedPayload.error.issues) {
           ctx.addIssue({
@@ -164,7 +191,7 @@ export const updatePostSchema = z
     }
 
     if (data.type === 'media' && data.payload !== undefined) {
-      const parsedPayload = mediaPayloadSchema.parse(data.payload)
+      const parsedPayload = postMediaPayloadSchema.parse(data.payload)
       result = {
         ...result,
         payload: parsedPayload,
@@ -189,12 +216,39 @@ export const createCommentSchema = z
     parentId: snowflakeIdSchema.nullable().optional(),
   })
   .superRefine(validateCommentMediaOrText)
-  .transform(transformMediaOrText)
+  .transform(transformCommentMediaOrText)
 
 export const updateCommentSchema = z
   .object({
     content: z.string().trim().max(5000, 'Content must be at most 5000 characters').nullable().optional(),
     payload: z.record(z.string(), z.unknown()).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.payload !== undefined) {
+      const parsedPayload = commentMediaPayloadSchema.safeParse(data.payload)
+      if (!parsedPayload.success) {
+        for (const issue of parsedPayload.error.issues) {
+          ctx.addIssue({
+            ...issue,
+            path: ['payload', ...issue.path],
+          })
+        }
+      }
+    }
+  })
+  .transform((data) => {
+    if (data.payload !== undefined) {
+      const parsedPayload = commentMediaPayloadSchema.parse(data.payload)
+      return {
+        ...data,
+        content: data.content !== undefined ? (data.content ? data.content.trim() : '') : undefined,
+        payload: parsedPayload,
+      }
+    }
+    return {
+      ...data,
+      content: data.content !== undefined ? (data.content ? data.content.trim() : '') : undefined,
+    }
   })
 
 export const listCommentsQuerySchema = createPaginationSchema(50, 100)

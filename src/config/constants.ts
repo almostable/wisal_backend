@@ -24,6 +24,8 @@ export const MAX_FEED_POSTS_PER_24_HOURS = 3
  */
 export const MAX_UPLOAD_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
 export const DEFAULT_PRESIGN_TTL_SECONDS = 900 // 15 minutes
+export const MAX_POST_MEDIA_COUNT = 5
+export const MAX_COMMENT_MEDIA_COUNT = 1
 export const MEDIA_GC_PENDING_TTL_HOURS = 24
 export const MEDIA_GC_PURGED_RECORD_TTL_DAYS = 90
 

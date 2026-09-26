@@ -1,7 +1,21 @@
-import type { PresignRequestInput, MediaItemInput, MediaPayloadInput } from './schema'
+import type {
+  PresignRequestInput,
+  MediaItemInput,
+  PostMediaPayloadInput,
+  CommentMediaPayloadInput,
+  MediaPayloadInput,
+} from './schema'
 import type { MediaUploadStatus, MediaEntityType } from '../../db/schema/media-uploads'
 
-export type { PresignRequestInput, MediaItemInput, MediaPayloadInput, MediaUploadStatus, MediaEntityType }
+export type {
+  PresignRequestInput,
+  MediaItemInput,
+  PostMediaPayloadInput,
+  CommentMediaPayloadInput,
+  MediaPayloadInput,
+  MediaUploadStatus,
+  MediaEntityType,
+}
 
 export interface PresignResponse {
   success: true

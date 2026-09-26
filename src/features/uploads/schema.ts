@@ -6,6 +6,8 @@ import {
   MAX_UPLOAD_FILE_SIZE,
 } from '../../lib/s3'
 
+import { MAX_POST_MEDIA_COUNT, MAX_COMMENT_MEDIA_COUNT } from '../../config/constants'
+
 export const fileKeySchema = z
   .string()
   .trim()
@@ -17,12 +19,21 @@ export const mediaItemSchema = z.object({
   height: z.coerce.number().int().positive('Height must be a positive integer'),
 })
 
-export const mediaPayloadSchema = z.object({
+export const postMediaPayloadSchema = z.object({
   media: z
     .array(mediaItemSchema)
     .min(1, 'At least 1 media item is required')
-    .max(10, 'At most 10 media items are allowed'),
+    .max(MAX_POST_MEDIA_COUNT, `At most ${MAX_POST_MEDIA_COUNT} media items are allowed`),
 })
+
+export const commentMediaPayloadSchema = z.object({
+  media: z
+    .array(mediaItemSchema)
+    .min(1, 'At least 1 media item is required')
+    .max(MAX_COMMENT_MEDIA_COUNT, `At most ${MAX_COMMENT_MEDIA_COUNT} media item is allowed`),
+})
+
+export const mediaPayloadSchema = postMediaPayloadSchema
 
 export const presignRequestSchema = z
   .object({
@@ -58,4 +69,6 @@ export const presignRequestSchema = z
 
 export type PresignRequestInput = z.infer<typeof presignRequestSchema>
 export type MediaItemInput = z.infer<typeof mediaItemSchema>
-export type MediaPayloadInput = z.infer<typeof mediaPayloadSchema>
+export type PostMediaPayloadInput = z.infer<typeof postMediaPayloadSchema>
+export type CommentMediaPayloadInput = z.infer<typeof commentMediaPayloadSchema>
+export type MediaPayloadInput = PostMediaPayloadInput
