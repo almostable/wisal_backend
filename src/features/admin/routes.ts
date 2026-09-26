@@ -22,6 +22,9 @@ import {
   updatePostByAdminSchema,
   listCommentsAdminQuerySchema,
   resolveReportActionSchema,
+  listInviteApplicationsQuerySchema,
+  approveInviteApplicationSchema,
+  rejectInviteApplicationSchema,
 } from './schema'
 import {
   loginAdmin,
@@ -32,6 +35,10 @@ import {
   createInvite,
   deleteInvite,
   listInvites,
+  listInviteApplications,
+  getInviteApplicationById,
+  approveInviteApplication,
+  rejectInviteApplication,
   listUsers,
   getUserById,
   updateUserProfileByAdmin,
@@ -211,8 +218,81 @@ adminRouter.delete(
 )
 
 // ---------------------------------------------------------
+// Invite Applications Management
+// ---------------------------------------------------------
+
+adminRouter.get(
+  '/invite-applications',
+  adminAuthMiddleware,
+  zValidator('query', listInviteApplicationsQuerySchema),
+  async (c) => {
+    const query = c.req.valid('query')
+    const result = await listInviteApplications(query)
+
+    return c.json({
+      success: true,
+      ...result,
+    })
+  }
+)
+
+adminRouter.get(
+  '/invite-applications/:id',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  async (c) => {
+    const { id } = c.req.valid('param')
+    const application = await getInviteApplicationById(id)
+
+    return c.json({
+      success: true,
+      application,
+    })
+  }
+)
+
+adminRouter.post(
+  '/invite-applications/:id/approve',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  zValidator('json', approveInviteApplicationSchema),
+  async (c) => {
+    const admin = c.get('admin')
+    const { id } = c.req.valid('param')
+    const data = c.req.valid('json')
+
+    const application = await approveInviteApplication(id, admin, data)
+
+    return c.json({
+      success: true,
+      application,
+    })
+  }
+)
+
+adminRouter.post(
+  '/invite-applications/:id/reject',
+  adminAuthMiddleware,
+  zValidator('param', snowflakeParamSchema),
+  zValidator('json', rejectInviteApplicationSchema),
+  async (c) => {
+    const admin = c.get('admin')
+    const { id } = c.req.valid('param')
+    const data = c.req.valid('json')
+
+    const application = await rejectInviteApplication(id, admin, data)
+
+    return c.json({
+      success: true,
+      application,
+    })
+  }
+)
+
+// ---------------------------------------------------------
 // Users Management & Moderation
 // ---------------------------------------------------------
+
 
 adminRouter.get(
   '/users',

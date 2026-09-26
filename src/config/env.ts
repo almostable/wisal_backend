@@ -23,6 +23,9 @@ const envSchema = z
     R2_SECRET_ACCESS_KEY: z.string().default('dummy-secret-access-key'),
     R2_BUCKET_NAME: z.string().default('wisal-media'),
     SENTRY_DSN: z.preprocess((val) => (val === '' ? undefined : val), z.string().url().optional()),
+    CLOUDFLARE_TURNSTILE_SECRET_KEY: z
+      .string()
+      .default('1x0000000000000000000000000000000AA'),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production') {
@@ -52,6 +55,16 @@ const envSchema = z
           code: z.ZodIssueCode.custom,
           message: 'Valid R2_SECRET_ACCESS_KEY is required in production',
           path: ['R2_SECRET_ACCESS_KEY'],
+        })
+      }
+      if (
+        !process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ||
+        data.CLOUDFLARE_TURNSTILE_SECRET_KEY === '1x0000000000000000000000000000000AA'
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Valid CLOUDFLARE_TURNSTILE_SECRET_KEY is required in production',
+          path: ['CLOUDFLARE_TURNSTILE_SECRET_KEY'],
         })
       }
     }

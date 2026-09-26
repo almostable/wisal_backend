@@ -130,5 +130,11 @@ export const createPostRateLimiter = rateLimiter({
   message: 'Too many posts created, please try again later',
 })
 
+export const inviteApplicationRateLimiter = rateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: env.NODE_ENV === 'test' ? 1000 : 5,
+  message: 'Too many application attempts, please try again later',
+})
+
 export const createRateLimiter = rateLimiter
 

@@ -148,6 +148,22 @@ export const resolveReportActionSchema = z.object({
   banReason: z.string().trim().min(1, 'Ban reason is required when action is ban_user').optional(),
 })
 
+export const listInviteApplicationsQuerySchema = baseAdminSearchQuerySchema.extend({
+  status: z.enum(['all', 'pending', 'approved', 'rejected']).default('all'),
+})
+
+export const approveInviteApplicationSchema = z.object({
+  reviewNote: z.string().trim().max(1000, 'Review note must be at most 1000 characters').optional(),
+})
+
+export const rejectInviteApplicationSchema = z.object({
+  reviewNote: z
+    .string()
+    .trim()
+    .min(5, 'Rejection review note must be at least 5 characters long')
+    .max(1000, 'Rejection review note is too long'),
+})
+
 export { snowflakeParamSchema, paginationQuerySchema }
 
 export type SnowflakeParam = z.infer<typeof snowflakeParamSchema>
@@ -165,3 +181,7 @@ export type ListPostsAdminQuery = z.infer<typeof listPostsAdminQuerySchema>
 export type UpdatePostByAdminInput = z.infer<typeof updatePostByAdminSchema>
 export type ListCommentsAdminQuery = z.infer<typeof listCommentsAdminQuerySchema>
 export type ResolveReportActionInput = z.infer<typeof resolveReportActionSchema>
+export type ListInviteApplicationsQuery = z.infer<typeof listInviteApplicationsQuerySchema>
+export type ApproveInviteApplicationRouteInput = z.infer<typeof approveInviteApplicationSchema>
+export type RejectInviteApplicationRouteInput = z.infer<typeof rejectInviteApplicationSchema>
+

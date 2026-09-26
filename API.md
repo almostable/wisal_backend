@@ -1522,7 +1522,35 @@ Header `Authorization: Bearer <token>`.
 
 ---
 
+## Заявки на получение инвайта (`/invite-applications`)
+
+### `POST /invite-applications`
+- **Доступ:** Публичный
+- **Защита:** Cloudflare Turnstile Captcha + Honeypot + Rate Limiter (5 запросов / 15 минут)
+- **Тело запроса (JSON):**
+  - `name` *(string, обязательное, мин. 2, макс. 100 симв.)* — ваше имя
+  - `about` *(string, обязательное, мин. 10, макс. 3000 симв.)* — рассказ о себе
+  - `reason` *(string, обязательное, мин. 10, макс. 3000 симв.)* — почему вы хотите попасть в Wisal
+  - `contact` *(string, обязательное, мин. 3, макс. 255 симв.)* — Telegram никнейм/ссылка (`@username`, `t.me/username`) или email
+  - `turnstileToken` *(string, обязательное)* — токен прохождения капчи Cloudflare Turnstile
+  - `website` *(string, опционально)* — honeypot-поле для защиты от ботов (должно оставаться пустым)
+- **Ответ `201 Created`:**
+  ```json
+  {
+    "success": true,
+    "message": "Application submitted successfully",
+    "id": "111111111111111"
+  }
+  ```
+- **Ошибки:**
+  - `400 Bad Request` — ошибка валидации полей, заполненное honeypot-поле, недействительная капча Turnstile или некорректный контакт
+  - `409 Conflict` — заявка с указанными контактными данными уже находится на рассмотрении (`pending`)
+  - `429 Too Many Requests` — превышен лимит частоты отправки заявок
+
+---
+
 # Admin API
+
 
 ### Авторизация
 Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
@@ -1727,7 +1755,173 @@ Header `Authorization: Bearer <token>` или Cookie `admin_session=<token>`.
 
 ---
 
+## Заявки на инвайты (`/admin/invite-applications`)
+
+### `GET /admin/invite-applications`
+- **Доступ:** `admin`, `moderator`
+- **Query-параметры:**
+  - `status` *(string, опционально, `"all" | "pending" | "approved" | "rejected"`, по умолчанию: `"all"`)* — фильтр по статусу заявки
+  - `q` / `search` *(string, опционально)* — поиск по имени, контакту, нормализованному контакту или точный поиск по ID заявки/инвайта
+  - `limit` *(number, опционально, по умолчанию: 50, макс: 100)*
+  - `offset` *(number, опционально, по умолчанию: 0)*
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "applications": [
+      {
+        "id": "111111111111111",
+        "name": "Иван Иванов",
+        "about": "Senior backend developer...",
+        "reason": "Хочу участвовать в жизни сообщества...",
+        "contact": "@ivanov",
+        "contactNormalized": "ivanov",
+        "status": "approved",
+        "reviewedBy": {
+          "id": "222222222222222",
+          "email": "admin@wisal.dev",
+          "role": "admin"
+        },
+        "reviewedAt": "2026-09-26T12:00:00.000Z",
+        "reviewNote": "Отличный профиль",
+        "invite": {
+          "id": "333333333333333",
+          "code": "WISAL-A1B2-C3D4-E5F6",
+          "expiresAt": "2026-10-26T12:00:00.000Z",
+          "usedAt": null,
+          "usedBy": null
+        },
+        "ip": "127.0.0.1",
+        "userAgent": "Mozilla/5.0...",
+        "createdAt": "2026-09-26T11:00:00.000Z",
+        "updatedAt": "2026-09-26T12:00:00.000Z"
+      }
+    ],
+    "total": 1,
+    "stats": {
+      "pending": 0,
+      "approved": 1,
+      "rejected": 0,
+      "total": 1
+    },
+    "limit": 50,
+    "offset": 0
+  }
+  ```
+
+### `GET /admin/invite-applications/:id`
+- **Доступ:** `admin`, `moderator`
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID заявки
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "application": {
+      "id": "111111111111111",
+      "name": "Иван Иванов",
+      "about": "Senior backend developer...",
+      "reason": "Хочу участвовать в жизни сообщества...",
+      "contact": "@ivanov",
+      "contactNormalized": "ivanov",
+      "status": "approved",
+      "reviewedBy": {
+        "id": "222222222222222",
+        "email": "admin@wisal.dev",
+        "role": "admin"
+      },
+      "reviewedAt": "2026-09-26T12:00:00.000Z",
+      "reviewNote": "Отличный профиль",
+      "invite": {
+        "id": "333333333333333",
+        "code": "WISAL-A1B2-C3D4-E5F6",
+        "expiresAt": "2026-10-26T12:00:00.000Z",
+        "usedAt": null,
+        "usedBy": null
+      },
+      "ip": "127.0.0.1",
+      "userAgent": "Mozilla/5.0...",
+      "createdAt": "2026-09-26T11:00:00.000Z",
+      "updatedAt": "2026-09-26T12:00:00.000Z"
+    }
+  }
+  ```
+- **Ошибки:**
+  - `404 Not Found` — заявка не найдена
+
+### `POST /admin/invite-applications/:id/approve`
+- **Доступ:** `admin`, `moderator`
+- **Описание:** Одобряет заявку, атомарно генерирует инвайт-код на 30 дней и привязывает его к заявке.
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID заявки
+- **Тело запроса (JSON):**
+  - `reviewNote` *(string, опционально, макс. 1000 симв.)* — внутренняя заметка модератора
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "application": {
+      "id": "111111111111111",
+      "name": "Иван Иванов",
+      "status": "approved",
+      "reviewedBy": {
+        "id": "222222222222222",
+        "email": "admin@wisal.dev",
+        "role": "admin"
+      },
+      "reviewedAt": "2026-09-26T12:00:00.000Z",
+      "reviewNote": "Одобрено",
+      "invite": {
+        "id": "333333333333333",
+        "code": "WISAL-A1B2-C3D4-E5F6",
+        "expiresAt": "2026-10-26T12:00:00.000Z",
+        "usedAt": null,
+        "usedBy": null
+      },
+      ...
+    }
+  }
+  ```
+- **Ошибки:**
+  - `404 Not Found` — заявка не найдена
+  - `409 Conflict` — заявка уже рассмотрена ранее (`approved` или `rejected`)
+
+### `POST /admin/invite-applications/:id/reject`
+- **Доступ:** `admin`, `moderator`
+- **Описание:** Отклоняет заявку с обязательным указанием причины отказа.
+- **URL-параметры:**
+  - `id` *(string, обязательное)* — Snowflake ID заявки
+- **Тело запроса (JSON):**
+  - `reviewNote` *(string, обязательное, мин. 5, макс. 1000 симв.)* — причина отказа
+- **Ответ `200 OK`:**
+  ```json
+  {
+    "success": true,
+    "application": {
+      "id": "111111111111111",
+      "name": "Иван Иванов",
+      "status": "rejected",
+      "reviewedBy": {
+        "id": "222222222222222",
+        "email": "admin@wisal.dev",
+        "role": "admin"
+      },
+      "reviewedAt": "2026-09-26T12:00:00.000Z",
+      "reviewNote": "Недостаточно информации в анкете",
+      "invite": null,
+      ...
+    }
+  }
+  ```
+- **Ошибки:**
+  - `400 Bad Request` — не указана причина отказа или длина менее 5 символов
+  - `404 Not Found` — заявка не найдена
+  - `409 Conflict` — заявка уже рассмотрена ранее
+
+---
+
 ## Пользователи
+
 
 ### `GET /admin/users`
 - **Доступ:** `admin`, `moderator`

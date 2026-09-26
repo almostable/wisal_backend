@@ -1,4 +1,5 @@
 import type { SafeAdmin, AdminRole } from '../../db/schema/admins'
+import type { InviteApplicationStatus } from '../../db/schema/invite-applications'
 import type { AdminSession } from '../../db/schema/admin-sessions'
 import type { SafeAccount } from '../../db/schema/accounts'
 import type {
@@ -350,3 +351,70 @@ export interface ListCommentsAdminResult {
   limit: number
   offset: number
 }
+
+export interface InviteApplicationAdminInfo {
+  id: bigint
+  email: string
+  role: AdminRole
+}
+
+export interface InviteApplicationInviteInfo {
+  id: bigint
+  code: string
+  expiresAt: Date
+  usedAt: Date | null
+  usedBy: {
+    id: bigint
+    email: string
+  } | null
+}
+
+export interface InviteApplicationItem {
+  id: bigint
+  name: string
+  about: string
+  reason: string
+  contact: string
+  contactNormalized: string
+  status: InviteApplicationStatus
+  reviewedBy: InviteApplicationAdminInfo | null
+  reviewedAt: Date | null
+  reviewNote: string | null
+  invite: InviteApplicationInviteInfo | null
+  ip: string | null
+  userAgent: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface ListInviteApplicationsOptions {
+  limit?: number
+  offset?: number
+  q?: string
+  search?: string
+  status?: 'all' | 'pending' | 'approved' | 'rejected'
+}
+
+export interface InviteApplicationsStats {
+  pending: number
+  approved: number
+  rejected: number
+  total: number
+}
+
+export interface ListInviteApplicationsResult {
+  applications: InviteApplicationItem[]
+  total: number
+  stats: InviteApplicationsStats
+  limit: number
+  offset: number
+}
+
+export interface ApproveInviteApplicationInput {
+  reviewNote?: string
+}
+
+export interface RejectInviteApplicationInput {
+  reviewNote: string
+}
+

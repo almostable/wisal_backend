@@ -47,5 +47,11 @@ describe('Admin Service Decomposition & Facade Integrity', () => {
     expect(adminService.getReportById).toBe(adminReports.getReportById)
     expect(adminService.updateReportResolution).toBe(adminReports.updateReportResolution)
     expect(adminService.resolveReportWithAction).toBe(adminReports.resolveReportWithAction)
+
+    // Invite applications service
+    expect(adminService.listInviteApplications).toBeDefined()
+    expect(adminService.getInviteApplicationById).toBeDefined()
+    expect(adminService.approveInviteApplication).toBeDefined()
+    expect(adminService.rejectInviteApplication).toBeDefined()
   })
 })

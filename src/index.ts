@@ -20,6 +20,7 @@ import { postsRouter, feedRouter } from './features/posts'
 import { reportsRouter } from './features/reports'
 import { uploadsRouter } from './features/uploads'
 import { notificationsRouter } from './features/notifications'
+import { inviteApplicationsRouter } from './features/invite-applications'
 import { initMediaGcCron } from './jobs/media-gc'
 import type { Cron } from 'croner'
 
@@ -165,6 +166,7 @@ app.route('/feed', feedRouter)
 app.route('/reports', reportsRouter)
 app.route('/uploads', uploadsRouter)
 app.route('/notifications', notificationsRouter)
+app.route('/invite-applications', inviteApplicationsRouter)
 
 export { app }
 
