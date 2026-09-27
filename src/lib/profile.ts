@@ -1,6 +1,7 @@
-import { eq, sql } from 'drizzle-orm'
+import { eq, and, isNull, sql } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
 import { db } from '../db'
+import { accounts } from '../db/schema/accounts'
 import { profiles, type Profile, type ProfileWithIdentity, type OnboardingInput, type UpdateProfileInput, type ProfileLink } from '../db/schema/profiles'
 import { identities, identityFormatSchema, createIdentityFormatSchema, type Identity } from '../db/schema/identities'
 import { generateRandomUserIdentity } from './identity'
@@ -407,7 +408,14 @@ export async function getProfileByIdentity(
     })
     .from(identities)
     .innerJoin(profiles, eq(identities.id, profiles.identityId))
-    .where(eq(sql`lower(${identities.identity})`, normalized))
+    .innerJoin(accounts, eq(profiles.accountId, accounts.id))
+    .where(
+      and(
+        eq(sql`lower(${identities.identity})`, normalized),
+        isNull(accounts.bannedAt),
+        isNull(accounts.deletedAt)
+      )
+    )
     .limit(1)
 
   if (!result || !result.profile) {

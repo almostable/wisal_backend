@@ -38,6 +38,7 @@ export async function verifyTurnstileToken(
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: body.toString(),
+      signal: AbortSignal.timeout(5000),
     })
 
     if (!response.ok) {

@@ -5,6 +5,7 @@ import {
   count,
   and,
   or,
+  isNull,
   ilike,
   aliasedTable,
   inArray,
@@ -661,12 +662,58 @@ export async function resolveReportWithAction(
         await markEntityMediaDeleted(tx, { entityType: 'post', entityId: report.targetId })
         await deleteNotificationsForPosts(report.targetId, tx)
       } else if (report.targetType === 'comment') {
-        await tx
-          .update(comments)
-          .set({ deletedAt: new Date() })
-          .where(eq(comments.id, report.targetId))
-        await markEntityMediaDeleted(tx, { entityType: 'comment', entityId: report.targetId })
-        await deleteNotificationsForComments(report.targetId, tx)
+        const targetComment = await tx.query.comments.findFirst({
+          where: eq(comments.id, report.targetId),
+        })
+
+        if (targetComment && targetComment.deletedAt === null) {
+          let toDeleteIds: bigint[] = [targetComment.id]
+
+          if (targetComment.parentId === null) {
+            const descendants = await tx
+              .select({ id: comments.id })
+              .from(comments)
+              .where(and(eq(comments.parentId, targetComment.id), isNull(comments.deletedAt)))
+
+            toDeleteIds = [targetComment.id, ...descendants.map((d) => d.id)]
+
+            await tx
+              .update(comments)
+              .set({ deletedAt: new Date() })
+              .where(inArray(comments.id, toDeleteIds))
+
+            await tx
+              .update(posts)
+              .set({
+                commentsCount: sql`GREATEST(0, ${posts.commentsCount} - ${toDeleteIds.length})`,
+              })
+              .where(eq(posts.id, targetComment.postId))
+          } else {
+            await tx
+              .update(comments)
+              .set({ deletedAt: new Date() })
+              .where(eq(comments.id, targetComment.id))
+
+            await tx
+              .update(posts)
+              .set({
+                commentsCount: sql`GREATEST(0, ${posts.commentsCount} - 1)`,
+              })
+              .where(eq(posts.id, targetComment.postId))
+
+            await tx
+              .update(comments)
+              .set({
+                repliesCount: sql`GREATEST(0, ${comments.repliesCount} - 1)`,
+              })
+              .where(eq(comments.id, targetComment.parentId))
+          }
+
+          for (const id of toDeleteIds) {
+            await markEntityMediaDeleted(tx, { entityType: 'comment', entityId: id })
+          }
+          await deleteNotificationsForComments(toDeleteIds, tx)
+        }
       }
     } else if (action === 'ban_user') {
       const reportedProfile = await tx.query.profiles.findFirst({

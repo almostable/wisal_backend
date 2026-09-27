@@ -21,7 +21,7 @@ export async function createNotification(
   options: CreateNotificationOptions,
   executor: DbExecutor = db
 ): Promise<Notification | null> {
-  const { recipientProfileId, actorProfileId, type, targetType, targetId, payload } = options
+  const { recipientProfileId, actorProfileId, type, targetType, targetId, postId, commentId, payload } = options
 
   // 1. Self-Action Check: Do not notify author about their own actions
   if (actorProfileId && actorProfileId === recipientProfileId) {
@@ -57,6 +57,8 @@ export async function createNotification(
       type,
       targetType,
       targetId: targetId ?? null,
+      postId: postId ?? null,
+      commentId: commentId ?? null,
       payload: payload ?? {},
     })
     .returning()
@@ -141,6 +143,8 @@ export async function getNotifications(
       type: item.notification.type as any,
       targetType: item.notification.targetType as any,
       targetId: item.notification.targetId,
+      postId: item.notification.postId,
+      commentId: item.notification.commentId,
       payload: item.notification.payload,
       isRead,
       createdAt: item.notification.createdAt,
@@ -245,17 +249,12 @@ export async function deleteNotificationsForComments(
   const ids = Array.isArray(commentIds) ? commentIds : [commentIds]
   if (ids.length === 0) return
 
-  const stringIds = ids.map((id) => id.toString())
-
   await executor.delete(notifications).where(
     or(
+      inArray(notifications.commentId, ids),
       and(
         eq(notifications.targetType, 'comment'),
         inArray(notifications.targetId, ids)
-      ),
-      and(
-        eq(notifications.type, 'new_comment'),
-        inArray(sql`${notifications.payload}->>'commentId'`, stringIds)
       )
     )
   )
@@ -268,31 +267,12 @@ export async function deleteNotificationsForPosts(
   const ids = Array.isArray(postIds) ? postIds : [postIds]
   if (ids.length === 0) return
 
-  const stringIds = ids.map((id) => id.toString())
-
   await executor.delete(notifications).where(
     or(
+      inArray(notifications.postId, ids),
       and(
         eq(notifications.targetType, 'post'),
         inArray(notifications.targetId, ids)
-      ),
-      inArray(sql`${notifications.payload}->>'postId'`, stringIds),
-      and(
-        eq(notifications.targetType, 'comment'),
-        inArray(
-          notifications.targetId,
-          executor.select({ id: comments.id }).from(comments).where(inArray(comments.postId, ids))
-        )
-      ),
-      and(
-        eq(notifications.type, 'new_comment'),
-        inArray(
-          sql`${notifications.payload}->>'commentId'`,
-          executor
-            .select({ id: sql<string>`${comments.id}::text` })
-            .from(comments)
-            .where(inArray(comments.postId, ids))
-        )
       )
     )
   )

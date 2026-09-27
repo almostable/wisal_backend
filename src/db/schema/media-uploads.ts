@@ -29,7 +29,7 @@ export const mediaUploads = pgTable(
   (table) => [
     index('idx_media_gc')
       .on(table.status, table.createdAt)
-      .where(sql`${table.status} IN ('pending', 'deleted')`),
+      .where(sql`${table.status} IN ('pending', 'deleted', 'gc_failed')`),
     index('idx_media_purged')
       .on(table.purgedAt)
       .where(sql`${table.status} = 'purged'`),

@@ -13,6 +13,8 @@ export interface NotificationItem {
   type: NotificationType
   targetType: NotificationTargetType
   targetId: bigint | null
+  postId?: bigint | null
+  commentId?: bigint | null
   payload: Record<string, unknown>
   isRead: boolean
   createdAt: Date
@@ -25,6 +27,8 @@ export interface CreateNotificationOptions {
   type: NotificationType
   targetType: NotificationTargetType
   targetId?: bigint | null
+  postId?: bigint | null
+  commentId?: bigint | null
   payload?: Record<string, unknown>
 }
 

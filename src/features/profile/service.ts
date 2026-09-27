@@ -15,7 +15,7 @@ import {
   type SQL,
 } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
-import { db } from '../../db'
+import { db, type DbExecutor } from '../../db'
 import { MAX_PG_BIGINT } from '../../db/schema/common'
 import { invites } from '../../db/schema/invites'
 import { accounts } from '../../db/schema/accounts'
@@ -201,7 +201,8 @@ export async function checkHandleAvailability(
 
 export async function getMyInvites(
   accountId: bigint,
-  options: ListMyInvitesQuery = { status: 'all', limit: 50, offset: 0 }
+  options: ListMyInvitesQuery = { status: 'all', limit: 50, offset: 0 },
+  executor: DbExecutor = db
 ): Promise<ListMyInvitesResult> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100)
   const offset = Math.max(options.offset ?? 0, 0)
@@ -222,12 +223,11 @@ export async function getMyInvites(
   const whereClause = and(...conditions)
 
   const [items, totalResult, statsResult] = await Promise.all([
-    db
+    executor
       .select({
         invite: invites,
         usedByAccount: {
           id: accounts.id,
-          email: accounts.email,
         },
         usedByProfile: {
           name: profiles.name,
@@ -245,11 +245,11 @@ export async function getMyInvites(
       .orderBy(desc(invites.createdAt))
       .limit(limit)
       .offset(offset),
-    db
+    executor
       .select({ count: count() })
       .from(invites)
       .where(whereClause),
-    db
+    executor
       .select({
         active: sql<number>`count(*) filter (where ${invites.usedAt} is null and ${invites.expiresAt} > now())::int`,
         used: sql<number>`count(*) filter (where ${invites.usedAt} is not null)::int`,
@@ -264,7 +264,6 @@ export async function getMyInvites(
       item.usedByAccount && item.usedByAccount.id
         ? {
             id: item.usedByAccount.id,
-            email: item.usedByAccount.email,
             name: item.usedByProfile?.name ?? null,
             avatarKey: item.usedByProfile?.avatarKey ?? null,
             identity: item.usedByIdentity?.identity ?? null,
@@ -303,7 +302,14 @@ export async function getProfileIdByIdentity(identityHandle: string): Promise<bi
     .select({ profileId: profiles.id })
     .from(identities)
     .innerJoin(profiles, eq(identities.id, profiles.identityId))
-    .where(eq(sql`lower(${identities.identity})`, normalized))
+    .innerJoin(accounts, eq(profiles.accountId, accounts.id))
+    .where(
+      and(
+        eq(sql`lower(${identities.identity})`, normalized),
+        isNull(accounts.bannedAt),
+        isNull(accounts.deletedAt)
+      )
+    )
     .limit(1)
 
   return result?.profileId ?? null
@@ -504,7 +510,8 @@ export async function getSubscribedAuthors(
 
   const whereClause = and(
     eq(readers.readerProfileId, viewer.profileId),
-    isNull(accounts.deletedAt)
+    isNull(accounts.deletedAt),
+    isNull(accounts.bannedAt)
   )
 
   const [items, totalResult] = await Promise.all([
@@ -560,7 +567,14 @@ export async function resolveProfileId(identifier: string): Promise<bigint | nul
         const [byProfileId] = await db
           .select({ id: profiles.id })
           .from(profiles)
-          .where(eq(profiles.id, b))
+          .innerJoin(accounts, eq(profiles.accountId, accounts.id))
+          .where(
+            and(
+              eq(profiles.id, b),
+              isNull(accounts.bannedAt),
+              isNull(accounts.deletedAt)
+            )
+          )
           .limit(1)
         if (byProfileId) {
           return byProfileId.id
@@ -873,6 +887,8 @@ export async function getProfileFeed(
     isNotNull(profiles.identityId),
     isNotNull(profiles.description),
     sql`trim(${profiles.description}) != ''`,
+    isNull(accounts.bannedAt),
+    isNull(accounts.deletedAt),
     notBlockedCondition,
   ]
 
@@ -906,6 +922,7 @@ export async function getProfileFeed(
       })
       .from(profiles)
       .innerJoin(identities, eq(profiles.identityId, identities.id))
+      .innerJoin(accounts, eq(profiles.accountId, accounts.id))
       .where(whereCondition)
       .orderBy(...orderByClause)
       .limit(limit)
@@ -916,6 +933,7 @@ export async function getProfileFeed(
       .select({ count: count() })
       .from(profiles)
       .innerJoin(identities, eq(profiles.identityId, identities.id))
+      .innerJoin(accounts, eq(profiles.accountId, accounts.id))
       .where(whereCondition)
 
     const totalCount = Number(totalRow?.count ?? 0)
@@ -943,6 +961,7 @@ export async function getProfileFeed(
           })
           .from(profiles)
           .innerJoin(identities, eq(profiles.identityId, identities.id))
+          .innerJoin(accounts, eq(profiles.accountId, accounts.id))
           .where(whereCondition)
           .orderBy(asc(profiles.id))
           .limit(actualLimit)
@@ -964,6 +983,7 @@ export async function getProfileFeed(
             })
             .from(profiles)
             .innerJoin(identities, eq(profiles.identityId, identities.id))
+            .innerJoin(accounts, eq(profiles.accountId, accounts.id))
             .where(whereCondition)
             .orderBy(asc(profiles.id))
             .limit(firstLimit)
@@ -980,6 +1000,7 @@ export async function getProfileFeed(
             })
             .from(profiles)
             .innerJoin(identities, eq(profiles.identityId, identities.id))
+            .innerJoin(accounts, eq(profiles.accountId, accounts.id))
             .where(whereCondition)
             .orderBy(asc(profiles.id))
             .limit(secondLimit)
@@ -1047,6 +1068,8 @@ export async function searchProfiles(
     sql`trim(${profiles.name}) != ''`,
     isNotNull(profiles.isMale),
     isNotNull(profiles.identityId),
+    isNull(accounts.bannedAt),
+    isNull(accounts.deletedAt),
     primarySearchFilter,
     notBlockedCondition
   )!
@@ -1082,6 +1105,7 @@ export async function searchProfiles(
       })
       .from(profiles)
       .innerJoin(identities, eq(profiles.identityId, identities.id))
+      .innerJoin(accounts, eq(profiles.accountId, accounts.id))
       .where(whereCondition)
       .orderBy(...orderByClause)
       .limit(limit)
@@ -1090,6 +1114,7 @@ export async function searchProfiles(
       .select({ count: count() })
       .from(profiles)
       .innerJoin(identities, eq(profiles.identityId, identities.id))
+      .innerJoin(accounts, eq(profiles.accountId, accounts.id))
       .where(whereCondition),
   ])
 

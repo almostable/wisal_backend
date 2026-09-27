@@ -119,7 +119,11 @@ app.onError((err, c) => {
   }
 
   captureAppException(err, c)
-  console.error('Unhandled server error:', err)
+  if (env.NODE_ENV !== 'production') {
+    console.error('Unhandled server error:', err)
+  } else {
+    console.error('Unhandled server error occurred (captured by Sentry)')
+  }
   return c.json({ error: 'Internal Server Error' }, 500)
 })
 

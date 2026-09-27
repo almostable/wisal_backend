@@ -39,7 +39,8 @@ export async function runMediaGc(
             eq(mediaUploads.status, 'pending'),
             sql`${mediaUploads.createdAt} < NOW() - INTERVAL '24 HOURS'`
           ),
-          eq(mediaUploads.status, 'deleted')
+          eq(mediaUploads.status, 'deleted'),
+          eq(mediaUploads.status, 'gc_failed')
         )
       )
       .limit(batchSize)

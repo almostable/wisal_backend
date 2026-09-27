@@ -315,9 +315,10 @@ export async function getUserById(accountId: bigint): Promise<AdminUserDetail> {
 
 export async function updateUserProfileByAdmin(
   accountId: bigint,
-  input: AdminUpdateUserProfileInput
+  input: AdminUpdateUserProfileInput,
+  executor: DbExecutor = db
 ): Promise<UserListItem> {
-  return await db.transaction(async (tx) => {
+  const executeInTx = async (tx: DbExecutor) => {
     const [record] = await tx
       .select({
         account: {
@@ -424,9 +425,11 @@ export async function updateUserProfileByAdmin(
       if (input.isVerified !== undefined) {
         updateData.verifiedAt = newVerifiedAt
       }
-      if (newIdentityId !== null && newIdentityId !== existingProfile.identityId) {
-        updateData.identityId = newIdentityId
-        updateData.identity = updatedIdentity?.identity ?? null
+      if (updatedIdentity) {
+        updateData.identity = updatedIdentity.identity
+        if (newIdentityId !== null && newIdentityId !== existingProfile.identityId) {
+          updateData.identityId = newIdentityId
+        }
       }
 
       if (Object.keys(updateData).length > 0) {
@@ -476,7 +479,12 @@ export async function updateUserProfileByAdmin(
       ...record.account,
       profile: formatProfileResponse(fullProfile),
     }
-  })
+  }
+
+  if ('transaction' in executor && typeof (executor as any).transaction === 'function') {
+    return await (executor as typeof db).transaction(executeInTx)
+  }
+  return await executeInTx(executor)
 }
 
 export async function banUserAccount(
@@ -561,7 +569,11 @@ export async function banUserAccount(
 
       // 5. Soft-delete all comments of this user
       const userComments = await tx
-        .select({ id: comments.id })
+        .select({
+          id: comments.id,
+          postId: comments.postId,
+          parentId: comments.parentId,
+        })
         .from(comments)
         .where(and(eq(comments.authorId, profileId), isNull(comments.deletedAt)))
 
@@ -571,6 +583,34 @@ export async function banUserAccount(
           .update(comments)
           .set({ deletedAt: now })
           .where(and(eq(comments.authorId, profileId), isNull(comments.deletedAt)))
+
+        const commentsPerPost = new Map<bigint, number>()
+        for (const c of userComments) {
+          commentsPerPost.set(c.postId, (commentsPerPost.get(c.postId) ?? 0) + 1)
+        }
+        for (const [postId, count] of commentsPerPost.entries()) {
+          await tx
+            .update(posts)
+            .set({
+              commentsCount: sql`GREATEST(0, ${posts.commentsCount} - ${count})`,
+            })
+            .where(eq(posts.id, postId))
+        }
+
+        const repliesPerParent = new Map<bigint, number>()
+        for (const c of userComments) {
+          if (c.parentId) {
+            repliesPerParent.set(c.parentId, (repliesPerParent.get(c.parentId) ?? 0) + 1)
+          }
+        }
+        for (const [parentId, count] of repliesPerParent.entries()) {
+          await tx
+            .update(comments)
+            .set({
+              repliesCount: sql`GREATEST(0, ${comments.repliesCount} - ${count})`,
+            })
+            .where(eq(comments.id, parentId))
+        }
 
         await deleteNotificationsForComments(commentIds, tx)
       }

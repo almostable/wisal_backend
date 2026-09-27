@@ -281,6 +281,7 @@ async function checkPostAccess(
     const [authorRecord] = await executor
       .select({
         deletedAt: accounts.deletedAt,
+        bannedAt: accounts.bannedAt,
         name: profiles.name,
         identityId: profiles.identityId,
       })
@@ -289,7 +290,7 @@ async function checkPostAccess(
       .where(eq(profiles.id, post.authorId))
       .limit(1)
 
-    if (!authorRecord || authorRecord.deletedAt || !authorRecord.name || !authorRecord.identityId) {
+    if (!authorRecord || authorRecord.deletedAt || authorRecord.bannedAt || !authorRecord.name || !authorRecord.identityId) {
       throw new HTTPException(404, { message: 'Post not found' })
     }
 
@@ -299,6 +300,20 @@ async function checkPostAccess(
   const isAuthor = viewer.profileId === post.authorId
 
   if (!isAuthor) {
+    const [authorRecord] = await executor
+      .select({
+        deletedAt: accounts.deletedAt,
+        bannedAt: accounts.bannedAt,
+      })
+      .from(profiles)
+      .leftJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(eq(profiles.id, post.authorId))
+      .limit(1)
+
+    if (!authorRecord || authorRecord.deletedAt || authorRecord.bannedAt) {
+      throw new HTTPException(404, { message: 'Post not found' })
+    }
+
     const [blockRecord] = await executor
       .select({ blockerProfileId: profileBlocks.blockerProfileId })
       .from(profileBlocks)
@@ -1365,12 +1380,12 @@ export async function createComment(
     let replyToProfileId: bigint | null = null
 
     if (input.parentId) {
-      const targetComment = await tx.query.comments.findFirst({
-        where: and(
-          eq(comments.id, input.parentId),
-          isNull(comments.deletedAt)
-        ),
-      })
+      const [targetComment] = await tx
+        .select()
+        .from(comments)
+        .where(and(eq(comments.id, input.parentId), isNull(comments.deletedAt)))
+        .for('update')
+        .limit(1)
 
       if (!targetComment || targetComment.postId !== postId) {
         throw new HTTPException(404, { message: 'Parent comment not found' })
@@ -1382,12 +1397,12 @@ export async function createComment(
 
       const targetAuthorIds: bigint[] = [targetComment.authorId]
       if (threadRootId !== targetComment.id) {
-        const rootComment = await tx.query.comments.findFirst({
-          where: and(
-            eq(comments.id, threadRootId),
-            isNull(comments.deletedAt)
-          ),
-        })
+        const [rootComment] = await tx
+          .select()
+          .from(comments)
+          .where(and(eq(comments.id, threadRootId), isNull(comments.deletedAt)))
+          .for('update')
+          .limit(1)
         if (rootComment && !targetAuthorIds.includes(rootComment.authorId)) {
           targetAuthorIds.push(rootComment.authorId)
         }
@@ -1481,6 +1496,8 @@ export async function createComment(
           type: 'comment_reply',
           targetType: 'comment',
           targetId: created.id,
+          postId: post.id,
+          commentId: created.id,
           payload: { postId: post.id, commentSnippet },
         },
         tx
@@ -1495,6 +1512,8 @@ export async function createComment(
             type: 'new_comment',
             targetType: 'post',
             targetId: post.id,
+            postId: post.id,
+            commentId: created.id,
             payload: { commentId: created.id, commentSnippet },
           },
           tx
@@ -1509,6 +1528,8 @@ export async function createComment(
           type: 'new_comment',
           targetType: 'post',
           targetId: post.id,
+          postId: post.id,
+          commentId: created.id,
           payload: { commentId: created.id, commentSnippet },
         },
         tx
@@ -1739,66 +1760,73 @@ export async function recordPostViews(
     return { success: true, updatedCount: 0 }
   }
 
-  const uniquePostIds = Array.from(new Set(postIds))
+  const runWithTx = async (tx: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+    const uniquePostIds = Array.from(new Set(postIds))
 
-  const accessiblePosts = await executor
-    .select({
-      id: posts.id,
-      authorId: posts.authorId,
-    })
-    .from(posts)
-    .where(
-      and(
-        inArray(posts.id, uniquePostIds),
-        isNull(posts.deletedAt),
-        or(
-          eq(posts.authorId, viewer.profileId),
-          and(
-            sql`NOT EXISTS (
-              SELECT 1 FROM ${profileBlocks}
-              WHERE (${profileBlocks.blockerProfileId} = ${viewer.profileId} AND ${profileBlocks.blockedProfileId} = ${posts.authorId})
-                 OR (${profileBlocks.blockerProfileId} = ${posts.authorId} AND ${profileBlocks.blockedProfileId} = ${viewer.profileId})
-            )`,
-            sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`
+    const accessiblePosts = await tx
+      .select({
+        id: posts.id,
+        authorId: posts.authorId,
+      })
+      .from(posts)
+      .where(
+        and(
+          inArray(posts.id, uniquePostIds),
+          isNull(posts.deletedAt),
+          or(
+            eq(posts.authorId, viewer.profileId),
+            and(
+              sql`NOT EXISTS (
+                SELECT 1 FROM ${profileBlocks}
+                WHERE (${profileBlocks.blockerProfileId} = ${viewer.profileId} AND ${profileBlocks.blockedProfileId} = ${posts.authorId})
+                   OR (${profileBlocks.blockerProfileId} = ${posts.authorId} AND ${profileBlocks.blockedProfileId} = ${viewer.profileId})
+              )`,
+              sql`(${posts.genderScope} = 'all' OR (${posts.genderScope} = 'same_gender' AND ${posts.authorGender} = ${viewer.isMale}))`
+            )
           )
         )
       )
-    )
 
-  if (accessiblePosts.length === 0) {
-    return { success: true, updatedCount: 0 }
+    if (accessiblePosts.length === 0) {
+      return { success: true, updatedCount: 0 }
+    }
+
+    const rowsToInsert = accessiblePosts
+      .map((p) => ({
+        postId: p.id,
+        profileId: viewer.profileId,
+      }))
+      .sort((a, b) => (a.postId < b.postId ? -1 : a.postId > b.postId ? 1 : 0))
+
+    const insertedViews = await tx
+      .insert(postViews)
+      .values(rowsToInsert)
+      .onConflictDoNothing()
+      .returning({ postId: postViews.postId })
+
+    if (insertedViews.length > 0) {
+      const newlyViewedPostIds = insertedViews
+        .map((v) => v.postId)
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+
+      await tx
+        .update(posts)
+        .set({
+          viewsCount: sql`${posts.viewsCount} + 1`,
+        })
+        .where(inArray(posts.id, newlyViewedPostIds))
+    }
+
+    return {
+      success: true,
+      updatedCount: insertedViews.length,
+    }
   }
 
-  const rowsToInsert = accessiblePosts
-    .map((p) => ({
-      postId: p.id,
-      profileId: viewer.profileId,
-    }))
-    .sort((a, b) => (a.postId < b.postId ? -1 : a.postId > b.postId ? 1 : 0))
-
-  const insertedViews = await executor
-    .insert(postViews)
-    .values(rowsToInsert)
-    .onConflictDoNothing()
-    .returning({ postId: postViews.postId })
-
-  if (insertedViews.length > 0) {
-    const newlyViewedPostIds = insertedViews
-      .map((v) => v.postId)
-      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-
-    await executor
-      .update(posts)
-      .set({
-        viewsCount: sql`${posts.viewsCount} + 1`,
-      })
-      .where(inArray(posts.id, newlyViewedPostIds))
+  if (executor === db) {
+    return await db.transaction(runWithTx)
   }
-
-  return {
-    success: true,
-    updatedCount: insertedViews.length,
-  }
+  return await runWithTx(executor)
 }
 
 export async function getFeedPosts(

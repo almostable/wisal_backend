@@ -355,7 +355,11 @@ export async function deleteAccount(
       }
 
       const userComments = await tx
-        .select({ id: comments.id })
+        .select({
+          id: comments.id,
+          postId: comments.postId,
+          parentId: comments.parentId,
+        })
         .from(comments)
         .where(and(eq(comments.authorId, existingProfile.id), isNull(comments.deletedAt)))
 
@@ -365,6 +369,34 @@ export async function deleteAccount(
           .update(comments)
           .set({ deletedAt: new Date() })
           .where(and(eq(comments.authorId, existingProfile.id), isNull(comments.deletedAt)))
+
+        const commentsPerPost = new Map<bigint, number>()
+        for (const c of userComments) {
+          commentsPerPost.set(c.postId, (commentsPerPost.get(c.postId) ?? 0) + 1)
+        }
+        for (const [postId, count] of commentsPerPost.entries()) {
+          await tx
+            .update(posts)
+            .set({
+              commentsCount: sql`GREATEST(0, ${posts.commentsCount} - ${count})`,
+            })
+            .where(eq(posts.id, postId))
+        }
+
+        const repliesPerParent = new Map<bigint, number>()
+        for (const c of userComments) {
+          if (c.parentId) {
+            repliesPerParent.set(c.parentId, (repliesPerParent.get(c.parentId) ?? 0) + 1)
+          }
+        }
+        for (const [parentId, count] of repliesPerParent.entries()) {
+          await tx
+            .update(comments)
+            .set({
+              repliesCount: sql`GREATEST(0, ${comments.repliesCount} - ${count})`,
+            })
+            .where(eq(comments.id, parentId))
+        }
 
         await deleteNotificationsForComments(commentIds, tx)
       }

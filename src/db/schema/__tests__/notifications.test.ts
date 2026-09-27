@@ -68,12 +68,16 @@ describe('Notifications Schema Tests', () => {
       type: 'comment_reply',
       targetType: 'comment',
       targetId: 3001n,
+      postId: 2001n,
+      commentId: 3001n,
       payload: { postId: '2001' },
       readAt: null,
       createdAt: now,
     })
 
     expect(selected.id).toBe(5001n)
+    expect(selected.postId).toBe(2001n)
+    expect(selected.commentId).toBe(3001n)
     expect(selected.readAt).toBeNull()
     expect(selected.createdAt).toEqual(now)
   })
@@ -86,6 +90,8 @@ describe('Notifications Schema Tests', () => {
     expect(indexNames).toContain('notifications_recipient_read_at_idx')
     expect(indexNames).toContain('notifications_actor_profile_id_idx')
     expect(indexNames).toContain('notifications_target_idx')
+    expect(indexNames).toContain('notifications_post_id_idx')
+    expect(indexNames).toContain('notifications_comment_id_idx')
   })
 
   it('has expected enum constants defined', () => {

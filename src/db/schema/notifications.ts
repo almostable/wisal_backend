@@ -35,6 +35,8 @@ export const notifications = pgTable(
     type: varchar('type', { length: 32 }).notNull(),
     targetType: varchar('target_type', { length: 32 }).notNull(),
     targetId: snowflakeId('target_id'),
+    postId: snowflakeId('post_id'),
+    commentId: snowflakeId('comment_id'),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
     readAt: timestamp('read_at', { withTimezone: true, mode: 'date' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
@@ -50,6 +52,8 @@ export const notifications = pgTable(
     index('notifications_recipient_read_at_idx').on(table.recipientProfileId, table.readAt),
     index('notifications_actor_profile_id_idx').on(table.actorProfileId),
     index('notifications_target_idx').on(table.targetType, table.targetId),
+    index('notifications_post_id_idx').on(table.postId),
+    index('notifications_comment_id_idx').on(table.commentId),
   ]
 )
 

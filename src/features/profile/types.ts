@@ -17,7 +17,6 @@ export interface CheckIdentityResult {
 
 export interface MyInviteUsedBy {
   id: bigint
-  email: string
   name: string | null
   avatarKey: string | null
   identity: string | null

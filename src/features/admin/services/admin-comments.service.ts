@@ -9,11 +9,13 @@ import {
   isNotNull,
   ilike,
   inArray,
+  sql,
   type SQL,
 } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
-import { db } from '../../../db'
+import { db, type DbExecutor } from '../../../db'
 import { comments, type CommentType } from '../../../db/schema/comments'
+import { posts } from '../../../db/schema/posts'
 import { profiles } from '../../../db/schema/profiles'
 import { accounts } from '../../../db/schema/accounts'
 import { identities } from '../../../db/schema/identities'
@@ -212,8 +214,11 @@ export async function getPostCommentsByAdmin(postId: bigint): Promise<AdminComme
   })
 }
 
-export async function deleteCommentByAdmin(commentId: bigint): Promise<{ success: boolean; message: string }> {
-  return await db.transaction(async (tx) => {
+export async function deleteCommentByAdmin(
+  commentId: bigint,
+  executor: DbExecutor = db
+): Promise<{ success: boolean; message: string }> {
+  const executeInTx = async (tx: DbExecutor) => {
     const existing = await tx.query.comments.findFirst({
       where: eq(comments.id, commentId),
     })
@@ -240,11 +245,32 @@ export async function deleteCommentByAdmin(commentId: bigint): Promise<{ success
         .update(comments)
         .set({ deletedAt: new Date() })
         .where(inArray(comments.id, toDeleteIds))
+
+      await tx
+        .update(posts)
+        .set({
+          commentsCount: sql`GREATEST(0, ${posts.commentsCount} - ${toDeleteIds.length})`,
+        })
+        .where(eq(posts.id, existing.postId))
     } else {
       await tx
         .update(comments)
         .set({ deletedAt: new Date() })
         .where(eq(comments.id, commentId))
+
+      await tx
+        .update(posts)
+        .set({
+          commentsCount: sql`GREATEST(0, ${posts.commentsCount} - 1)`,
+        })
+        .where(eq(posts.id, existing.postId))
+
+      await tx
+        .update(comments)
+        .set({
+          repliesCount: sql`GREATEST(0, ${comments.repliesCount} - 1)`,
+        })
+        .where(eq(comments.id, existing.parentId))
     }
 
     for (const id of toDeleteIds) {
@@ -260,7 +286,12 @@ export async function deleteCommentByAdmin(commentId: bigint): Promise<{ success
       success: true,
       message: 'Comment deleted successfully by admin',
     }
-  })
+  }
+
+  if ('transaction' in executor && typeof (executor as any).transaction === 'function') {
+    return await (executor as typeof db).transaction(executeInTx)
+  }
+  return await executeInTx(executor)
 }
 
 export async function restoreCommentByAdmin(commentId: bigint): Promise<{ success: boolean; message: string }> {
@@ -281,6 +312,22 @@ export async function restoreCommentByAdmin(commentId: bigint): Promise<{ succes
       .update(comments)
       .set({ deletedAt: null })
       .where(eq(comments.id, commentId))
+
+    await tx
+      .update(posts)
+      .set({
+        commentsCount: sql`${posts.commentsCount} + 1`,
+      })
+      .where(eq(posts.id, existing.postId))
+
+    if (existing.parentId !== null) {
+      await tx
+        .update(comments)
+        .set({
+          repliesCount: sql`${comments.repliesCount} + 1`,
+        })
+        .where(eq(comments.id, existing.parentId))
+    }
 
     await tx
       .update(mediaUploads)

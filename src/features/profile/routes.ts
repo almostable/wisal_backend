@@ -175,13 +175,10 @@ profileRouter.get('/check/:identity', authMiddleware, zValidator('param', identi
 profileRouter.post(
   '/:author_id/read',
   authMiddleware,
+  onboardingMiddleware,
   zValidator('param', authorParamSchema),
   async (c) => {
-    const account = c.get('account')
-    const profile = await getProfileByAccountId(account.id)
-    if (!profile) {
-      throw new HTTPException(404, { message: 'Profile not found' })
-    }
+    const profile = c.get('profile')
     const { author_id } = c.req.valid('param')
     const result = await readProfile(profile.id, author_id)
 
@@ -195,14 +192,11 @@ profileRouter.post(
 profileRouter.post(
   '/:author_id/read-marker',
   authMiddleware,
+  onboardingMiddleware,
   zValidator('param', authorParamSchema),
   zValidator('json', markAuthorReadSchema),
   async (c) => {
-    const account = c.get('account')
-    const profile = await getProfileByAccountId(account.id)
-    if (!profile) {
-      throw new HTTPException(404, { message: 'Profile not found' })
-    }
+    const profile = c.get('profile')
     const { author_id } = c.req.valid('param')
     const { lastPostId } = c.req.valid('json')
     const result = await markAuthorPostsRead(profile.id, author_id, lastPostId)
@@ -217,13 +211,10 @@ profileRouter.post(
 profileRouter.delete(
   '/:author_id/read',
   authMiddleware,
+  onboardingMiddleware,
   zValidator('param', authorParamSchema),
   async (c) => {
-    const account = c.get('account')
-    const profile = await getProfileByAccountId(account.id)
-    if (!profile) {
-      throw new HTTPException(404, { message: 'Profile not found' })
-    }
+    const profile = c.get('profile')
     const { author_id } = c.req.valid('param')
     const result = await unreadProfile(profile.id, author_id)
 
@@ -237,13 +228,10 @@ profileRouter.delete(
 profileRouter.post(
   '/:identity/block',
   authMiddleware,
+  onboardingMiddleware,
   zValidator('param', identityParamSchema),
   async (c) => {
-    const account = c.get('account')
-    const profile = await getProfileByAccountId(account.id)
-    if (!profile) {
-      throw new HTTPException(404, { message: 'Profile not found' })
-    }
+    const profile = c.get('profile')
     const { identity } = c.req.valid('param')
     const result = await blockProfile(profile.id, identity)
 
@@ -257,13 +245,10 @@ profileRouter.post(
 profileRouter.delete(
   '/:identity/block',
   authMiddleware,
+  onboardingMiddleware,
   zValidator('param', identityParamSchema),
   async (c) => {
-    const account = c.get('account')
-    const profile = await getProfileByAccountId(account.id)
-    if (!profile) {
-      throw new HTTPException(404, { message: 'Profile not found' })
-    }
+    const profile = c.get('profile')
     const { identity } = c.req.valid('param')
     const result = await unblockProfile(profile.id, identity)
 
