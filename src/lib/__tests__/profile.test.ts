@@ -172,6 +172,12 @@ describe('Profile Utility Tests', () => {
     const formattedGuest = formatProfileResponse(fullProfile)
     expect(formattedGuest!.links).toBeNull()
 
+    // Viewed by admin (isAdmin: true)
+    const formattedAdmin = formatProfileResponse(fullProfile, { isAdmin: true })
+    expect(formattedAdmin!.links).toHaveLength(2)
+    expect(formattedAdmin!.links![0].title).toBe('Public Portfolio')
+    expect(formattedAdmin!.links![1].title).toBe('Bro Link')
+
     const formattedWithReaders = formatProfileResponse(fullProfile, { includeReadersCount: true, isSelf: true })
     expect(formattedWithReaders!.readersCount).toBe(50)
 

@@ -34,6 +34,7 @@ export function formatProfileResponse(
     includeReadersCount?: boolean
     viewerGender?: boolean | null
     isSelf?: boolean
+    isAdmin?: boolean
   }
 ): SafeProfile | null {
   if (!profile) return null
@@ -45,7 +46,7 @@ export function formatProfileResponse(
 
   let filteredLinks: ProfileLink[] | null = null
   if (profile.links && Array.isArray(profile.links)) {
-    if (flags?.isSelf) {
+    if (flags?.isSelf || flags?.isAdmin) {
       filteredLinks = profile.links
     } else if (flags?.viewerGender !== undefined && flags.viewerGender !== null) {
       if (flags.viewerGender === profile.isMale) {

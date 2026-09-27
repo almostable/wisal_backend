@@ -135,7 +135,7 @@ export async function listUsers(options: ListUsersOptions = {}): Promise<ListUse
 
     return {
       ...account,
-      profile: formatProfileResponse(fullProfile),
+      profile: formatProfileResponse(fullProfile, { isAdmin: true }),
     }
   })
 
@@ -307,7 +307,7 @@ export async function getUserById(accountId: bigint): Promise<AdminUserDetail> {
 
   return {
     ...record.account,
-    profile: formatProfileResponse(fullProfile),
+    profile: formatProfileResponse(fullProfile, { isAdmin: true }),
     stats,
     invitedBy,
   }
@@ -477,7 +477,7 @@ export async function updateUserProfileByAdmin(
 
     return {
       ...record.account,
-      profile: formatProfileResponse(fullProfile),
+      profile: formatProfileResponse(fullProfile, { isAdmin: true }),
     }
   }
 
