@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'bun:test'
+import { getTableConfig } from 'drizzle-orm/pg-core'
 import {
+  inviteApplications,
   insertInviteApplicationSchema,
   selectInviteApplicationSchema,
   INVITE_APPLICATION_STATUSES,
@@ -84,5 +86,17 @@ describe('Invite Applications Schema Tests', () => {
 
   it('has expected status enum constants defined', () => {
     expect(INVITE_APPLICATION_STATUSES).toEqual(['pending', 'approved', 'rejected'])
+  })
+
+  it('has correct indexes configured on invite_applications table', () => {
+    const config = getTableConfig(inviteApplications)
+    const indexNames = config.indexes.map((idx) => idx.config.name)
+    expect(indexNames).toContain('invite_applications_status_idx')
+    expect(indexNames).toContain('invite_applications_created_at_idx')
+    expect(indexNames).toContain('invite_applications_contact_norm_idx')
+    expect(indexNames).toContain('invite_applications_invite_id_idx')
+    expect(indexNames).toContain('invite_applications_reviewed_by_id_idx')
+    expect(indexNames).toContain('invite_applications_ip_status_idx')
+    expect(indexNames).toContain('invite_applications_ip_created_at_idx')
   })
 })

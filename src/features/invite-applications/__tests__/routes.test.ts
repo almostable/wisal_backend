@@ -143,4 +143,50 @@ describe('Invite Applications Public Route Tests', () => {
     const body = (await res.json()) as any
     expect(body.error).toBe('Invalid contact information or application cannot be accepted')
   })
+
+  it('POST /invite-applications returns 409 when an application from this IP is already pending review', async () => {
+    mock.module('../service', () => ({
+      submitInviteApplication: async () => {
+        throw new HTTPException(409, {
+          message: 'An application from this IP address is already pending review',
+        })
+      },
+    }))
+
+    const res = await app.request('/invite-applications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'cf-connecting-ip': '203.0.113.195',
+      },
+      body: JSON.stringify(validPayload),
+    })
+
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as any
+    expect(body.error).toBe('An application from this IP address is already pending review')
+  })
+
+  it('POST /invite-applications returns 429 when an application from this IP was submitted within 24 hours', async () => {
+    mock.module('../service', () => ({
+      submitInviteApplication: async () => {
+        throw new HTTPException(429, {
+          message: 'Only one application per 24 hours is allowed from this IP address',
+        })
+      },
+    }))
+
+    const res = await app.request('/invite-applications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'cf-connecting-ip': '203.0.113.195',
+      },
+      body: JSON.stringify(validPayload),
+    })
+
+    expect(res.status).toBe(429)
+    const body = (await res.json()) as any
+    expect(body.error).toBe('Only one application per 24 hours is allowed from this IP address')
+  })
 })

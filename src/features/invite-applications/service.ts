@@ -1,6 +1,6 @@
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, gte, desc, sql } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
-import { db } from '../../db'
+import { db, type DbExecutor } from '../../db'
 import { accounts } from '../../db/schema/accounts'
 import { inviteApplications } from '../../db/schema/invite-applications'
 import { verifyTurnstileToken } from '../../lib/turnstile'
@@ -13,7 +13,8 @@ import type {
 
 export async function submitInviteApplication(
   input: CreateInviteApplicationInput,
-  metadata: ApplicationSubmissionMetadata
+  metadata: ApplicationSubmissionMetadata,
+  executor: DbExecutor = db
 ): Promise<SubmitInviteApplicationResult> {
   // Honeypot check: reject if hidden bot field is populated
   if (input.website && input.website.trim().length > 0) {
@@ -34,7 +35,7 @@ export async function submitInviteApplication(
   // Implicit check: if contact is an email, ensure it's not already registered
   const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.contact.trim())
   if (isEmail) {
-    const existingAccount = await db.query.accounts.findFirst({
+    const existingAccount = await executor.query.accounts.findFirst({
       where: eq(sql`lower(${accounts.email})`, normalizedContact),
     })
 
@@ -45,8 +46,38 @@ export async function submitInviteApplication(
     }
   }
 
+  // IP restrictions: 1 pending application per IP + 24-hour cooldown per IP
+  if (metadata.ip && metadata.ip !== 'anonymous') {
+    const existingPendingByIp = await executor.query.inviteApplications.findFirst({
+      where: and(
+        eq(inviteApplications.ip, metadata.ip),
+        eq(inviteApplications.status, 'pending')
+      ),
+    })
+
+    if (existingPendingByIp) {
+      throw new HTTPException(409, {
+        message: 'An application from this IP address is already pending review',
+      })
+    }
+
+    const recentApplicationByIp = await executor.query.inviteApplications.findFirst({
+      where: and(
+        eq(inviteApplications.ip, metadata.ip),
+        gte(inviteApplications.createdAt, sql`NOW() - INTERVAL '24 HOURS'`)
+      ),
+      orderBy: [desc(inviteApplications.createdAt)],
+    })
+
+    if (recentApplicationByIp) {
+      throw new HTTPException(429, {
+        message: 'Only one application per 24 hours is allowed from this IP address',
+      })
+    }
+  }
+
   // Deduplication check: prevent duplicate pending applications for the same contact
-  const existingPending = await db.query.inviteApplications.findFirst({
+  const existingPending = await executor.query.inviteApplications.findFirst({
     where: and(
       eq(inviteApplications.contactNormalized, normalizedContact),
       eq(inviteApplications.status, 'pending')
@@ -59,7 +90,7 @@ export async function submitInviteApplication(
     })
   }
 
-  const [created] = await db
+  const [created] = await executor
     .insert(inviteApplications)
     .values({
       name: input.name.trim(),

@@ -32,6 +32,8 @@ export const inviteApplications = pgTable(
     index('invite_applications_contact_norm_idx').on(table.contactNormalized),
     index('invite_applications_invite_id_idx').on(table.inviteId),
     index('invite_applications_reviewed_by_id_idx').on(table.reviewedById),
+    index('invite_applications_ip_status_idx').on(table.ip, table.status),
+    index('invite_applications_ip_created_at_idx').on(table.ip, table.createdAt),
   ]
 )
 
