@@ -35,8 +35,6 @@ export const inviteApplications = pgTable(
     index('invite_applications_invite_id_idx').on(table.inviteId),
     index('invite_applications_reviewed_by_id_idx').on(table.reviewedById),
     index('invite_applications_ip_status_idx').on(table.ip, table.status),
-    uniqueIndex('invite_applications_pending_ip_unique_idx')
-      .on(table.ip).where(sql`${table.status} = 'pending' AND ${table.ip} IS NOT NULL AND ${table.ip} != 'anonymous'`),
     index('invite_applications_ip_created_at_idx').on(table.ip, table.createdAt),
   ]
 )
