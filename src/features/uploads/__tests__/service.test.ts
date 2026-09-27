@@ -69,6 +69,7 @@ describe('Uploads Service Unit Tests', () => {
       status: 'attached',
       entityType: 'post',
       entityId: postId,
+      deletedAt: null,
     })
   })
 
@@ -139,7 +140,7 @@ describe('Uploads Service Unit Tests', () => {
       entityId: postId,
     })
 
-    expect(updatedSet).toEqual({ status: 'deleted' })
+    expect(updatedSet).toEqual({ status: 'deleted', deletedAt: expect.any(Date) })
   })
 
   it('reconcileEntityMedia detaches removed keys and attaches new keys', async () => {

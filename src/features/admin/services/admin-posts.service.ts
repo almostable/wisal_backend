@@ -8,17 +8,20 @@ import {
   isNull,
   isNotNull,
   ilike,
+  inArray,
   type SQL,
 } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
-import { db } from '../../../db'
+import { db, type DbExecutor } from '../../../db'
+import { MEDIA_GC_DELETED_TTL_DAYS } from '../../../config/constants'
 import { posts, type PostType, type GenderScope } from '../../../db/schema/posts'
 import { comments } from '../../../db/schema/comments'
 import { profiles } from '../../../db/schema/profiles'
 import { accounts } from '../../../db/schema/accounts'
 import { identities } from '../../../db/schema/identities'
 import { mediaUploads } from '../../../db/schema/media-uploads'
-import { markEntityMediaDeleted } from '../../uploads/service'
+import { markEntityMediaDeleted, reconcileEntityMedia } from '../../uploads/service'
+import { getMediaFileKeys, validateMediaRemoval } from '../../uploads/media-edit'
 import { deleteNotificationsForPosts } from '../../notifications/service'
 import { parseSafeBigInt } from './utils'
 import type { UpdatePostByAdminInput } from '../schema'
@@ -234,8 +237,8 @@ export async function getPostByIdByAdmin(postId: bigint): Promise<AdminPostItem>
   }
 }
 
-export async function deletePostByAdmin(postId: bigint): Promise<{ success: boolean; message: string }> {
-  return await db.transaction(async (tx) => {
+export async function deletePostByAdmin(postId: bigint, executor: DbExecutor = db): Promise<{ success: boolean; message: string }> {
+  const executeInTx = async (tx: DbExecutor) => {
     const existing = await tx.query.posts.findFirst({
       where: eq(posts.id, postId),
     })
@@ -270,7 +273,7 @@ export async function deletePostByAdmin(postId: bigint): Promise<{ success: bool
 
     await tx.execute(sql`
       UPDATE media_uploads
-      SET status = 'deleted'
+      SET status = 'deleted', deleted_at = NOW()
       WHERE entity_type = 'comment'
         AND status = 'attached'
         AND entity_id IN (
@@ -284,11 +287,13 @@ export async function deletePostByAdmin(postId: bigint): Promise<{ success: bool
       success: true,
       message: 'Post deleted successfully by admin',
     }
-  })
+  }
+
+  return executor === db ? db.transaction(executeInTx) : executeInTx(executor)
 }
 
-export async function restorePostByAdmin(postId: bigint): Promise<{ success: boolean; message: string }> {
-  return await db.transaction(async (tx) => {
+export async function restorePostByAdmin(postId: bigint, executor: DbExecutor = db): Promise<{ success: boolean; message: string }> {
+  const executeInTx = async (tx: DbExecutor) => {
     const existing = await tx.query.posts.findFirst({
       where: eq(posts.id, postId),
     })
@@ -301,59 +306,108 @@ export async function restorePostByAdmin(postId: bigint): Promise<{ success: boo
       throw new HTTPException(400, { message: 'Post is not deleted' })
     }
 
+    if (existing.deletedAt.getTime() <= Date.now() - MEDIA_GC_DELETED_TTL_DAYS * 86_400_000) {
+      throw new HTTPException(409, { message: 'Post restoration period has expired' })
+    }
+
+    const [author] = await tx.select({ deletedAt: accounts.deletedAt, bannedAt: accounts.bannedAt })
+      .from(profiles).innerJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(eq(profiles.id, existing.authorId)).limit(1)
+    if (!author || author.deletedAt || author.bannedAt) {
+      throw new HTTPException(409, { message: 'Post author is unavailable' })
+    }
+
+    const candidates = await tx.select({ id: comments.id, parentId: comments.parentId })
+      .from(comments)
+      .innerJoin(profiles, eq(comments.authorId, profiles.id))
+      .innerJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(and(eq(comments.postId, postId), eq(comments.deletedAt, existing.deletedAt),
+        isNull(accounts.deletedAt), isNull(accounts.bannedAt)))
+    const rootIds = new Set(candidates.filter((comment) => comment.parentId === null).map((comment) => comment.id))
+    const commentIds = candidates.filter((comment) =>
+      comment.parentId === null || rootIds.has(comment.parentId)
+    ).map((comment) => comment.id)
+    const restoredComments = commentIds.length > 0
+      ? await tx.update(comments).set({ deletedAt: null })
+        .where(inArray(comments.id, commentIds)).returning({ id: comments.id, payload: comments.payload })
+      : []
+
     await tx
       .update(posts)
       .set({ deletedAt: null })
       .where(eq(posts.id, postId))
 
-    await tx
-      .update(mediaUploads)
-      .set({ status: 'attached' })
-      .where(
-        and(
-          eq(mediaUploads.entityType, 'post'),
-          eq(mediaUploads.entityId, postId),
-          eq(mediaUploads.status, 'deleted')
-        )
+    const postMediaKeys = getMediaFileKeys(existing.payload)
+    if (postMediaKeys.length > 0) {
+      await tx.update(mediaUploads).set({ status: 'attached', deletedAt: null })
+        .where(and(eq(mediaUploads.entityType, 'post'), eq(mediaUploads.entityId, postId),
+          inArray(mediaUploads.fileKey, postMediaKeys), eq(mediaUploads.status, 'deleted')))
+    }
+
+    const commentMediaKeys = restoredComments.flatMap((comment) => getMediaFileKeys(comment.payload))
+    if (commentMediaKeys.length > 0) {
+      await tx.update(mediaUploads).set({ status: 'attached', deletedAt: null })
+        .where(and(eq(mediaUploads.entityType, 'comment'),
+          inArray(mediaUploads.fileKey, commentMediaKeys),
+          eq(mediaUploads.status, 'deleted')))
+    }
+
+    await tx.update(posts).set({
+      commentsCount: sql`(SELECT COUNT(*)::int FROM comments WHERE post_id = ${postId} AND deleted_at IS NULL)`,
+    }).where(eq(posts.id, postId))
+    await tx.execute(sql`
+      UPDATE comments AS root
+      SET replies_count = (
+        SELECT COUNT(*)::int FROM comments AS reply
+        WHERE reply.parent_id = root.id AND reply.deleted_at IS NULL
       )
+      WHERE root.post_id = ${postId} AND root.parent_id IS NULL AND root.deleted_at IS NULL
+    `)
 
     return {
       success: true,
       message: 'Post restored successfully',
     }
-  })
+  }
+
+  return executor === db ? db.transaction(executeInTx) : executeInTx(executor)
 }
 
 export async function updatePostByAdmin(
   postId: bigint,
   input: UpdatePostByAdminInput
 ): Promise<AdminPostItem> {
-  const existing = await db.query.posts.findFirst({
-    where: eq(posts.id, postId),
+  await db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(posts)
+      .where(and(eq(posts.id, postId), isNull(posts.deletedAt)))
+      .for('update').limit(1)
+    if (!existing) {
+      throw new HTTPException(404, { message: 'Post not found' })
+    }
+
+    const resultingContent = input.content ?? existing.content
+    if (resultingContent.length < 8 || ((input.isFeed ?? existing.isFeed) && resultingContent.length < 100)) {
+      throw new HTTPException(400, { message: 'Post content is too short' })
+    }
+
+    const updateData: Partial<typeof posts.$inferInsert> = { updatedAt: new Date() }
+    if (input.isFeed !== undefined) updateData.isFeed = input.isFeed
+    if (input.isPinned !== undefined) updateData.isPinned = input.isPinned
+    if (input.content !== undefined) updateData.content = input.content
+    if (input.payload !== undefined) {
+      const { payload, oldFileKeys, newFileKeys } = validateMediaRemoval(
+        existing.payload, input.payload, 'post'
+      )
+      updateData.payload = newFileKeys.length > 0 ? payload : {}
+      updateData.type = newFileKeys.length > 0 ? 'media' : 'text'
+      await reconcileEntityMedia(tx, {
+        entityType: 'post', entityId: postId, profileId: existing.authorId,
+        oldFileKeys, newFileKeys,
+      })
+    }
+
+    await tx.update(posts).set(updateData).where(eq(posts.id, postId))
   })
-
-  if (!existing) {
-    throw new HTTPException(404, { message: 'Post not found' })
-  }
-
-  const updateData: Partial<typeof posts.$inferInsert> = {
-    updatedAt: new Date(),
-  }
-
-  if (input.isFeed !== undefined) {
-    updateData.isFeed = input.isFeed
-  }
-  if (input.isPinned !== undefined) {
-    updateData.isPinned = input.isPinned
-  }
-  if (input.content !== undefined) {
-    updateData.content = input.content
-  }
-  if (input.payload !== undefined) {
-    updateData.payload = input.payload
-  }
-
-  await db.update(posts).set(updateData).where(eq(posts.id, postId))
 
   return getPostByIdByAdmin(postId)
 }

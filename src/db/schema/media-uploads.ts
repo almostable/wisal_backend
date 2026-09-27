@@ -24,6 +24,7 @@ export const mediaUploads = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .defaultNow()
       .notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
     purgedAt: timestamp('purged_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [

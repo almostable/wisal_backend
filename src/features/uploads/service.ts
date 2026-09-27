@@ -59,6 +59,7 @@ export async function attachMediaFiles(
       status: 'attached',
       entityType,
       entityId,
+      deletedAt: null,
     })
     .where(
       and(
@@ -83,7 +84,7 @@ export async function markEntityMediaDeleted(
 ): Promise<void> {
   await executor
     .update(mediaUploads)
-    .set({ status: 'deleted' })
+    .set({ status: 'deleted', deletedAt: new Date() })
     .where(
       and(
         eq(mediaUploads.entityType, options.entityType),
@@ -103,7 +104,7 @@ export async function reconcileEntityMedia(
   if (toDelete.length > 0) {
     await executor
       .update(mediaUploads)
-      .set({ status: 'deleted' })
+      .set({ status: 'deleted', deletedAt: new Date() })
       .where(
         and(
           inArray(mediaUploads.fileKey, toDelete),

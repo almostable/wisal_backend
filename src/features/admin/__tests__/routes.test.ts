@@ -1215,34 +1215,32 @@ describe('Admin Feature Route Tests', () => {
       }))
     })
 
-    it('rejects moderator from GET /admin/users with 403', async () => {
+    it('allows moderator to browse users for targeted moderation', async () => {
+      mock.module('../service', () => ({ listUsers: async () => ({ users: [], total: 0, limit: 50, offset: 0 }) }))
       const res = await app.request('/admin/users', {
         headers: { Authorization: 'Bearer mod_token' },
       })
-      expect(res.status).toBe(403)
-      const body = (await res.json()) as { error: string }
-      expect(body.error).toBe('Insufficient permissions')
+      expect(res.status).toBe(200)
     })
 
-    it('rejects moderator from GET /admin/posts with 403', async () => {
+    it('allows moderator to browse posts', async () => {
+      mock.module('../service', () => ({ listPostsByAdmin: async () => ({ posts: [], total: 0, limit: 50, offset: 0 }) }))
       const res = await app.request('/admin/posts', {
         headers: { Authorization: 'Bearer mod_token' },
       })
-      expect(res.status).toBe(403)
-      const body = (await res.json()) as { error: string }
-      expect(body.error).toBe('Insufficient permissions')
+      expect(res.status).toBe(200)
     })
 
-    it('rejects moderator from GET /admin/comments with 403', async () => {
+    it('allows moderator to browse comments', async () => {
+      mock.module('../service', () => ({ listCommentsByAdmin: async () => ({ comments: [], total: 0, limit: 50, offset: 0 }) }))
       const res = await app.request('/admin/comments', {
         headers: { Authorization: 'Bearer mod_token' },
       })
-      expect(res.status).toBe(403)
-      const body = (await res.json()) as { error: string }
-      expect(body.error).toBe('Insufficient permissions')
+      expect(res.status).toBe(200)
     })
 
-    it('rejects moderator from POST /admin/users/:id/ban with 403', async () => {
+    it('allows moderator to ban a specific user', async () => {
+      mock.module('../service', () => ({ banUserAccount: async () => ({ success: true }) }))
       const res = await app.request('/admin/users/12345/ban', {
         method: 'POST',
         headers: {
@@ -1251,15 +1249,28 @@ describe('Admin Feature Route Tests', () => {
         },
         body: JSON.stringify({ reason: 'Spamming' }),
       })
-      expect(res.status).toBe(403)
+      expect(res.status).toBe(200)
     })
 
-    it('rejects moderator from DELETE /admin/posts/:id with 403', async () => {
+    it('allows moderator to remove a specific post', async () => {
+      mock.module('../service', () => ({ deletePostByAdmin: async () => ({ success: true }) }))
       const res = await app.request('/admin/posts/12345', {
         method: 'DELETE',
         headers: { Authorization: 'Bearer mod_token' },
       })
-      expect(res.status).toBe(403)
+      expect(res.status).toBe(200)
+    })
+
+    it('blocks moderator from changing profile verification and editing posts', async () => {
+      const headers = { Authorization: 'Bearer mod_token', 'Content-Type': 'application/json' }
+      const profile = await app.request('/admin/users/12345', {
+        method: 'PATCH', headers, body: JSON.stringify({ isVerified: true }),
+      })
+      expect(profile.status).toBe(403)
+      const post = await app.request('/admin/posts/12345', {
+        method: 'PATCH', headers, body: JSON.stringify({ content: 'Changed by moderator' }),
+      })
+      expect(post.status).toBe(403)
     })
   })
 })

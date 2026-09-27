@@ -95,12 +95,7 @@ export interface CreatePostDTO {
 }
 
 export interface UpdatePostDTO {
-  content?: string | null
-  type?: PostType
-  genderScope?: GenderScope
-  isFeed?: boolean
-  showInFeed?: boolean
-  isPinned?: boolean
+  content?: string
   payload?: Record<string, unknown>
 }
 
@@ -184,4 +179,3 @@ export interface FeedPostsResult {
   nextCursor?: string | null
   hasMore: boolean
 }
-

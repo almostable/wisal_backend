@@ -72,6 +72,7 @@ describe('Profile Avatar Lifecycle Integration Tests', () => {
       status: 'attached',
       entityType: 'avatar',
       entityId: profileId,
+      deletedAt: null,
     })
   })
 
@@ -157,11 +158,12 @@ describe('Profile Avatar Lifecycle Integration Tests', () => {
       avatarKey: 'media/2026-09-04/new-avatar.jpg',
     })
 
-    expect(deletedStatusSet).toEqual({ status: 'deleted' })
+    expect(deletedStatusSet).toEqual({ status: 'deleted', deletedAt: expect.any(Date) })
     expect(attachedStatusSet).toEqual({
       status: 'attached',
       entityType: 'avatar',
       entityId: profileId,
+      deletedAt: null,
     })
   })
 })

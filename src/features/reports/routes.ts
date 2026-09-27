@@ -21,7 +21,7 @@ reportsRouter.post('/', zValidator('json', createReportSchema), async (c) => {
   const profile = c.get('profile')
   const data = c.req.valid('json')
 
-  const report = await createReport(profile.id, data)
+  const report = await createReport(profile.id, data, profile.isMale === true)
 
   return c.json(
     {

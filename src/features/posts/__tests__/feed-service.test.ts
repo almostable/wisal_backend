@@ -40,12 +40,12 @@ describe('Feed Schemas and Validation Logic', () => {
     expect(validOmitted.isFeed).toBeUndefined()
   })
 
-  it('validates updatePostSchema with isFeed', () => {
-    const valid = updatePostSchema.parse({
+  it('limits post edits to content and removal of media', () => {
+    expect(() => updatePostSchema.parse({
       showInFeed: true,
       content: 'Updated post for feed with more than one hundred characters in length to pass the validation properly! 1234567890',
-    })
-    expect(valid.isFeed).toBe(true)
+    })).toThrow()
+    expect(updatePostSchema.parse({ content: 'Updated content' }).content).toBe('Updated content')
   })
 
   it('validates feedQuerySchema with default values', () => {

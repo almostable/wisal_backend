@@ -8,9 +8,14 @@ import {
   onboardingInputSchema,
   updateProfileInputSchema,
   descriptionSchema,
+  nameSchema,
 } from '../profiles'
 
 describe('Profiles Schema Tests', () => {
+  it('rejects names containing only whitespace after trimming', () => {
+    expect(() => nameSchema.parse('   ')).toThrow()
+    expect(nameSchema.parse('  Jane  ')).toBe('Jane')
+  })
   it('validates httpsUrlSchema: auto-prefixes https:// when protocol omitted and rejects non-https', () => {
     expect(httpsUrlSchema.parse('t.me/username')).toBe('https://t.me/username')
     expect(httpsUrlSchema.parse('example.com/path')).toBe('https://example.com/path')
@@ -196,4 +201,3 @@ describe('Profiles Schema Tests', () => {
     expect(searchIndex.config.method).toBe('gin')
   })
 })
-

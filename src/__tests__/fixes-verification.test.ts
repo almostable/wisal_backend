@@ -243,7 +243,7 @@ describe('Verification tests for 11 resolved issues', () => {
           where: (condition: any) => {
             queryWhereCondition = condition
             return {
-              limit: async () => [],
+              orderBy: () => ({ limit: async () => [] }),
             }
           },
         }),

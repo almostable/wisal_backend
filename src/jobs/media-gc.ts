@@ -1,4 +1,4 @@
-import { sql, and, or, eq, inArray } from 'drizzle-orm'
+import { sql, and, or, eq, inArray, gt, lte, asc } from 'drizzle-orm'
 import { Cron } from 'croner'
 import { db } from '../db'
 import { mediaUploads } from '../db/schema/media-uploads'
@@ -6,6 +6,7 @@ import { deleteObjectsFromR2 } from '../lib/s3'
 import { cleanupExpiredSessions } from '../lib/session'
 import { cleanupExpiredAdminSessions } from '../lib/admin-session'
 import { captureAppException } from '../lib/sentry'
+import { MEDIA_GC_DELETED_TTL_DAYS } from '../config/constants'
 
 export interface MediaGcOptions {
   batchSize?: number
@@ -28,21 +29,30 @@ export async function runMediaGc(
   const deleter = options?.s3Deleter ?? deleteObjectsFromR2
   let processedBatches = 0
   let purgedKeysCount = 0
+  let lastKey: string | null = null
+  const deletedBefore = new Date(Date.now() - MEDIA_GC_DELETED_TTL_DAYS * 24 * 60 * 60 * 1000)
 
   while (true) {
     const candidates = await executor
       .select({ fileKey: mediaUploads.fileKey })
       .from(mediaUploads)
       .where(
-        or(
-          and(
-            eq(mediaUploads.status, 'pending'),
-            sql`${mediaUploads.createdAt} < NOW() - INTERVAL '24 HOURS'`
+        and(
+          or(
+            and(
+              eq(mediaUploads.status, 'pending'),
+              sql`${mediaUploads.createdAt} < NOW() - INTERVAL '24 HOURS'`
+            ),
+            and(eq(mediaUploads.status, 'deleted'), lte(mediaUploads.deletedAt, deletedBefore)),
+            and(
+              eq(mediaUploads.status, 'gc_failed'),
+              or(sql`${mediaUploads.deletedAt} IS NULL`, lte(mediaUploads.deletedAt, deletedBefore))
+            )
           ),
-          eq(mediaUploads.status, 'deleted'),
-          eq(mediaUploads.status, 'gc_failed')
+          lastKey ? gt(mediaUploads.fileKey, lastKey) : undefined
         )
       )
+      .orderBy(asc(mediaUploads.fileKey))
       .limit(batchSize)
 
     if (candidates.length === 0) {
@@ -51,6 +61,7 @@ export async function runMediaGc(
 
     processedBatches++
     const keys = candidates.map((c) => c.fileKey)
+    lastKey = keys[keys.length - 1] ?? null
 
     const { deleted: confirmedDeletedKeys, errors } = await deleter(keys)
     const confirmedSet = new Set(confirmedDeletedKeys)

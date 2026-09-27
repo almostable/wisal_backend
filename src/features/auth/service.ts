@@ -321,18 +321,22 @@ export async function deleteAccount(
 
       if (userPosts.length > 0) {
         const postIds = userPosts.map((p) => p.id)
+        const deletedAt = new Date()
 
         await tx
           .update(posts)
           .set({
-            deletedAt: new Date(),
+            deletedAt,
             isPinned: false,
           })
           .where(and(eq(posts.authorId, existingProfile.id), isNull(posts.deletedAt)))
 
+        await tx.update(comments).set({ deletedAt })
+          .where(and(inArray(comments.postId, postIds), isNull(comments.deletedAt)))
+
         await tx
           .update(mediaUploads)
-          .set({ status: 'deleted' })
+          .set({ status: 'deleted', deletedAt: new Date() })
           .where(
             and(
               eq(mediaUploads.entityType, 'post'),
@@ -343,7 +347,7 @@ export async function deleteAccount(
 
         await tx.execute(sql`
           UPDATE media_uploads
-          SET status = 'deleted'
+          SET status = 'deleted', deleted_at = NOW()
           WHERE entity_type = 'comment'
             AND status = 'attached'
             AND entity_id IN (
@@ -400,6 +404,11 @@ export async function deleteAccount(
 
         await deleteNotificationsForComments(commentIds, tx)
       }
+
+      await tx
+        .update(mediaUploads)
+        .set({ status: 'deleted', deletedAt: new Date() })
+        .where(and(eq(mediaUploads.profileId, existingProfile.id), eq(mediaUploads.status, 'attached')))
 
       await deleteNotificationsForProfiles(existingProfile.id, tx)
 
@@ -465,4 +474,3 @@ export async function deleteAccount(
     }
   })
 }
-

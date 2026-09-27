@@ -554,12 +554,21 @@ export async function banUserAccount(
           })
           .where(and(eq(posts.authorId, profileId), isNull(posts.deletedAt)))
 
+        await tx.update(comments).set({ deletedAt: now })
+          .where(and(inArray(comments.postId, postIds), isNull(comments.deletedAt)))
+
+        await tx.execute(sql`
+          UPDATE media_uploads SET status = 'deleted', deleted_at = ${now}
+          WHERE entity_type = 'comment' AND status = 'attached'
+            AND entity_id IN (SELECT id FROM comments WHERE post_id IN (${sql.join(postIds, sql`, `)}))
+        `)
+
         await deleteNotificationsForPosts(postIds, tx)
       }
 
       await tx
         .update(mediaUploads)
-        .set({ status: 'deleted' })
+        .set({ status: 'deleted', deletedAt: new Date() })
         .where(
           and(
             eq(mediaUploads.profileId, profileId),

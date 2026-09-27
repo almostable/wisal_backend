@@ -7,7 +7,7 @@ import {
 import {
   COMMENT_TYPES,
 } from '../../db/schema/comments'
-import { postMediaPayloadSchema, commentMediaPayloadSchema } from '../uploads/schema'
+import { postMediaPayloadSchema, commentMediaPayloadSchema, removablePostMediaPayloadSchema, removableCommentMediaPayloadSchema } from '../uploads/schema'
 
 export const postIdParamSchema = snowflakeParamSchema
 export const commentIdParamSchema = snowflakeParamSchema
@@ -143,62 +143,16 @@ export const createPostSchema = z
 
 export const updatePostSchema = z
   .object({
-    type: z.enum(POST_TYPES).optional(),
     content: z
       .string()
       .trim()
       .min(8, 'Content must be at least 8 characters')
       .max(5000, 'Content must be at most 5000 characters')
-      .nullable()
       .optional(),
-    genderScope: z.enum(GENDER_SCOPES).optional(),
-    isFeed: z.boolean().optional(),
-    showInFeed: z.boolean().optional(),
-    isPinned: z.boolean().optional(),
-    payload: z.record(z.string(), z.unknown()).optional(),
+    payload: removablePostMediaPayloadSchema.optional(),
   })
-  .superRefine((data, ctx) => {
-    const effectiveIsFeed =
-      data.isFeed !== undefined ? data.isFeed : data.showInFeed !== undefined ? data.showInFeed : undefined
-
-    if (effectiveIsFeed === true && data.content !== undefined && data.content !== null && data.content.trim().length < 100) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Posts published to the public feed must contain at least 100 characters',
-        path: ['content'],
-      })
-    }
-
-    if (data.type === 'media' && data.payload !== undefined) {
-      const parsedPayload = postMediaPayloadSchema.safeParse(data.payload)
-      if (!parsedPayload.success) {
-        for (const issue of parsedPayload.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            path: ['payload', ...issue.path],
-          })
-        }
-      }
-    }
-  })
-  .transform((data) => {
-    const effectiveIsFeed =
-      data.isFeed !== undefined ? data.isFeed : data.showInFeed !== undefined ? data.showInFeed : undefined
-
-    let result = {
-      ...data,
-      ...(effectiveIsFeed !== undefined ? { isFeed: effectiveIsFeed } : {}),
-    }
-
-    if (data.type === 'media' && data.payload !== undefined) {
-      const parsedPayload = postMediaPayloadSchema.parse(data.payload)
-      result = {
-        ...result,
-        payload: parsedPayload,
-      }
-    }
-    return result
-  })
+  .strict()
+  .refine((data) => data.content !== undefined || data.payload !== undefined, 'Nothing to update')
 
 export const pinPostSchema = z.object({
   isPinned: z.boolean().default(true),
@@ -221,30 +175,11 @@ export const createCommentSchema = z
 export const updateCommentSchema = z
   .object({
     content: z.string().trim().max(5000, 'Content must be at most 5000 characters').nullable().optional(),
-    payload: z.record(z.string(), z.unknown()).optional(),
+    payload: removableCommentMediaPayloadSchema.optional(),
   })
-  .superRefine((data, ctx) => {
-    if (data.payload !== undefined) {
-      const parsedPayload = commentMediaPayloadSchema.safeParse(data.payload)
-      if (!parsedPayload.success) {
-        for (const issue of parsedPayload.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            path: ['payload', ...issue.path],
-          })
-        }
-      }
-    }
-  })
+  .strict()
+  .refine((data) => data.content !== undefined || data.payload !== undefined, 'Nothing to update')
   .transform((data) => {
-    if (data.payload !== undefined) {
-      const parsedPayload = commentMediaPayloadSchema.parse(data.payload)
-      return {
-        ...data,
-        content: data.content !== undefined ? (data.content ? data.content.trim() : '') : undefined,
-        payload: parsedPayload,
-      }
-    }
     return {
       ...data,
       content: data.content !== undefined ? (data.content ? data.content.trim() : '') : undefined,
@@ -288,4 +223,3 @@ export type UpdateCommentInput = z.infer<typeof updateCommentSchema>
 export type ListCommentsQueryInput = z.infer<typeof listCommentsQuerySchema>
 export type RecordViewsInput = z.infer<typeof recordViewsSchema>
 export type FeedQueryInput = z.infer<typeof feedQuerySchema>
-

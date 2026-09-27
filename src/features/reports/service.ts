@@ -1,10 +1,11 @@
 import { eq, and, desc, count, isNull, type SQL } from 'drizzle-orm'
 import { HTTPException } from 'hono/http-exception'
-import { db } from '../../db'
+import { db, type DbExecutor } from '../../db'
 import { reports, type Report } from '../../db/schema/reports'
 import { profiles } from '../../db/schema/profiles'
 import { posts } from '../../db/schema/posts'
 import { comments } from '../../db/schema/comments'
+import { checkPostAccess } from '../posts/service'
 import type {
   CreateReportInput,
   ListUserReportsOptions,
@@ -13,14 +14,16 @@ import type {
 
 export async function createReport(
   reporterProfileId: bigint,
-  input: CreateReportInput
+  input: CreateReportInput,
+  reporterIsMale: boolean,
+  executor: DbExecutor = db
 ): Promise<Report> {
   const { targetType, targetId, reason, details } = input
 
   let reportedProfileId: bigint
 
   if (targetType === 'profile') {
-    const profile = await db.query.profiles.findFirst({
+    const profile = await executor.query.profiles.findFirst({
       where: eq(profiles.id, targetId),
     })
 
@@ -30,7 +33,7 @@ export async function createReport(
 
     reportedProfileId = targetId
   } else if (targetType === 'post') {
-    const post = await db.query.posts.findFirst({
+    const post = await executor.query.posts.findFirst({
       where: and(eq(posts.id, targetId), isNull(posts.deletedAt)),
     })
 
@@ -38,15 +41,19 @@ export async function createReport(
       throw new HTTPException(404, { message: 'Reported post not found' })
     }
 
+    await checkPostAccess(executor, post.id, { profileId: reporterProfileId, isMale: reporterIsMale })
+
     reportedProfileId = post.authorId
   } else if (targetType === 'comment') {
-    const comment = await db.query.comments.findFirst({
+    const comment = await executor.query.comments.findFirst({
       where: and(eq(comments.id, targetId), isNull(comments.deletedAt)),
     })
 
     if (!comment) {
       throw new HTTPException(404, { message: 'Reported comment not found' })
     }
+
+    await checkPostAccess(executor, comment.postId, { profileId: reporterProfileId, isMale: reporterIsMale })
 
     reportedProfileId = comment.authorId
   } else {
@@ -59,7 +66,7 @@ export async function createReport(
     })
   }
 
-  const existingReport = await db.query.reports.findFirst({
+  const existingReport = await executor.query.reports.findFirst({
     where: and(
       eq(reports.reporterProfileId, reporterProfileId),
       eq(reports.targetType, targetType),
@@ -74,7 +81,7 @@ export async function createReport(
     })
   }
 
-  const [newReport] = await db
+  const [newReport] = await executor
     .insert(reports)
     .values({
       reporterProfileId,

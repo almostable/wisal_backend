@@ -12,6 +12,7 @@ import {
   profileLinksSchema,
 } from '../../db/schema/profiles'
 import { identityFormatSchema } from '../../db/schema/identities'
+import { removablePostMediaPayloadSchema } from '../uploads/schema'
 
 export const loginInputSchema = z.object({
   email: emailSchema,
@@ -125,8 +126,8 @@ export const updatePostByAdminSchema = z.object({
   isFeed: z.boolean().optional(),
   isPinned: z.boolean().optional(),
   content: z.string().trim().max(5000, 'Content must be at most 5000 characters').optional(),
-  payload: z.record(z.string(), z.unknown()).optional(),
-})
+  payload: removablePostMediaPayloadSchema.optional(),
+}).strict()
 
 export const listCommentsAdminQuerySchema = baseAdminSearchQuerySchema.extend({
   status: z.enum(['all', 'active', 'deleted']).default('all'),
@@ -184,4 +185,3 @@ export type ResolveReportActionInput = z.infer<typeof resolveReportActionSchema>
 export type ListInviteApplicationsQuery = z.infer<typeof listInviteApplicationsQuerySchema>
 export type ApproveInviteApplicationRouteInput = z.infer<typeof approveInviteApplicationSchema>
 export type RejectInviteApplicationRouteInput = z.infer<typeof rejectInviteApplicationSchema>
-

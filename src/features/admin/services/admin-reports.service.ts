@@ -25,9 +25,10 @@ import {
   type ReportReason,
   type ReportStatus,
 } from '../../../db/schema/reports'
-import { markEntityMediaDeleted, reconcileEntityMedia } from '../../uploads/service'
-import { deleteNotificationsForPosts, deleteNotificationsForComments } from '../../notifications/service'
+import { reconcileEntityMedia } from '../../uploads/service'
 import { banUserAccount } from './admin-users.service'
+import { deletePostByAdmin } from './admin-posts.service'
+import { deleteCommentByAdmin } from './admin-comments.service'
 import { parseSafeBigInt } from './utils'
 import type {
   AdminReportItem,
@@ -641,7 +642,7 @@ export async function resolveReportWithAction(
   reportId: bigint,
   options: ResolveReportActionOptions
 ): Promise<AdminReportItem> {
-  return await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const report = await tx.query.reports.findFirst({
       where: eq(reports.id, reportId),
     })
@@ -652,68 +653,21 @@ export async function resolveReportWithAction(
 
     const { status, modNote, action, banReason } = options
 
-    // Apply action
     if (action === 'delete_target') {
       if (report.targetType === 'post') {
-        await tx
-          .update(posts)
-          .set({ deletedAt: new Date(), isPinned: false })
-          .where(eq(posts.id, report.targetId))
-        await markEntityMediaDeleted(tx, { entityType: 'post', entityId: report.targetId })
-        await deleteNotificationsForPosts(report.targetId, tx)
+        const targetPost = await tx.query.posts.findFirst({ where: eq(posts.id, report.targetId) })
+        if (!targetPost) throw new HTTPException(404, { message: 'Reported post not found' })
+        if (targetPost.deletedAt === null) await deletePostByAdmin(report.targetId, tx)
       } else if (report.targetType === 'comment') {
         const targetComment = await tx.query.comments.findFirst({
           where: eq(comments.id, report.targetId),
         })
 
         if (targetComment && targetComment.deletedAt === null) {
-          let toDeleteIds: bigint[] = [targetComment.id]
-
-          if (targetComment.parentId === null) {
-            const descendants = await tx
-              .select({ id: comments.id })
-              .from(comments)
-              .where(and(eq(comments.parentId, targetComment.id), isNull(comments.deletedAt)))
-
-            toDeleteIds = [targetComment.id, ...descendants.map((d) => d.id)]
-
-            await tx
-              .update(comments)
-              .set({ deletedAt: new Date() })
-              .where(inArray(comments.id, toDeleteIds))
-
-            await tx
-              .update(posts)
-              .set({
-                commentsCount: sql`GREATEST(0, ${posts.commentsCount} - ${toDeleteIds.length})`,
-              })
-              .where(eq(posts.id, targetComment.postId))
-          } else {
-            await tx
-              .update(comments)
-              .set({ deletedAt: new Date() })
-              .where(eq(comments.id, targetComment.id))
-
-            await tx
-              .update(posts)
-              .set({
-                commentsCount: sql`GREATEST(0, ${posts.commentsCount} - 1)`,
-              })
-              .where(eq(posts.id, targetComment.postId))
-
-            await tx
-              .update(comments)
-              .set({
-                repliesCount: sql`GREATEST(0, ${comments.repliesCount} - 1)`,
-              })
-              .where(eq(comments.id, targetComment.parentId))
-          }
-
-          for (const id of toDeleteIds) {
-            await markEntityMediaDeleted(tx, { entityType: 'comment', entityId: id })
-          }
-          await deleteNotificationsForComments(toDeleteIds, tx)
+          await deleteCommentByAdmin(report.targetId, tx)
         }
+      } else {
+        throw new HTTPException(400, { message: 'Profile cannot be deleted as a report target' })
       }
     } else if (action === 'ban_user') {
       const reportedProfile = await tx.query.profiles.findFirst({
@@ -764,6 +718,6 @@ export async function resolveReportWithAction(
       })
       .where(eq(reports.id, reportId))
 
-    return getReportById(reportId)
   })
+  return getReportById(reportId)
 }

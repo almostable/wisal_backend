@@ -297,7 +297,7 @@ adminRouter.post(
 adminRouter.get(
   '/users',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('query', listUsersQuerySchema),
   async (c) => {
     const query = c.req.valid('query')
@@ -313,7 +313,7 @@ adminRouter.get(
 adminRouter.get(
   '/users/:id',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -347,7 +347,7 @@ adminRouter.patch(
 adminRouter.post(
   '/users/:id/ban',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('param', snowflakeParamSchema),
   zValidator('json', banUserInputSchema),
   async (c) => {
@@ -363,7 +363,7 @@ adminRouter.post(
 adminRouter.post(
   '/users/:id/unban',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('param', snowflakeParamSchema),
   zValidator('json', unbanUserInputSchema),
   async (c) => {
@@ -379,7 +379,7 @@ adminRouter.post(
 adminRouter.delete(
   '/users/:id/sessions',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -396,7 +396,7 @@ adminRouter.delete(
 adminRouter.get(
   '/posts',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('query', listPostsAdminQuerySchema),
   async (c) => {
     const query = c.req.valid('query')
@@ -415,7 +415,7 @@ adminRouter.get(
 adminRouter.get(
   '/posts/:id',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -431,7 +431,7 @@ adminRouter.get(
 adminRouter.delete(
   '/posts/:id',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -444,7 +444,7 @@ adminRouter.delete(
 adminRouter.post(
   '/posts/:id/restore',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -479,7 +479,7 @@ adminRouter.patch(
 adminRouter.get(
   '/comments',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('query', listCommentsAdminQuerySchema),
   async (c) => {
     const query = c.req.valid('query')
@@ -499,7 +499,7 @@ adminRouter.get(
 adminRouter.get(
   '/posts/:id/comments',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -515,7 +515,7 @@ adminRouter.get(
 adminRouter.delete(
   '/comments/:id',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')
@@ -528,7 +528,7 @@ adminRouter.delete(
 adminRouter.post(
   '/comments/:id/restore',
   adminAuthMiddleware,
-  requireAdminRole('admin'),
+  requireAdminRole('admin', 'moderator'),
   zValidator('param', snowflakeParamSchema),
   async (c) => {
     const { id } = c.req.valid('param')

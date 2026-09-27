@@ -101,9 +101,9 @@ export const profilesRelations = relations(profiles, ({ one, many }) => ({
 
 export const nameSchema = z
   .string()
+  .trim()
   .min(1, 'Name cannot be empty')
   .max(100, 'Name must be at most 100 characters')
-  .trim()
 
 export const descriptionSchema = z
   .string()

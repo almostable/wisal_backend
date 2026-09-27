@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'bun:test'
 import { runMediaGc, initMediaGcCron } from '../media-gc'
 import { Cron } from 'croner'
+import { PgDialect } from 'drizzle-orm/pg-core'
+import type { SQL } from 'drizzle-orm'
 
 describe('Media GC Worker Tests', () => {
   it('runMediaGc completes with 0 when no candidates exist', async () => {
@@ -8,7 +10,7 @@ describe('Media GC Worker Tests', () => {
       select: () => ({
         from: () => ({
           where: () => ({
-            limit: async () => [],
+            orderBy: () => ({ limit: async () => [] }),
           }),
         }),
       }),
@@ -50,10 +52,12 @@ describe('Media GC Worker Tests', () => {
       select: () => ({
         from: () => ({
           where: () => ({
-            limit: async () => {
-              selectedCalls++
-              return selectedCalls === 1 ? candidates : []
-            },
+            orderBy: () => ({
+              limit: async () => {
+                selectedCalls++
+                return selectedCalls === 1 ? candidates : []
+              },
+            }),
           }),
         }),
       }),
@@ -91,6 +95,35 @@ describe('Media GC Worker Tests', () => {
     ])
     expect(updates.some((u) => u.status === 'purged' && u.purgedAt instanceof Date)).toBe(true)
     expect(updates.some((u) => u.status === 'gc_failed')).toBe(true)
+  })
+
+  it('moves the cursor after a failed R2 deletion instead of retrying the same key in one run', async () => {
+    const conditions: SQL[] = []
+    let reads = 0
+    const executor = {
+      select: () => ({ from: () => ({ where: (condition: SQL) => {
+        conditions.push(condition)
+        return { orderBy: () => ({ limit: async () => ++reads === 1
+          ? [{ fileKey: 'media/2026-09-27/111.jpg' }] : [] }) }
+      } }) }),
+      update: () => ({ set: () => ({ where: async () => [] }) }),
+      delete: () => ({ where: () => ({ returning: async () => [] }) }),
+    }
+    const result = await runMediaGc(executor as unknown as Parameters<typeof runMediaGc>[0], {
+      batchSize: 1,
+      s3Deleter: async () => ({ deleted: [], errors: [{ key: 'media/2026-09-27/111.jpg' }] }),
+    })
+    expect(result.processedBatches).toBe(1)
+    expect(reads).toBe(2)
+    const firstQuery = new PgDialect().sqlToQuery(conditions[0]!)
+    expect(firstQuery.sql).toContain('"deleted_at" <=')
+    expect(firstQuery.params.some((param) => {
+      const timestamp = param instanceof Date ? param.getTime() : Date.parse(String(param))
+      return Number.isFinite(timestamp) && Math.abs(Date.now() - timestamp - 14 * 86_400_000) < 5_000
+    })).toBe(true)
+    const secondQuery = new PgDialect().sqlToQuery(conditions[1]!)
+    expect(secondQuery.sql).toContain('"file_key" >')
+    expect(secondQuery.params).toContain('media/2026-09-27/111.jpg')
   })
 
   it('initMediaGcCron returns an active Cron instance', () => {

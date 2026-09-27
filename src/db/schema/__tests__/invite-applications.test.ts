@@ -98,5 +98,7 @@ describe('Invite Applications Schema Tests', () => {
     expect(indexNames).toContain('invite_applications_reviewed_by_id_idx')
     expect(indexNames).toContain('invite_applications_ip_status_idx')
     expect(indexNames).toContain('invite_applications_ip_created_at_idx')
+    expect(indexNames).toContain('invite_applications_pending_contact_unique_idx')
+    expect(indexNames).toContain('invite_applications_pending_ip_unique_idx')
   })
 })

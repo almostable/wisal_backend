@@ -48,6 +48,7 @@ describe('Media Uploads Schema Tests', () => {
       entityType: null,
       entityId: null,
       createdAt: new Date(),
+      deletedAt: null,
       purgedAt: new Date(),
     }
 

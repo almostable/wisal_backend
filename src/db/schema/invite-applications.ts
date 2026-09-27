@@ -1,5 +1,5 @@
-import { pgTable, varchar, text, timestamp, index } from 'drizzle-orm/pg-core'
-import { relations } from 'drizzle-orm'
+import { pgTable, varchar, text, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core'
+import { relations, sql } from 'drizzle-orm'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 import { snowflakePrimaryKey, snowflakeId, timestamps } from './common'
 import { admins } from './admins'
@@ -30,9 +30,13 @@ export const inviteApplications = pgTable(
     index('invite_applications_status_idx').on(table.status),
     index('invite_applications_created_at_idx').on(table.createdAt),
     index('invite_applications_contact_norm_idx').on(table.contactNormalized),
+    uniqueIndex('invite_applications_pending_contact_unique_idx')
+      .on(table.contactNormalized).where(sql`${table.status} = 'pending'`),
     index('invite_applications_invite_id_idx').on(table.inviteId),
     index('invite_applications_reviewed_by_id_idx').on(table.reviewedById),
     index('invite_applications_ip_status_idx').on(table.ip, table.status),
+    uniqueIndex('invite_applications_pending_ip_unique_idx')
+      .on(table.ip).where(sql`${table.status} = 'pending' AND ${table.ip} IS NOT NULL AND ${table.ip} != 'anonymous'`),
     index('invite_applications_ip_created_at_idx').on(table.ip, table.createdAt),
   ]
 )

@@ -33,6 +33,14 @@ export const commentMediaPayloadSchema = z.object({
     .max(MAX_COMMENT_MEDIA_COUNT, `At most ${MAX_COMMENT_MEDIA_COUNT} media item is allowed`),
 })
 
+export const removablePostMediaPayloadSchema = z.object({
+  media: z.array(mediaItemSchema.strict()).max(MAX_POST_MEDIA_COUNT),
+}).strict()
+
+export const removableCommentMediaPayloadSchema = z.object({
+  media: z.array(mediaItemSchema.strict()).max(MAX_COMMENT_MEDIA_COUNT),
+}).strict()
+
 export const mediaPayloadSchema = postMediaPayloadSchema
 
 export const presignRequestSchema = z

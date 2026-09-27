@@ -40,6 +40,7 @@ import {
   markEntityMediaDeleted,
   reconcileEntityMedia,
 } from '../uploads/service'
+import { validateMediaRemoval } from '../uploads/media-edit'
 import {
   createNotification,
   deleteNotificationsForPosts,
@@ -260,7 +261,7 @@ function formatComment(
   }
 }
 
-async function checkPostAccess(
+export async function checkPostAccess(
   executor: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0],
   postId: bigint,
   viewer?: { profileId: bigint; isMale: boolean } | null
@@ -455,9 +456,9 @@ export async function updatePost(
   input: UpdatePostDTO
 ): Promise<PostResponse> {
   return await db.transaction(async (tx) => {
-    const existing = await tx.query.posts.findFirst({
-      where: and(eq(posts.id, postId), isNull(posts.deletedAt)),
-    })
+    const [existing] = await tx.select().from(posts)
+      .where(and(eq(posts.id, postId), isNull(posts.deletedAt)))
+      .for('update').limit(1)
 
     if (!existing) {
       throw new HTTPException(404, { message: 'Post not found' })
@@ -473,56 +474,6 @@ export async function updatePost(
       })
     }
 
-    const targetIsFeed =
-      input.isFeed !== undefined
-        ? input.isFeed
-        : input.showInFeed !== undefined
-          ? input.showInFeed
-          : existing.isFeed
-
-    if ((targetIsFeed && !existing.isFeed) || input.isPinned === true) {
-      await tx
-        .select()
-        .from(profiles)
-        .where(eq(profiles.id, authorProfileId))
-        .for('update')
-    }
-
-    if (targetIsFeed && !existing.isFeed) {
-      const [recentFeedCount] = await tx
-        .select({ count: count() })
-        .from(posts)
-        .where(
-          and(
-            eq(posts.authorId, authorProfileId),
-            eq(posts.isFeed, true),
-            ne(posts.id, postId),
-            isNull(posts.deletedAt),
-            gte(posts.createdAt, sql`NOW() - INTERVAL '24 HOURS'`)
-          )
-        )
-
-      if ((recentFeedCount?.count ?? 0) >= MAX_FEED_POSTS_PER_24_HOURS) {
-        throw new HTTPException(429, {
-          message: `You can only publish to the feed up to ${MAX_FEED_POSTS_PER_24_HOURS} times every 24 hours`,
-        })
-      }
-    }
-
-    if (input.isPinned === true) {
-      await tx
-        .update(posts)
-        .set({ isPinned: false })
-        .where(
-          and(
-            eq(posts.authorId, authorProfileId),
-            eq(posts.isPinned, true),
-            ne(posts.id, postId),
-            isNull(posts.deletedAt)
-          )
-        )
-    }
-
     const resultingContent =
       input.content !== undefined
         ? input.content
@@ -534,7 +485,7 @@ export async function updatePost(
       throw new HTTPException(400, { message: 'Content must be at least 8 characters' })
     }
 
-    if (targetIsFeed && resultingContent.length < 100) {
+    if (existing.isFeed && resultingContent.length < 100) {
       throw new HTTPException(400, {
         message: 'Posts published to the public feed must contain at least 100 characters',
       })
@@ -548,45 +499,16 @@ export async function updatePost(
     if (input.content !== undefined) {
       updateData.content = resultingContent
     }
-    if (input.type !== undefined) {
-      updateData.type = input.type
-    }
-    if (input.genderScope !== undefined) {
-      updateData.genderScope = input.genderScope
-    }
-    if (input.isPinned !== undefined) {
-      updateData.isPinned = input.isPinned
-    }
-    if (input.isFeed !== undefined || input.showInFeed !== undefined) {
-      updateData.isFeed = targetIsFeed
-    }
-
     if (input.payload !== undefined) {
-      updateData.payload = input.payload
-
-      const oldMediaItems = Array.isArray((existing.payload as any)?.media)
-        ? (existing.payload as any).media
-        : []
-      const oldFileKeys = oldMediaItems
-        .map((m: any) => m.fileKey)
-        .filter((k: any): k is string => typeof k === 'string')
-
-      const newMediaItems = Array.isArray((input.payload as any)?.media)
-        ? (input.payload as any).media
-        : []
-      const newFileKeys = newMediaItems
-        .map((m: any) => m.fileKey)
-        .filter((k: any): k is string => typeof k === 'string')
-
-      if (oldFileKeys.length > 0 || newFileKeys.length > 0) {
-        await reconcileEntityMedia(tx, {
-          entityType: 'post',
-          entityId: postId,
-          profileId: authorProfileId,
-          newFileKeys,
-          oldFileKeys,
-        })
-      }
+      const { payload, oldFileKeys, newFileKeys } = validateMediaRemoval(
+        existing.payload, input.payload, 'post'
+      )
+      updateData.payload = newFileKeys.length > 0 ? payload : {}
+      updateData.type = newFileKeys.length > 0 ? 'media' : 'text'
+      await reconcileEntityMedia(tx, {
+        entityType: 'post', entityId: postId, profileId: authorProfileId,
+        newFileKeys, oldFileKeys,
+      })
     }
 
     const [updated] = await tx
@@ -674,7 +596,7 @@ export async function deletePost(
 
     await tx.execute(sql`
       UPDATE media_uploads
-      SET status = 'deleted'
+      SET status = 'deleted', deleted_at = NOW()
       WHERE entity_type = 'comment'
         AND status = 'attached'
         AND entity_id IN (
@@ -1654,9 +1576,9 @@ export async function updateComment(
   input: UpdateCommentDTO
 ): Promise<CommentResponse> {
   return await db.transaction(async (tx) => {
-    const existing = await tx.query.comments.findFirst({
-      where: and(eq(comments.id, commentId), isNull(comments.deletedAt)),
-    })
+    const [existing] = await tx.select().from(comments)
+      .where(and(eq(comments.id, commentId), isNull(comments.deletedAt)))
+      .for('update').limit(1)
 
     if (!existing) {
       throw new HTTPException(404, { message: 'Comment not found' })
@@ -1681,31 +1603,23 @@ export async function updateComment(
       updateData.content = input.content ? input.content.trim() : ''
     }
     if (input.payload !== undefined) {
-      updateData.payload = input.payload
+      const { payload, oldFileKeys, newFileKeys } = validateMediaRemoval(
+        existing.payload, input.payload, 'comment'
+      )
+      updateData.payload = newFileKeys.length > 0 ? payload : {}
+      updateData.type = newFileKeys.length > 0 ? 'media' : 'text'
+      await reconcileEntityMedia(tx, {
+        entityType: 'comment', entityId: commentId, profileId: authorProfileId,
+        newFileKeys, oldFileKeys,
+      })
+    }
 
-      const oldMediaItems = Array.isArray((existing.payload as any)?.media)
-        ? (existing.payload as any).media
-        : []
-      const oldFileKeys = oldMediaItems
-        .map((m: any) => m.fileKey)
-        .filter((k: any): k is string => typeof k === 'string')
-
-      const newMediaItems = Array.isArray((input.payload as any)?.media)
-        ? (input.payload as any).media
-        : []
-      const newFileKeys = newMediaItems
-        .map((m: any) => m.fileKey)
-        .filter((k: any): k is string => typeof k === 'string')
-
-      if (oldFileKeys.length > 0 || newFileKeys.length > 0) {
-        await reconcileEntityMedia(tx, {
-          entityType: 'comment',
-          entityId: commentId,
-          profileId: authorProfileId,
-          newFileKeys,
-          oldFileKeys,
-        })
-      }
+    const resultingContent = updateData.content ?? existing.content
+    if (updateData.type === 'text' && resultingContent.length === 0) {
+      throw new HTTPException(400, { message: 'Comment content cannot be empty after removing media' })
+    }
+    if (existing.type === 'text' && resultingContent.length === 0) {
+      throw new HTTPException(400, { message: 'Comment content cannot be empty' })
     }
 
     const [updated] = await tx
@@ -1929,4 +1843,3 @@ export async function getFeedPosts(
     hasMore,
   }
 }
-

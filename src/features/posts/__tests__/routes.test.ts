@@ -600,7 +600,7 @@ describe('Posts Feature Route Tests', () => {
     expect(res.status).toBe(400)
   })
 
-  it('PATCH /posts/:id updates post content and settings', async () => {
+  it('PATCH /posts/:id updates post content only', async () => {
     mock.module('../../../lib/session', () => ({
       validateSessionToken: async () => ({
         account: maleAccount,
@@ -617,7 +617,6 @@ describe('Posts Feature Route Tests', () => {
       updatePost: async (_authorId: bigint, _postId: bigint, input: any) => ({
         ...samplePost,
         content: input.content ?? samplePost.content,
-        genderScope: input.genderScope ?? samplePost.genderScope,
       }),
     }))
 
@@ -629,7 +628,6 @@ describe('Posts Feature Route Tests', () => {
       },
       body: JSON.stringify({
         content: 'Updated post content',
-        genderScope: 'same_gender',
       }),
     })
 
@@ -637,7 +635,7 @@ describe('Posts Feature Route Tests', () => {
     const body = (await res.json()) as { success: boolean; post: PostResponse }
     expect(body.success).toBe(true)
     expect(body.post.content).toBe('Updated post content')
-    expect(body.post.genderScope).toBe('same_gender')
+    expect(body.post.genderScope).toBe(samplePost.genderScope)
   })
 
   it('PATCH /posts/:id rejects updating media post with more than 5 images with 400', async () => {
@@ -2759,5 +2757,4 @@ describe('Posts Feature Route Tests', () => {
     })
   })
 })
-
 

@@ -20,7 +20,9 @@ import { profiles } from '../../../db/schema/profiles'
 import { accounts } from '../../../db/schema/accounts'
 import { identities } from '../../../db/schema/identities'
 import { mediaUploads } from '../../../db/schema/media-uploads'
+import { MEDIA_GC_DELETED_TTL_DAYS } from '../../../config/constants'
 import { markEntityMediaDeleted } from '../../uploads/service'
+import { getMediaFileKeys } from '../../uploads/media-edit'
 import { deleteNotificationsForComments } from '../../notifications/service'
 import { parseSafeBigInt } from './utils'
 import type {
@@ -294,8 +296,8 @@ export async function deleteCommentByAdmin(
   return await executeInTx(executor)
 }
 
-export async function restoreCommentByAdmin(commentId: bigint): Promise<{ success: boolean; message: string }> {
-  return await db.transaction(async (tx) => {
+export async function restoreCommentByAdmin(commentId: bigint, executor: DbExecutor = db): Promise<{ success: boolean; message: string }> {
+  const executeInTx = async (tx: DbExecutor) => {
     const existing = await tx.query.comments.findFirst({
       where: eq(comments.id, commentId),
     })
@@ -308,15 +310,51 @@ export async function restoreCommentByAdmin(commentId: bigint): Promise<{ succes
       throw new HTTPException(400, { message: 'Comment is not deleted' })
     }
 
-    await tx
-      .update(comments)
-      .set({ deletedAt: null })
-      .where(eq(comments.id, commentId))
+    if (existing.deletedAt.getTime() <= Date.now() - MEDIA_GC_DELETED_TTL_DAYS * 86_400_000) {
+      throw new HTTPException(409, { message: 'Comment restoration period has expired' })
+    }
+
+    const parentPost = await tx.query.posts.findFirst({
+      where: and(eq(posts.id, existing.postId), isNull(posts.deletedAt)),
+    })
+    if (!parentPost) {
+      throw new HTTPException(409, { message: 'Parent post is unavailable' })
+    }
+    const [author] = await tx.select({ deletedAt: accounts.deletedAt, bannedAt: accounts.bannedAt })
+      .from(profiles).innerJoin(accounts, eq(profiles.accountId, accounts.id))
+      .where(eq(profiles.id, existing.authorId)).limit(1)
+    if (!author || author.deletedAt || author.bannedAt) {
+      throw new HTTPException(409, { message: 'Comment author is unavailable' })
+    }
+    if (existing.parentId !== null) {
+      const parentComment = await tx.query.comments.findFirst({
+        where: and(eq(comments.id, existing.parentId), isNull(comments.deletedAt)),
+      })
+      if (!parentComment) {
+        throw new HTTPException(409, { message: 'Parent comment is unavailable' })
+      }
+    }
+
+    let restoredIds = [commentId]
+    const payloads: Record<string, unknown>[] = [existing.payload]
+    if (existing.parentId === null) {
+      const descendants = await tx.select({ id: comments.id, payload: comments.payload })
+        .from(comments)
+        .innerJoin(profiles, eq(comments.authorId, profiles.id))
+        .innerJoin(accounts, eq(profiles.accountId, accounts.id))
+        .where(and(eq(comments.parentId, commentId), eq(comments.deletedAt, existing.deletedAt),
+          isNull(accounts.deletedAt), isNull(accounts.bannedAt)))
+      restoredIds = [commentId, ...descendants.map((comment) => comment.id)]
+      payloads.push(...descendants.map((comment) => comment.payload))
+    }
+
+    await tx.update(comments).set({ deletedAt: null })
+      .where(inArray(comments.id, restoredIds))
 
     await tx
       .update(posts)
       .set({
-        commentsCount: sql`${posts.commentsCount} + 1`,
+        commentsCount: sql`${posts.commentsCount} + ${restoredIds.length}`,
       })
       .where(eq(posts.id, existing.postId))
 
@@ -327,22 +365,25 @@ export async function restoreCommentByAdmin(commentId: bigint): Promise<{ succes
           repliesCount: sql`${comments.repliesCount} + 1`,
         })
         .where(eq(comments.id, existing.parentId))
+    } else {
+      const [activeReplies] = await tx.select({ count: count() }).from(comments)
+        .where(and(eq(comments.parentId, commentId), isNull(comments.deletedAt)))
+      await tx.update(comments).set({ repliesCount: activeReplies?.count ?? 0 })
+        .where(eq(comments.id, commentId))
     }
 
-    await tx
-      .update(mediaUploads)
-      .set({ status: 'attached' })
-      .where(
-        and(
-          eq(mediaUploads.entityType, 'comment'),
-          eq(mediaUploads.entityId, commentId),
-          eq(mediaUploads.status, 'deleted')
-        )
-      )
+    const mediaKeys = payloads.flatMap(getMediaFileKeys)
+    if (mediaKeys.length > 0) {
+      await tx.update(mediaUploads).set({ status: 'attached', deletedAt: null })
+        .where(and(eq(mediaUploads.entityType, 'comment'),
+          inArray(mediaUploads.fileKey, mediaKeys), eq(mediaUploads.status, 'deleted')))
+    }
 
     return {
       success: true,
       message: 'Comment restored successfully',
     }
-  })
+  }
+
+  return executor === db ? db.transaction(executeInTx) : executeInTx(executor)
 }
