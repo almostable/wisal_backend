@@ -1,6 +1,7 @@
 import type { MiddlewareHandler, Context } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { env } from '../config/env'
+import { ERROR_CODES } from '../config/error-codes'
 
 export interface RateLimiterOptions {
   windowMs?: number
@@ -93,7 +94,13 @@ export function rateLimiter(options: RateLimiterOptions = {}): MiddlewareHandler
     if (record.count > max) {
       const retryAfterSeconds = Math.ceil((record.resetAt - now) / 1000)
       c.header('Retry-After', String(retryAfterSeconds))
-      throw new HTTPException(429, { message })
+      throw new HTTPException(429, {
+        message,
+        cause: {
+          code: ERROR_CODES.RATE_LIMIT_EXCEEDED,
+          details: { retryAfterSeconds },
+        },
+      })
     }
 
     await next()

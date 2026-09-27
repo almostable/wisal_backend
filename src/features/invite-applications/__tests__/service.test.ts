@@ -2,6 +2,8 @@ import { describe, it, expect, mock, afterEach } from 'bun:test'
 import '../../../lib/snowflake'
 import { submitInviteApplication } from '../service'
 import { HTTPException } from 'hono/http-exception'
+import { AppException } from '../../../lib/errors'
+import { ERROR_CODES } from '../../../config/error-codes'
 import { db } from '../../../db'
 
 describe('Invite Applications Service Unit Tests', () => {
@@ -19,27 +21,37 @@ describe('Invite Applications Service Unit Tests', () => {
   }
 
   it('rejects when honeypot website field is present', async () => {
-    await expect(
-      submitInviteApplication(
+    try {
+      await submitInviteApplication(
         {
           ...validInput,
           website: 'http://spam.org',
         },
         metadata
       )
-    ).rejects.toThrow(new HTTPException(400, { message: 'Invalid submission' }))
+      expect.unreachable()
+    } catch (err: any) {
+      expect(err).toBeInstanceOf(HTTPException)
+      expect(err.status).toBe(400)
+      expect(err.code).toBe(ERROR_CODES.INVALID_SUBMISSION)
+    }
   })
 
   it('rejects when turnstile captcha verification fails', async () => {
-    await expect(
-      submitInviteApplication(
+    try {
+      await submitInviteApplication(
         {
           ...validInput,
           turnstileToken: '',
         },
         metadata
       )
-    ).rejects.toThrow(new HTTPException(400, { message: 'Captcha verification failed' }))
+      expect.unreachable()
+    } catch (err: any) {
+      expect(err).toBeInstanceOf(HTTPException)
+      expect(err.status).toBe(400)
+      expect(err.code).toBe(ERROR_CODES.CAPTCHA_FAILED)
+    }
   })
 
   it('rejects when there is an application from the same IP already pending review (409)', async () => {
@@ -59,13 +71,15 @@ describe('Invite Applications Service Unit Tests', () => {
       },
     }
 
-    await expect(
-      submitInviteApplication(validInput, metadata, mockExecutor)
-    ).rejects.toThrow(
-      new HTTPException(409, {
-        message: 'An application from this IP address is already pending review',
-      })
-    )
+    try {
+      await submitInviteApplication(validInput, metadata, mockExecutor)
+      expect.unreachable()
+    } catch (err: any) {
+      expect(err).toBeInstanceOf(HTTPException)
+      expect(err.status).toBe(409)
+      expect(err.code).toBe(ERROR_CODES.IP_PENDING_APPLICATION)
+      expect(err.details).toEqual({ status: 'pending' })
+    }
   })
 
   it('rejects when an application from the same IP was submitted within the last 24 hours (429)', async () => {
@@ -95,13 +109,17 @@ describe('Invite Applications Service Unit Tests', () => {
       },
     }
 
-    await expect(
-      submitInviteApplication(validInput, metadata, mockExecutor)
-    ).rejects.toThrow(
-      new HTTPException(429, {
-        message: 'Only one application per 24 hours is allowed from this IP address',
-      })
-    )
+    try {
+      await submitInviteApplication(validInput, metadata, mockExecutor)
+      expect.unreachable()
+    } catch (err: any) {
+      expect(err).toBeInstanceOf(HTTPException)
+      expect(err.status).toBe(429)
+      expect(err.code).toBe(ERROR_CODES.IP_COOLDOWN_ACTIVE)
+      expect(err.details.cooldownHours).toBe(24)
+      expect(typeof err.details.retryAfterSeconds).toBe('number')
+      expect(err.details.retryAfterSeconds).toBeGreaterThan(0)
+    }
   })
 
   it('allows application when previous submission from same IP was more than 24 hours ago and resolved', async () => {

@@ -4,6 +4,8 @@ import { app } from '../../../index'
 import { normalizeContact } from '../schema'
 import * as inviteAppService from '../service'
 import { HTTPException } from 'hono/http-exception'
+import { AppException } from '../../../lib/errors'
+import { ERROR_CODES } from '../../../config/error-codes'
 
 describe('Invite Applications Public Route Tests', () => {
   const validPayload = {
@@ -147,8 +149,10 @@ describe('Invite Applications Public Route Tests', () => {
   it('POST /invite-applications returns 409 when an application from this IP is already pending review', async () => {
     mock.module('../service', () => ({
       submitInviteApplication: async () => {
-        throw new HTTPException(409, {
+        throw new AppException(409, {
           message: 'An application from this IP address is already pending review',
+          code: ERROR_CODES.IP_PENDING_APPLICATION,
+          details: { status: 'pending' },
         })
       },
     }))
@@ -165,13 +169,17 @@ describe('Invite Applications Public Route Tests', () => {
     expect(res.status).toBe(409)
     const body = (await res.json()) as any
     expect(body.error).toBe('An application from this IP address is already pending review')
+    expect(body.code).toBe(ERROR_CODES.IP_PENDING_APPLICATION)
+    expect(body.details).toEqual({ status: 'pending' })
   })
 
   it('POST /invite-applications returns 429 when an application from this IP was submitted within 24 hours', async () => {
     mock.module('../service', () => ({
       submitInviteApplication: async () => {
-        throw new HTTPException(429, {
+        throw new AppException(429, {
           message: 'Only one application per 24 hours is allowed from this IP address',
+          code: ERROR_CODES.IP_COOLDOWN_ACTIVE,
+          details: { cooldownHours: 24, retryAfterSeconds: 86400 },
         })
       },
     }))
@@ -186,7 +194,10 @@ describe('Invite Applications Public Route Tests', () => {
     })
 
     expect(res.status).toBe(429)
+    expect(res.headers.get('Retry-After')).toBe('86400')
     const body = (await res.json()) as any
     expect(body.error).toBe('Only one application per 24 hours is allowed from this IP address')
+    expect(body.code).toBe(ERROR_CODES.IP_COOLDOWN_ACTIVE)
+    expect(body.details).toEqual({ cooldownHours: 24, retryAfterSeconds: 86400 })
   })
 })

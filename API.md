@@ -1542,10 +1542,30 @@ Header `Authorization: Bearer <token>`.
     "id": "111111111111111"
   }
   ```
-- **Ошибки:**
-  - `400 Bad Request` — ошибка валидации полей, заполненное honeypot-поле, недействительная капча Turnstile или некорректный контакт
-  - `409 Conflict` — заявка с указанными контактными данными или с данного IP-адреса уже находится на рассмотрении (`pending`)
-  - `429 Too Many Requests` — с данного IP-адреса разрешена не более 1 заявки в 24 часа, либо превышен лимит частоты отправки запросов (5 запросов / 15 минут)
+- **Формат ошибок:**
+  Все ошибки возвращают человекопонятное сообщение `error`, машиночитаемый ключ `code` (для интернационализации на фронтенде) и опциональный объект `details` с метаданными.
+  ```json
+  {
+    "error": "Only one application per 24 hours is allowed from this IP address",
+    "code": "IP_COOLDOWN_ACTIVE",
+    "details": {
+      "cooldownHours": 24,
+      "retryAfterSeconds": 86400
+    }
+  }
+  ```
+- **Возможные ошибки и коды (`code`):**
+  - `400 Bad Request`:
+    - `INVALID_SUBMISSION` — заполнено honeypot-поле
+    - `CAPTCHA_FAILED` — не пройдена капча Cloudflare Turnstile
+    - `INVALID_CONTACT` — некорректный формат контакта
+    - `CONTACT_ALREADY_EXISTS` — контакт (email) уже зарегистрирован в системе
+  - `409 Conflict`:
+    - `IP_PENDING_APPLICATION` — с данного IP-адреса уже есть заявка в статусе `pending` (`details.status = 'pending'`)
+    - `CONTACT_PENDING_APPLICATION` — заявка с данным контактом уже находится на рассмотрении (`details.status = 'pending'`)
+  - `429 Too Many Requests`:
+    - `IP_COOLDOWN_ACTIVE` — с данного IP-адреса разрешена только 1 заявка раз в 24 часа (`details.cooldownHours = 24`, `details.retryAfterSeconds`, заголовок `Retry-After`)
+    - `RATE_LIMIT_EXCEEDED` — превышен лимит частоты HTTP-запросов (5 запросов / 15 минут, заголовок `Retry-After`)
 
 ---
 

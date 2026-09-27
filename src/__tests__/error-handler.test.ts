@@ -37,8 +37,18 @@ app.get('/test-invalid-text-representation', () => {
   throw err
 })
 
+import { AppException } from '../lib/errors'
+
 app.get('/test-syntax-error', () => {
   throw new SyntaxError('Unexpected token in JSON at position 5')
+})
+
+app.get('/test-app-exception', () => {
+  throw new AppException(409, {
+    message: 'Test message',
+    code: 'TEST_CODE',
+    details: { foo: 'bar', retryAfterSeconds: 120 },
+  })
 })
 
 describe('Global Error Handler Tests', () => {
@@ -101,5 +111,15 @@ describe('Global Error Handler Tests', () => {
     } finally {
       setShuttingDownForTest(false)
     }
+  })
+
+  it('formats AppException with code, details and Retry-After header', async () => {
+    const res = await app.request('/test-app-exception')
+    expect(res.status).toBe(409)
+    expect(res.headers.get('Retry-After')).toBe('120')
+    const body = (await res.json()) as any
+    expect(body.error).toBe('Test message')
+    expect(body.code).toBe('TEST_CODE')
+    expect(body.details).toEqual({ foo: 'bar', retryAfterSeconds: 120 })
   })
 })

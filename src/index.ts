@@ -89,7 +89,20 @@ app.use('*', async (c, next) => {
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) {
-    return c.json({ error: err.message }, err.status)
+    const errAny = err as any
+    const code = errAny.code ?? errAny.cause?.code
+    const details = errAny.details ?? errAny.cause?.details
+    if (details?.retryAfterSeconds) {
+      c.header('Retry-After', String(details.retryAfterSeconds))
+    }
+    return c.json(
+      {
+        error: err.message,
+        ...(code ? { code } : {}),
+        ...(details ? { details } : {}),
+      },
+      err.status
+    )
   }
 
   if (err instanceof SyntaxError) {
