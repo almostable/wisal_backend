@@ -30,7 +30,6 @@ export const MAX_POST_MEDIA_COUNT = 5
 export const MAX_COMMENT_MEDIA_COUNT = 1
 export const MEDIA_GC_PENDING_TTL_HOURS = 24
 export const MEDIA_GC_DELETED_TTL_DAYS = 14
-export const MEDIA_GC_PURGED_RECORD_TTL_DAYS = 90
 
 /**
  * Feed post visibility TTL

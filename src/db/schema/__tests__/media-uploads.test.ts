@@ -44,21 +44,20 @@ describe('Media Uploads Schema Tests', () => {
     const selectData = {
       fileKey: 'media/2026-09-04/333333333333333.webp',
       profileId: 100000000000001n,
-      status: 'purged',
+      status: 'deleted',
       entityType: null,
       entityId: null,
       createdAt: new Date(),
-      deletedAt: null,
-      purgedAt: new Date(),
+      deletedAt: new Date(),
     }
 
     const parsed = selectMediaUploadSchema.parse(selectData)
     expect(parsed.fileKey).toBe('media/2026-09-04/333333333333333.webp')
     expect(parsed.profileId).toBe(100000000000001n)
-    expect(parsed.status).toBe('purged')
+    expect(parsed.status).toBe('deleted')
     expect(parsed.entityType).toBeNull()
     expect(parsed.entityId).toBeNull()
-    expect(parsed.purgedAt).toBeInstanceOf(Date)
+    expect(parsed.deletedAt).toBeInstanceOf(Date)
   })
 
   it('has primary key on file_key', () => {
@@ -107,7 +106,7 @@ describe('Media Uploads Schema Tests', () => {
   })
 
   it('has expected enum constants defined', () => {
-    expect(MEDIA_UPLOAD_STATUSES).toEqual(['pending', 'attached', 'deleted', 'purged', 'gc_failed'])
+    expect(MEDIA_UPLOAD_STATUSES).toEqual(['pending', 'attached', 'deleted', 'gc_failed'])
     expect(MEDIA_ENTITY_TYPES).toEqual(['post', 'comment', 'avatar'])
   })
 })

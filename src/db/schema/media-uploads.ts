@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { snowflakeId } from './common'
 import { profiles } from './profiles'
 
-export const MEDIA_UPLOAD_STATUSES = ['pending', 'attached', 'deleted', 'purged', 'gc_failed'] as const
+export const MEDIA_UPLOAD_STATUSES = ['pending', 'attached', 'deleted', 'gc_failed'] as const
 export type MediaUploadStatus = (typeof MEDIA_UPLOAD_STATUSES)[number]
 
 export const MEDIA_ENTITY_TYPES = ['post', 'comment', 'avatar'] as const
@@ -25,15 +25,11 @@ export const mediaUploads = pgTable(
       .defaultNow()
       .notNull(),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
-    purgedAt: timestamp('purged_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     index('idx_media_gc')
       .on(table.status, table.createdAt)
       .where(sql`${table.status} IN ('pending', 'deleted', 'gc_failed')`),
-    index('idx_media_purged')
-      .on(table.purgedAt)
-      .where(sql`${table.status} = 'purged'`),
     index('idx_media_entity').on(table.entityType, table.entityId),
     index('idx_media_profile_id').on(table.profileId),
   ]
